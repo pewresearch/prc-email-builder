@@ -1,0 +1,279 @@
+// Email Preview modal — redesigned layout styles
+
+// ── Modal shell ───────────────────────────────────────────────────────────────
+
+.prc-email-preview__modal {
+	// Remove default modal content padding so our zones bleed edge-to-edge.
+	.components-modal__content {
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+}
+
+// ── Root flex layout ──────────────────────────────────────────────────────────
+
+.prc-email-preview__layout {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0; // allow flex children to shrink below their content size
+}
+
+// ── Zone 1: Inbox bar ─────────────────────────────────────────────────────────
+
+.prc-email-preview__inbox-bar {
+	display: flex;
+	align-items: center;
+	padding: 10px 20px;
+	background: #f6f6f6;
+	border-bottom: 1px solid #e0e0e0;
+	font-size: 12px;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.prc-email-preview__inbox-segment {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0; // allow truncation
+	overflow: hidden;
+}
+
+.prc-email-preview__inbox-label {
+	text-transform: uppercase;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	color: #666;
+	flex-shrink: 0;
+}
+
+.prc-email-preview__inbox-value {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #1e1e1e;
+}
+
+.prc-email-preview__inbox-sep {
+	padding: 0 12px;
+	color: #ccc;
+	flex-shrink: 0;
+	user-select: none;
+}
+
+// ── Zone 2: Toolbar ───────────────────────────────────────────────────────────
+
+.prc-email-preview__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	padding: 8px 20px;
+	border-bottom: 1px solid #e0e0e0;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+}
+
+.prc-email-preview__toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+
+	// Remove bottom margin WordPress adds to ToggleGroupControl.
+	.components-toggle-group-control {
+		margin-bottom: 0;
+	}
+}
+
+.prc-email-preview__toolbar-label {
+	text-transform: uppercase;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	color: #666;
+	white-space: nowrap;
+}
+
+// ── Zone 3: Scrollable content ────────────────────────────────────────────────
+
+.prc-email-preview__content {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 16px 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+// ── Size badge ────────────────────────────────────────────────────────────────
+
+.prc-email-preview__size-badge {
+	align-self: flex-end;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 12px;
+	color: #444;
+}
+
+.prc-email-preview__size-dot {
+	line-height: 1;
+	user-select: none;
+}
+
+.prc-email-preview__size-badge--ok .prc-email-preview__size-dot {
+	color: #1a8a1a;
+}
+
+.prc-email-preview__size-badge--warning .prc-email-preview__size-dot {
+	color: #c07800;
+}
+
+.prc-email-preview__size-badge--error .prc-email-preview__size-dot {
+	color: #cc1818;
+}
+
+// ── Browser chrome wrapper ────────────────────────────────────────────────────
+
+.prc-email-preview__frame-wrapper {
+	display: flex;
+	justify-content: center;
+	flex-grow: 1;
+}
+
+.prc-email-preview__browser-chrome {
+	border: 1px solid #e0e0e0;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+	transition: width 0.25s ease;
+	display: flex;
+	flex-direction: column;
+}
+
+.prc-email-preview__browser-bar {
+	display: flex;
+	align-items: center;
+	padding: 8px 12px;
+	background: #ececec;
+	border-bottom: 1px solid #e0e0e0;
+	gap: 8px;
+}
+
+.prc-email-preview__browser-dots {
+	display: flex;
+	gap: 5px;
+	flex-shrink: 0;
+
+	span {
+		display: block;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+	}
+
+	span:nth-child(1) {
+		background: #ff5f57;
+	}
+	span:nth-child(2) {
+		background: #febc2e;
+	}
+	span:nth-child(3) {
+		background: #28c840;
+	}
+}
+
+.prc-email-preview__browser-address {
+	flex: 1;
+	text-align: center;
+	font-size: 12px;
+	color: #555;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 0 12px;
+}
+
+.prc-email-preview__iframe {
+	border: none;
+	min-height: 500px;
+	display: block;
+	background: #fff;
+	flex-grow: 1;
+}
+
+// ── Raw HTML view ─────────────────────────────────────────────────────────────
+
+.prc-email-preview__html-view {
+	border: 1px solid #e0e0e0;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.prc-email-preview__html-toolbar {
+	padding: 8px 12px;
+	background: #f6f6f6;
+	border-bottom: 1px solid #e0e0e0;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.prc-email-preview__html-pre {
+	margin: 0;
+	padding: 16px;
+	overflow: auto;
+	max-height: 500px;
+	font-size: 12px;
+	line-height: 1.5;
+	background: #1e1e1e;
+	color: #d4d4d4;
+	white-space: pre-wrap;
+	word-break: break-all;
+
+	code {
+		font-family: "Courier New", Courier, monospace;
+	}
+}
+
+// ── Zone 4: Test-send footer ──────────────────────────────────────────────────
+
+.prc-email-preview__test-footer {
+	border-top: 1px solid #e0e0e0;
+	padding: 12px 20px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+
+	.components-notice {
+		margin: 0;
+	}
+}
+
+.prc-email-preview__test-label {
+	text-transform: uppercase;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	color: #666;
+}
+
+.prc-email-preview__test-row {
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+
+	// Let the text input grow to fill available space.
+	.components-base-control {
+		flex: 1;
+		margin-bottom: 0;
+	}
+
+	// Prevent the button from shrinking.
+	.components-button {
+		flex-shrink: 0;
+	}
+}

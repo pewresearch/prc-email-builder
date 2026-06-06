@@ -1,0 +1,566 @@
+<?php
+declare(strict_types=1);
+/**
+ * Email Style Resolver.
+ *
+ * @package PRC\Platform\Email_Builder
+ */
+
+namespace PRC\Platform\Email_Builder;
+
+/**
+ * Shared utilities for resolving block attributes to email-safe inline CSS.
+ *
+ * @package PRC\Platform\Email_Builder
+ */
+class Email_Style_Resolver {
+
+	const EMAIL_FONT_SERIF         = "Georgia,'Times New Roman',Times,serif";
+	const EMAIL_FONT_FRANKLIN_SANS = "'franklin-gothic-urw',Verdana,Geneva,sans-serif";
+
+	/**
+	 * CSS properties that may receive dark-mode overrides.
+	 *
+	 * @var string[]
+	 */
+	private const DARK_MODE_PROPERTIES = array(
+		'background-color',
+		'color',
+		'border-color',
+		'border-top-color',
+		'border-right-color',
+		'border-bottom-color',
+		'border-left-color',
+	);
+
+	/**
+	 * Build full inline CSS from block attrs (typography + color/spacing/border).
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return string
+	 */
+	public static function inline_css( array $attrs ): string {
+		$result = self::inline_css_with_classes( $attrs );
+		return $result['css'];
+	}
+
+	/**
+	 * Build inline CSS and collect dark-mode class names for the element.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return array{css:string,classes:string[]}
+	 */
+	public static function inline_css_with_classes( array $attrs ): array {
+		$classes = array();
+		$parts   = self::build_style_declaration_parts( $attrs, $classes );
+		$parts   = self::collapse_padding_parts( $parts );
+
+		if ( empty( $parts ) ) {
+			return array( 'css' => '', 'classes' => $classes );
+		}
+
+		$css = '';
+		foreach ( $parts as $property => $value ) {
+			$css .= $property . ':' . $value . ';';
+		}
+
+		return array(
+			'css'      => $css,
+			'classes'  => array_values( array_unique( $classes ) ),
+		);
+	}
+
+	/**
+	 * Collapse four longhand padding declarations into a single `padding`
+	 * shorthand when all sides are present. Outlook desktop handles the
+	 * shorthand more reliably than individual `padding-top` etc. The shorthand
+	 * is inserted where the first padding longhand appeared so source order is
+	 * preserved.
+	 *
+	 * @param array<string,string> $parts property => value.
+	 * @return array<string,string>
+	 */
+	private static function collapse_padding_parts( array $parts ): array {
+		$sides = array( 'padding-top', 'padding-right', 'padding-bottom', 'padding-left' );
+		foreach ( $sides as $side ) {
+			if ( ! isset( $parts[ $side ] ) ) {
+				return $parts;
+			}
+		}
+
+		$top    = $parts['padding-top'];
+		$right  = $parts['padding-right'];
+		$bottom = $parts['padding-bottom'];
+		$left   = $parts['padding-left'];
+
+		if ( $top === $right && $right === $bottom && $bottom === $left ) {
+			$shorthand = $top;
+		} elseif ( $top === $bottom && $right === $left ) {
+			$shorthand = $top . ' ' . $right;
+		} else {
+			$shorthand = $top . ' ' . $right . ' ' . $bottom . ' ' . $left;
+		}
+
+		$rebuilt  = array();
+		$inserted = false;
+		foreach ( $parts as $property => $value ) {
+			if ( in_array( $property, $sides, true ) ) {
+				if ( ! $inserted ) {
+					$rebuilt['padding'] = $shorthand;
+					$inserted           = true;
+				}
+				continue;
+			}
+			$rebuilt[ $property ] = $value;
+		}
+
+		return $rebuilt;
+	}
+
+	/**
+	 * Merge base style string with resolved block overrides and class list.
+	 *
+	 * @param string              $base_style Existing inline CSS.
+	 * @param array<string,mixed> $attrs      Block attrs.
+	 * @return array{style:string,class:string}
+	 */
+	public static function merge_block_style( string $base_style, array $attrs ): array {
+		$resolved = self::inline_css_with_classes( $attrs );
+		$style    = $base_style . $resolved['css'];
+		$class    = implode( ' ', $resolved['classes'] );
+		return array(
+			'style' => $style,
+			'class' => $class,
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $attrs   Block attrs.
+	 * @param string[]            $classes Dark-mode classes (by reference).
+	 * @return array<string,string> property => light value
+	 */
+	private static function build_style_declaration_parts( array $attrs, array &$classes ): array {
+		$normalized = self::normalize_attrs_for_style_engine( $attrs );
+		$parts      = array();
+
+		if ( function_exists( 'wp_style_engine_get_styles' ) && ! empty( $normalized ) ) {
+			$engine = wp_style_engine_get_styles( $normalized, array( 'convert_vars_to_classnames' => false ) );
+			if ( is_array( $engine['declarations'] ?? null ) ) {
+				foreach ( $engine['declarations'] as $property => $value ) {
+					if ( ! is_string( $property ) || ! is_string( $value ) ) {
+						continue;
+					}
+					if ( 'box-shadow' === $property || str_contains( $property, 'gradient' ) ) {
+						continue;
+					}
+					$value = Email_Preset_Resolver::resolve_css_vars( $value );
+					$value = self::resolve_declaration_value( $value );
+					if ( '' === $value ) {
+						continue;
+					}
+					$parts[ $property ] = $value;
+					self::maybe_register_dark_class( $property, $value, $attrs, $classes );
+				}
+			}
+		}
+
+		$typo_parts = self::extract_typography_css_parts( $attrs );
+		foreach ( $typo_parts as $property => $value ) {
+			if ( ! isset( $parts[ $property ] ) ) {
+				$parts[ $property ] = $value;
+			}
+		}
+
+		return $parts;
+	}
+
+	/**
+	 * Copy named preset attrs into a style object the Style Engine understands.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return array<string,mixed>
+	 */
+	private static function normalize_attrs_for_style_engine( array $attrs ): array {
+		$style = $attrs['style'] ?? array();
+		if ( ! is_array( $style ) ) {
+			$style = array();
+		}
+
+		if ( ! isset( $style['color'] ) || ! is_array( $style['color'] ) ) {
+			$style['color'] = array();
+		}
+
+		if ( ! empty( $attrs['backgroundColor'] ) && is_string( $attrs['backgroundColor'] ) ) {
+			$hex = Email_Preset_Resolver::color_hex( $attrs['backgroundColor'] );
+			if ( '' !== $hex ) {
+				$style['color']['background'] = $hex;
+			}
+		}
+
+		if ( ! empty( $attrs['textColor'] ) && is_string( $attrs['textColor'] ) ) {
+			$hex = Email_Preset_Resolver::color_hex( $attrs['textColor'] );
+			if ( '' !== $hex ) {
+				$style['color']['text'] = $hex;
+			}
+		}
+
+		if ( ! empty( $attrs['borderColor'] ) && is_string( $attrs['borderColor'] ) ) {
+			$hex = Email_Preset_Resolver::color_hex( $attrs['borderColor'] );
+			if ( '' !== $hex ) {
+				if ( ! isset( $style['border'] ) || ! is_array( $style['border'] ) ) {
+					$style['border'] = array();
+				}
+				$style['border']['color'] = $hex;
+			}
+		}
+
+		// Dereference preset refs already living in style.color.* (e.g.
+		// "var:preset|color|ui-black") so the Style Engine sees literals.
+		foreach ( array( 'background', 'text' ) as $color_key ) {
+			if ( ! empty( $style['color'][ $color_key ] ) && is_string( $style['color'][ $color_key ] ) ) {
+				$resolved = self::resolve_preset_color_value( $style['color'][ $color_key ] );
+				if ( '' !== $resolved ) {
+					$style['color'][ $color_key ] = $resolved;
+				}
+			}
+		}
+
+		if ( isset( $style['spacing'] ) && is_array( $style['spacing'] ) ) {
+			$style['spacing'] = self::normalize_spacing_tree( $style['spacing'] );
+		}
+
+		return $style;
+	}
+
+	/**
+	 * Resolve a color value that may be a preset ref into a literal hex/color.
+	 *
+	 * Handles "var:preset|color|slug", "var(--wp--preset--color--slug)", and
+	 * passes through plain values. Returns the light branch for inline CSS.
+	 *
+	 * @param string $value Raw color value.
+	 * @return string Resolved literal, or '' when nothing resolved.
+	 */
+	private static function resolve_preset_color_value( string $value ): string {
+		if ( preg_match( '/^var:preset\|color\|([a-z0-9\-]+)$/i', $value, $m )
+			|| preg_match( '/^var\(--wp--preset--color--([a-z0-9\-]+)\)$/i', $value, $m )
+		) {
+			return Email_Preset_Resolver::color_hex( $m[1] );
+		}
+		return self::resolve_declaration_value( $value );
+	}
+
+	/**
+	 * @param array<string,mixed> $spacing Spacing subtree.
+	 * @return array<string,mixed>
+	 */
+	private static function normalize_spacing_tree( array $spacing ): array {
+		foreach ( $spacing as $key => $value ) {
+			if ( is_array( $value ) ) {
+				$spacing[ $key ] = self::normalize_spacing_tree( $value );
+				continue;
+			}
+			if ( is_string( $value ) || is_numeric( $value ) ) {
+				$resolved = Email_Preset_Resolver::spacing_value( $value );
+				if ( '' !== $resolved ) {
+					$spacing[ $key ] = $resolved;
+				}
+			}
+		}
+		return $spacing;
+	}
+
+	/**
+	 * Take light branch from light-dark() in a resolved declaration value.
+	 *
+	 * @param string $value CSS value.
+	 * @return string
+	 */
+	private static function resolve_declaration_value( string $value ): string {
+		$pair = Email_Preset_Resolver::parse_light_dark( $value );
+		return $pair['light'];
+	}
+
+	/**
+	 * @param string              $property CSS property.
+	 * @param string              $light    Light value already chosen for inline CSS.
+	 * @param array<string,mixed> $attrs    Original block attrs (for slug lookup).
+	 * @param string[]            $classes  Accumulator.
+	 */
+	private static function maybe_register_dark_class( string $property, string $light, array $attrs, array &$classes ): void {
+		if ( ! in_array( $property, self::DARK_MODE_PROPERTIES, true ) ) {
+			return;
+		}
+
+		$dark = self::dark_value_for_property( $property, $attrs );
+		if ( '' === $dark ) {
+			$pair = Email_Preset_Resolver::parse_light_dark( $light );
+			$dark = $pair['dark'];
+		}
+
+		$class = Dark_Mode_Registry::register_color_pair( $property, $light, $dark );
+		if ( '' !== $class ) {
+			$classes[] = $class;
+		}
+	}
+
+	/**
+	 * Resolve dark value from named preset attrs when applicable.
+	 *
+	 * @param string              $property CSS property.
+	 * @param array<string,mixed> $attrs    Block attrs.
+	 * @return string
+	 */
+	private static function dark_value_for_property( string $property, array $attrs ): string {
+		$slug      = '';
+		$style_col = is_array( $attrs['style']['color'] ?? null ) ? $attrs['style']['color'] : array();
+		if ( 'background-color' === $property ) {
+			$slug = (string) ( $attrs['backgroundColor'] ?? '' );
+			if ( '' === $slug ) {
+				$slug = self::preset_color_slug( (string) ( $style_col['background'] ?? '' ) );
+			}
+		} elseif ( 'color' === $property ) {
+			$slug = (string) ( $attrs['textColor'] ?? '' );
+			if ( '' === $slug ) {
+				$slug = self::preset_color_slug( (string) ( $style_col['text'] ?? '' ) );
+			}
+		} elseif ( str_contains( $property, 'border' ) && ! empty( $attrs['borderColor'] ) ) {
+			$slug = (string) $attrs['borderColor'];
+		}
+
+		if ( '' === $slug ) {
+			return '';
+		}
+
+		$pair = Email_Preset_Resolver::color_pair( sanitize_key( $slug ) );
+		return $pair['dark'];
+	}
+
+	/**
+	 * Extract a preset color slug from a "var:preset|color|slug" /
+	 * "var(--wp--preset--color--slug)" string, else ''.
+	 *
+	 * @param string $value Raw color value.
+	 * @return string
+	 */
+	private static function preset_color_slug( string $value ): string {
+		if ( preg_match( '/^var:preset\|color\|([a-z0-9\-]+)$/i', $value, $m )
+			|| preg_match( '/^var\(--wp--preset--color--([a-z0-9\-]+)\)$/i', $value, $m )
+		) {
+			return $m[1];
+		}
+		return '';
+	}
+
+	/**
+	 * Build a CSS `style=""` value string from block typography attributes.
+	 *
+	 * Returns an empty string when no typography overrides are present.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return string e.g. 'font-family:Georgia,...;font-size:16px;'
+	 */
+	public static function typography_inline_css( array $attrs ): string {
+		$pairs = self::extract_typography_css_parts( $attrs );
+		if ( empty( $pairs ) ) {
+			return '';
+		}
+
+		$parts = array();
+		foreach ( $pairs as $property => $value ) {
+			$parts[] = $property . ':' . $value;
+		}
+
+		return implode( ';', $parts ) . ';';
+	}
+
+	/**
+	 * Extract resolved CSS property → value pairs from block attrs.
+	 *
+	 * @param array<string,mixed> $attrs
+	 * @return array<string,string>
+	 */
+	public static function extract_typography_css_parts( array $attrs ): array {
+		$out  = array();
+		$typo = array();
+
+		$style = $attrs['style'] ?? array();
+		if ( is_array( $style ) && isset( $style['typography'] ) && is_array( $style['typography'] ) ) {
+			$typo = $style['typography'];
+		}
+
+		$map = array(
+			'fontFamily'     => 'font-family',
+			'fontSize'       => 'font-size',
+			'lineHeight'     => 'line-height',
+			'fontWeight'     => 'font-weight',
+			'fontStyle'      => 'font-style',
+			'letterSpacing'  => 'letter-spacing',
+			'textTransform'  => 'text-transform',
+			'textDecoration' => 'text-decoration',
+		);
+
+		foreach ( $map as $attr_key => $css_key ) {
+			if ( ! isset( $typo[ $attr_key ] ) || ! is_string( $typo[ $attr_key ] ) ) {
+				continue;
+			}
+			$raw = trim( $typo[ $attr_key ] );
+			if ( '' === $raw ) {
+				continue;
+			}
+			if ( 'fontFamily' === $attr_key ) {
+				$resolved = self::resolve_font_family( $raw );
+				if ( '' !== $resolved ) {
+					$out['font-family'] = $resolved;
+				}
+				continue;
+			}
+			if ( 'fontSize' === $attr_key ) {
+				$size = self::resolve_font_size( $raw );
+				if ( '' !== $size ) {
+					$out['font-size'] = $size;
+				}
+				continue;
+			}
+			$san = self::sanitize_css_value( $raw );
+			if ( '' !== $san ) {
+				$out[ $css_key ] = $san;
+			}
+		}
+
+		// Fallback to block-level preset attrs when style.typography didn't supply them.
+		if ( ! isset( $out['font-family'] ) ) {
+			$preset_font = $attrs['fontFamily'] ?? null;
+			if ( is_string( $preset_font ) && '' !== trim( $preset_font ) ) {
+				$resolved = self::resolve_font_family( $preset_font );
+				if ( '' !== $resolved ) {
+					$out['font-family'] = $resolved;
+				}
+			}
+		}
+
+		if ( ! isset( $out['font-size'] ) ) {
+			$preset_size = $attrs['fontSize'] ?? null;
+			if ( is_string( $preset_size ) && '' !== trim( $preset_size ) ) {
+				$size = self::resolve_font_size( $preset_size );
+				if ( '' !== $size ) {
+					$out['font-size'] = $size;
+				}
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Map theme/editor font tokens to email-safe font stacks.
+	 *
+	 * @param string $raw Raw font family value from block attrs.
+	 * @return string Email-safe font-family value, or empty string if unmappable.
+	 */
+	public static function resolve_font_family( string $raw ): string {
+		$raw = trim( $raw );
+		if ( '' === $raw ) {
+			return '';
+		}
+		$lower = strtolower( $raw );
+		if ( 'serif' === $lower ) {
+			return self::EMAIL_FONT_SERIF;
+		}
+		if ( 'sans-serif' === $lower ) {
+			return self::EMAIL_FONT_FRANKLIN_SANS;
+		}
+		if ( str_contains( $lower, 'franklin' ) ) {
+			return self::EMAIL_FONT_FRANKLIN_SANS;
+		}
+		// CSS custom-property references are not resolvable in email.
+		if ( str_starts_with( $raw, 'var:' ) || str_starts_with( $raw, 'var(--' ) ) {
+			return '';
+		}
+		return self::sanitize_css_value( $raw );
+	}
+
+	/**
+	 * Resolve a font-size preset slug or concrete length to a px value where possible.
+	 *
+	 * @param string $raw Raw font size value from block attrs.
+	 * @return string Email-safe font-size value, or empty string if unmappable.
+	 */
+	public static function resolve_font_size( string $raw ): string {
+		$raw = trim( $raw );
+		if ( '' === $raw ) {
+			return '';
+		}
+		if ( preg_match( '/^\d+(\.\d+)?(px|em|rem|%)$/', $raw ) ) {
+			return self::sanitize_css_value( $raw );
+		}
+		if ( str_starts_with( $raw, 'var:' ) ) {
+			$slug = self::slug_from_var_preset( $raw );
+			if ( null === $slug ) {
+				return '';
+			}
+			return self::preset_slug_to_px( $slug );
+		}
+		// Bare slug (e.g. 'medium', 'h-two').
+		$known = array( 'small', 'medium', 'large', 'x-large', 'h-one', 'h-two', 'h-three' );
+		if ( in_array( strtolower( $raw ), $known, true ) ) {
+			return self::preset_slug_to_px( strtolower( $raw ) );
+		}
+		return '';
+	}
+
+	/**
+	 * Convert a known font-size preset slug to its email px equivalent.
+	 *
+	 * @param string $slug Lowercase preset slug.
+	 * @return string px value or empty string.
+	 */
+	public static function preset_slug_to_px( string $slug ): string {
+		$sizes = array(
+			'small'   => '14px',
+			'medium'  => '16px',
+			'large'   => '18px',
+			'x-large' => '22px',
+			'h-one'   => '28px',
+			'h-two'   => '22px',
+			'h-three' => '18px',
+		);
+		return $sizes[ $slug ] ?? '';
+	}
+
+	/**
+	 * Extract the slug from a `var:preset|font-size|<slug>` reference.
+	 *
+	 * @param string $var The var: reference string.
+	 * @return string|null Slug or null on no match.
+	 */
+	public static function slug_from_var_preset( string $var ): ?string {
+		if ( ! preg_match( '/^var:preset\|font-size\|([a-z0-9\-]+)$/i', $var, $m ) ) {
+			return null;
+		}
+		return strtolower( $m[1] );
+	}
+
+	/**
+	 * Sanitize a CSS scalar value (e.g. a font-family stack or size).
+	 *
+	 * Allows: letters, digits, whitespace, commas, single quotes, percent,
+	 * hash, dash, forward-slash, colon. Max 200 chars.
+	 *
+	 * @param string $value Raw CSS value.
+	 * @return string Sanitized value, or empty string if invalid.
+	 */
+	public static function sanitize_css_value( string $value ): string {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return '';
+		}
+		if ( strlen( $value ) > 200 ) {
+			return '';
+		}
+		if ( ! preg_match( '/^[a-zA-Z0-9\s,.\'%#\-\/:]+$/', $value ) ) {
+			return '';
+		}
+		return $value;
+	}
+}

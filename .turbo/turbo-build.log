@@ -1,0 +1,36 @@
+
+> @prc/email-builder@1.0.0 build
+> wp-scripts build && wp-scripts build --config webpack.settings.config.js
+
+assets by path [1m[32msidebar/[39m[22m 39.9 KiB
+  assets by chunk 32.3 KiB (name: sidebar/index)
+    asset [1m[32msidebar/index.js[39m[22m 32.1 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: sidebar/index)
+    asset [1m[32msidebar/index.asset.php[39m[22m 264 bytes [1m[32m[emitted][39m[22m (name: sidebar/index)
+  assets by path [1m[32msidebar/*.css[39m[22m 7.59 KiB
+    asset [1m[32msidebar/style-index-rtl.css[39m[22m 3.8 KiB [1m[32m[emitted][39m[22m (name: sidebar/style-index) (id hint: style)
+    asset [1m[32msidebar/style-index.css[39m[22m 3.8 KiB [1m[32m[emitted][39m[22m (name: sidebar/style-index) (id hint: style)
+assets by path [1m[32mform-action/[39m[22m 790 bytes
+  asset [1m[32mform-action/index.js[39m[22m 681 bytes [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: form-action/index)
+  asset [1m[32mform-action/index.asset.php[39m[22m 109 bytes [1m[32m[emitted][39m[22m (name: form-action/index)
+Entrypoint [1msidebar/index[39m[22m 39.9 KiB = [1m[32msidebar/style-index.css[39m[22m 3.8 KiB [1m[32msidebar/style-index-rtl.css[39m[22m 3.8 KiB [1m[32msidebar/index.js[39m[22m 32.1 KiB [1m[32msidebar/index.asset.php[39m[22m 264 bytes
+Entrypoint [1mform-action/index[39m[22m 790 bytes = [1m[32mform-action/index.js[39m[22m 681 bytes [1m[32mform-action/index.asset.php[39m[22m 109 bytes
+orphan modules 274 KiB (javascript) 937 bytes (runtime) [1m[33m[orphan][39m[22m 345 modules
+runtime modules 3.72 KiB 8 modules
+built modules 63.2 KiB (javascript) 3.79 KiB (css/mini-extract) [1m[33m[built][39m[22m
+  [1m./src/sidebar/index.tsx + 26 modules[39m[22m 61.7 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  [1m./src/form-action/index.ts + 2 modules[39m[22m 1.56 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/preview/style.scss[39m[22m 3.79 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 2615 ms
+assets by chunk 11.4 KiB (name: index)
+  asset [1m[32mindex.js[39m[22m 11.2 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
+  asset [1m[32mindex.asset.php[39m[22m 203 bytes [1m[32m[emitted][39m[22m (name: index)
+assets by path [1m[32m./*.css[39m[22m 3.85 KiB
+  asset [1m[32m./style-index-rtl.css[39m[22m 1.93 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+  asset [1m[32m./style-index.css[39m[22m 1.92 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+Entrypoint [1mindex[39m[22m 15.2 KiB = [1m[32m./style-index.css[39m[22m 1.92 KiB [1m[32m./style-index-rtl.css[39m[22m 1.93 KiB [1m[32mindex.js[39m[22m 11.2 KiB [1m[32mindex.asset.php[39m[22m 203 bytes
+orphan modules 232 KiB (javascript) 937 bytes (runtime) [1m[33m[orphan][39m[22m 337 modules
+runtime modules 3.07 KiB 5 modules
+built modules 18.2 KiB (javascript) 1.92 KiB (css/mini-extract) [1m[33m[built][39m[22m
+  [1m./src/settings/index.tsx + 16 modules[39m[22m 18.2 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/settings/style.scss[39m[22m 1.92 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 1926 ms

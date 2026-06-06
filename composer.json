@@ -1,0 +1,20 @@
+{
+	"name": "prc/email-builder",
+	"description": "PRC Email Builder — native WordPress email authoring and Mailchimp/Mandrill delivery.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=8.2",
+		"automattic/jetpack-autoloader": "^5.0",
+		"mailchimp/marketing": "^3.0"
+	},
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true,
+			"automattic/jetpack-autoloader": true
+		},
+		"platform": {
+			"php": "8.4.0"
+		}
+	}
+}
