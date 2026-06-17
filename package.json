@@ -1,11 +1,13 @@
 {
 	"name": "@prc/email-builder",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "PRC Email Builder provides email authoring and delivery functionality for PRC Platform.",
 	"scripts": {
-		"build": "wp-scripts build && wp-scripts build --config webpack.settings.config.js",
+		"build": "wp-scripts build && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js",
 		"build:settings": "wp-scripts build --config webpack.settings.config.js",
+		"build:library": "wp-scripts build --config webpack.library.config.js",
 		"start:settings": "wp-scripts start --config webpack.settings.config.js",
+		"start:library": "wp-scripts start --config webpack.library.config.js",
 		"test": "wp-scripts test-playwright",
 		"test:env:start": "wp-env start",
 		"test:env:stop": "wp-env stop",
@@ -20,6 +22,7 @@
 	},
 	"dependencies": {
 		"@prc/components": "*",
+		"@wordpress/dataviews": "^4.19.0",
 		"@wordpress/icons": "^10.21.0"
 	},
 	"license": "GPL-2.0-or-later"

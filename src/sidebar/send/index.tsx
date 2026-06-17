@@ -44,6 +44,13 @@ interface SendResponse {
 	summary: Record<string, number | string>;
 }
 
+interface UpdateDraftResponse {
+	success: boolean;
+	campaign_id: string;
+	admin_url: string;
+	status: string;
+}
+
 export function SendNewsletterSidebar() {
 	const postId: number = useSelect(
 		(select) => select(editorStore).getCurrentPostId(),
@@ -100,6 +107,7 @@ function SendPanel({ postId }: SendPanelProps) {
 		mandrillSendSummary,
 		campaignId,
 		campaignAdminUrl,
+		campaignStatus,
 	} = useNewsletterMeta();
 
 	const isCampaign = isCampaignPostType(postType);
@@ -124,6 +132,7 @@ function SendPanel({ postId }: SendPanelProps) {
 
 	const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 	const [isSending, setIsSending] = useState(false);
+	const [isUpdatingDraft, setIsUpdatingDraft] = useState(false);
 
 	const selectedAudience = systemAudiences.find(
 		(a) => a.key === audienceOptionKey
@@ -203,6 +212,51 @@ function SendPanel({ postId }: SendPanelProps) {
 		}
 	}, [postId, isSending, editPost, createSuccessNotice, createErrorNotice]);
 
+	const handleUpdateMailchimpDraft = useCallback(async () => {
+		if (!postId || isUpdatingDraft) {
+			return;
+		}
+
+		setIsUpdatingDraft(true);
+
+		try {
+			const response = await apiFetch<UpdateDraftResponse>({
+				path: `/${config.restNamespace}/campaigns/update-draft`,
+				method: 'POST',
+				data: { post_id: postId },
+			});
+
+			editPost({
+				meta: {
+					prc_email_mailchimp_campaign_status: response.status,
+				},
+			});
+			createSuccessNotice(
+				__(
+					'Mailchimp draft updated with current content and settings.',
+					'prc-email-builder'
+				),
+				{ type: 'snackbar' }
+			);
+		} catch (err: unknown) {
+			const message =
+				(err as { message?: string })?.message ??
+				__(
+					'Could not update Mailchimp draft. Try again.',
+					'prc-email-builder'
+				);
+			createErrorNotice(message, { type: 'snackbar' });
+		} finally {
+			setIsUpdatingDraft(false);
+		}
+	}, [
+		postId,
+		isUpdatingDraft,
+		editPost,
+		createSuccessNotice,
+		createErrorNotice,
+	]);
+
 	if (isTransactional && deliveryMode === 'dynamic') {
 		return (
 			<VStack spacing={3} style={{ padding: '16px' }}>
@@ -223,6 +277,8 @@ function SendPanel({ postId }: SendPanelProps) {
 			!syncTimedOut &&
 			transformStatus === 'complete' &&
 			!campaignId;
+		const draftEditable = !campaignStatus || campaignStatus === 'save';
+		const htmlReady = transformStatus === 'complete';
 
 		return (
 			<VStack spacing={3} style={{ padding: '16px' }}>
@@ -243,16 +299,54 @@ function SendPanel({ postId }: SendPanelProps) {
 						<Spinner />
 					</Button>
 				) : draftReady ? (
-					<Button
-						__next40pxDefaultSize
-						variant="primary"
-						href={mailchimpUrl}
-						target="_blank"
-						rel="noreferrer"
-						style={{ width: '100%', justifyContent: 'center' }}
-					>
-						{__('Draft sent to Mailchimp', 'prc-email-builder')}
-					</Button>
+					<>
+						<Button
+							__next40pxDefaultSize
+							variant="primary"
+							href={mailchimpUrl}
+							target="_blank"
+							rel="noreferrer"
+							style={{ width: '100%', justifyContent: 'center' }}
+						>
+							{__('Draft sent to Mailchimp', 'prc-email-builder')}
+						</Button>
+						<Button
+							__next40pxDefaultSize
+							variant="secondary"
+							onClick={handleUpdateMailchimpDraft}
+							disabled={!draftEditable || !htmlReady}
+							isBusy={isUpdatingDraft}
+							style={{ width: '100%', justifyContent: 'center' }}
+						>
+							{__('Update Mailchimp draft', 'prc-email-builder')}
+						</Button>
+						{!htmlReady && (
+							<Notice status="warning" isDismissible={false}>
+								{__(
+									'Generate email HTML in Email Content before updating the Mailchimp draft.',
+									'prc-email-builder'
+								)}
+							</Notice>
+						)}
+						{!draftEditable && (
+							<Notice status="warning" isDismissible={false}>
+								{campaignStatus === 'sent'
+									? __(
+											'Campaign already sent in Mailchimp; content can no longer be updated.',
+											'prc-email-builder'
+										)
+									: campaignStatus === 'schedule'
+										? __(
+												'Campaign is scheduled in Mailchimp. Unschedule in Mailchimp to edit content here.',
+												'prc-email-builder'
+											)
+										: __(
+												'Campaign is no longer a draft in Mailchimp; content can no longer be updated.',
+												'prc-email-builder'
+											)}
+							</Notice>
+						)}
+					</>
 				) : syncTimedOut ? (
 					<Notice status="error" isDismissible={false}>
 						{__(

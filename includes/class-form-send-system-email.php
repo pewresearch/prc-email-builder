@@ -200,13 +200,17 @@ class Form_Send_System_Email {
 			return $result;
 		}
 
-		return new WP_REST_Response(
-			[
-				'status'  => 'success',
-				'message' => __( 'Check your inbox — your email is on its way.', 'prc-email-builder' ),
-			],
-			200
-		);
+		$newsletter_signup = $this->maybe_subscribe_to_mailchimp( $email, $form_fields, $post_id, $form_data, $request );
+
+		$response = [
+			'status'  => 'success',
+			'message' => __( 'Check your inbox — your email is on its way.', 'prc-email-builder' ),
+		];
+		if ( null !== $newsletter_signup ) {
+			$response['newsletter_signup'] = $newsletter_signup;
+		}
+
+		return new WP_REST_Response( $response, 200 );
 	}
 
 	/**
@@ -399,6 +403,222 @@ class Form_Send_System_Email {
 			$post_id,
 			$allow_client_merge
 		);
+	}
+
+	/**
+	 * Subscribe the submitter to Mailchimp when a checked mailchimp_signup field is present.
+	 *
+	 * Non-fatal: failures are logged and never change the send response status.
+	 *
+	 * @param string               $email        Validated recipient address.
+	 * @param array                $form_fields  Raw submitted form fields.
+	 * @param int                  $post_id      Resolved newsletter post ID.
+	 * @param array<string, mixed> $form_data    Parsed form envelope.
+	 * @param WP_REST_Request      $request      Current REST request.
+	 * @return 'subscribed'|'failed'|'skipped'|null Null when no mailchimp_signup field is present.
+	 */
+	private function maybe_subscribe_to_mailchimp(
+		string $email,
+		array $form_fields,
+		int $post_id,
+		array $form_data,
+		WP_REST_Request $request
+	): ?string {
+		if ( ! $this->has_mailchimp_signup_field( $form_fields ) ) {
+			return null;
+		}
+
+		$interest_id = $this->find_mailchimp_optin( $form_fields );
+		if ( null === $interest_id ) {
+			return 'skipped';
+		}
+
+		$values    = $this->field_values( $form_fields );
+		$interests = [ $interest_id ];
+
+		/**
+		 * Filter Mailchimp interest IDs for a sendSystemEmail newsletter opt-in.
+		 *
+		 * Return an empty array to suppress signup for this submission.
+		 *
+		 * @param array<int, string>    $interests    Interest IDs to pass to subscribe_to_list().
+		 * @param array<string, string> $field_values Flat name => value map of all submitted fields.
+		 * @param int                   $post_id      Resolved newsletter post ID.
+		 */
+		$interests = apply_filters( 'prc_email_builder_system_email_mailchimp_optin', $interests, $values, $post_id );
+		if ( ! is_array( $interests ) || empty( $interests ) ) {
+			return 'skipped';
+		}
+
+		$interests = array_values(
+			array_filter(
+				array_map(
+					static fn( $id ) => is_string( $id ) ? $id : '',
+					$interests
+				),
+				static fn( string $id ): bool => '' !== $id
+			)
+		);
+		if ( empty( $interests ) ) {
+			return 'skipped';
+		}
+
+		$validated_interests = [];
+		foreach ( $interests as $candidate ) {
+			$sanitized = $this->sanitize_interest_id( $candidate );
+			if ( null === $sanitized || ! $this->is_interest_id_allowed( $sanitized ) ) {
+				return 'skipped';
+			}
+			$validated_interests[] = $sanitized;
+		}
+
+		if ( ! class_exists( '\PRC\Platform\Mailchimp_API' ) ) {
+			error_log( 'Form_Send_System_Email: Mailchimp_API is not available for newsletter signup.' );
+			return 'failed';
+		}
+
+		$list_id = defined( '\PRC\Platform\Mailchimp\DEFAULT_LIST_ID' )
+			? \PRC\Platform\Mailchimp\DEFAULT_LIST_ID
+			: '3e953b9b70';
+
+		$origin_url = $this->resolve_origin_url( $form_data, $request );
+		$form_id    = isset( $form_data['formId'] ) ? sanitize_text_field( (string) $form_data['formId'] ) : '';
+
+		$api    = new \PRC\Platform\Mailchimp_API(
+			$email,
+			[
+				'api_key' => null,
+				'list_id' => $list_id,
+			]
+		);
+		$result = $api->subscribe_to_list( null, $validated_interests, $origin_url ?: false, $form_id ?: false );
+
+		if ( is_wp_error( $result ) ) {
+			error_log(
+				sprintf(
+					'Form_Send_System_Email: Mailchimp signup failed for %s: %s',
+					$email,
+					$result->get_error_message()
+				)
+			);
+			return 'failed';
+		}
+
+		return 'subscribed';
+	}
+
+	/**
+	 * Whether the submission includes a mailchimp_signup field (checked or not).
+	 *
+	 * @param array $form_fields Submitted form fields.
+	 */
+	private function has_mailchimp_signup_field( array $form_fields ): bool {
+		foreach ( $form_fields as $field ) {
+			if ( isset( $field['name'] ) && 'mailchimp_signup' === (string) $field['name'] ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Find a checked mailchimp_signup field and return its sanitized interest ID.
+	 *
+	 * @param array $form_fields Submitted form fields.
+	 */
+	private function find_mailchimp_optin( array $form_fields ): ?string {
+		foreach ( $form_fields as $field ) {
+			if ( ! isset( $field['name'] ) || 'mailchimp_signup' !== (string) $field['name'] ) {
+				continue;
+			}
+			if ( ! $this->is_field_checked( $field['checked'] ?? false ) ) {
+				continue;
+			}
+			$value = isset( $field['value'] ) ? (string) $field['value'] : '';
+			if ( '' === $value ) {
+				continue;
+			}
+			$interest_id = $this->sanitize_interest_id( $value );
+			if ( null !== $interest_id ) {
+				return $interest_id;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Normalize checkbox checked state from loosely typed form envelope values.
+	 *
+	 * @param mixed $checked Submitted checked value.
+	 */
+	private function is_field_checked( mixed $checked ): bool {
+		if ( true === $checked || 1 === $checked ) {
+			return true;
+		}
+		if ( false === $checked || null === $checked || '' === $checked ) {
+			return false;
+		}
+		if ( is_string( $checked ) ) {
+			$normalized = strtolower( trim( $checked ) );
+			if ( in_array( $normalized, [ 'false', '0', 'off', 'no' ], true ) ) {
+				return false;
+			}
+			if ( in_array( $normalized, [ 'true', '1', 'on', 'yes' ], true ) ) {
+				return true;
+			}
+		}
+		return (bool) $checked;
+	}
+
+	/**
+	 * Sanitize a Mailchimp interest ID from client input.
+	 */
+	private function sanitize_interest_id( string $raw ): ?string {
+		$sanitized = preg_replace( '/[^a-zA-Z0-9]/', '', $raw );
+		if ( null === $sanitized || '' === $sanitized || strlen( $sanitized ) > 32 ) {
+			return null;
+		}
+		return $sanitized;
+	}
+
+	/**
+	 * Validate an interest ID against the cached segment list when available.
+	 */
+	private function is_interest_id_allowed( string $interest_id ): bool {
+		$cached = get_option( 'prc_mailchimp_segment_ids', false );
+		if ( ! is_array( $cached ) || empty( $cached ) ) {
+			return true;
+		}
+
+		foreach ( $cached as $segment ) {
+			if ( ! is_array( $segment ) || ! isset( $segment['interest_id'] ) ) {
+				continue;
+			}
+			if ( (string) $segment['interest_id'] === $interest_id ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Resolve the origin URL for Mailchimp merge fields.
+	 *
+	 * @param array<string, mixed> $form_data Parsed form envelope.
+	 */
+	private function resolve_origin_url( array $form_data, WP_REST_Request $request ): string {
+		$redirect = isset( $form_data['redirectTarget'] ) ? (string) $form_data['redirectTarget'] : '';
+		if ( '' !== $redirect && filter_var( $redirect, FILTER_VALIDATE_URL ) ) {
+			return esc_url_raw( $redirect );
+		}
+
+		$referer = $request->get_header( 'referer' );
+		if ( is_string( $referer ) && filter_var( $referer, FILTER_VALIDATE_URL ) ) {
+			return esc_url_raw( $referer );
+		}
+
+		return '';
 	}
 
 	/**

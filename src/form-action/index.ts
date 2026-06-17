@@ -20,7 +20,7 @@ import domReady from '@wordpress/dom-ready';
 const SYSTEM_EMAIL_FORM = {
 	label: 'Send System Email',
 	description:
-		'Email the submitter a dynamic-recipient newsletter template. Add a hidden "system_email_key" or "newsletter_post_id" field to pick the newsletter.',
+		'Email the submitter a dynamic-recipient newsletter template. Add a hidden "system_email_key" or "newsletter_post_id" field to pick the newsletter. Optionally add a Newsletter Signup checkbox (mailchimp_signup) to subscribe the submitter to a Mailchimp segment.',
 	namespace: 'prc-block/form',
 	action: 'sendSystemEmail',
 	method: 'rest',

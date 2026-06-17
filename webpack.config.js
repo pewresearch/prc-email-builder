@@ -9,5 +9,6 @@ module.exports = {
 			__dirname,
 			'src/form-action/index.ts'
 		),
+		'term-admin/index': path.resolve(__dirname, 'src/term-admin/index.ts'),
 	},
 };

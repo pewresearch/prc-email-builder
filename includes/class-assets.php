@@ -103,6 +103,8 @@ class Assets {
 				'postTypes'             => Post_Type::POST_TYPES,
 				'campaignPostType'      => Post_Type::CAMPAIGN_POST_TYPE,
 				'transactionalPostType' => Post_Type::TRANSACTIONAL_POST_TYPE,
+				'campaignPatternCategorySlug'      => Patterns::CAMPAIGN_CATEGORY_SLUG,
+				'transactionalPatternCategorySlug' => Patterns::TRANSACTIONAL_CATEGORY_SLUG,
 				'templates'            => $templates,
 				'nonce'                => wp_create_nonce( 'wp_rest' ),
 				'defaults'             => [

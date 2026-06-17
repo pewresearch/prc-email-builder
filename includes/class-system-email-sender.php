@@ -44,6 +44,11 @@ class System_Email_Sender {
 	const API_URL          = 'https://mandrillapp.com/api/1.0/';
 
 	/**
+	 * Mandrill messages/send accepts at most 1,000 recipients per call.
+	 */
+	const MAX_RECIPIENTS_PER_CALL = 1000;
+
+	/**
 	 * Send a dynamic-recipient newsletter to a single email address.
 	 *
 	 * @param int                  $post_id  Newsletter post ID (delivery mode must be 'dynamic').
@@ -83,10 +88,19 @@ class System_Email_Sender {
 		}
 
 		$subject = self::resolve_subject( $post_id, $context );
-		$sent    = self::dispatch( $to_email, $subject, $html );
+		$result  = self::dispatch( [ $to_email ], $subject, $html );
 
-		if ( is_wp_error( $sent ) ) {
-			return $sent;
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		if ( ! in_array( $to_email, $result['sent'], true ) ) {
+			$reason = (string) ( $result['failed'][ $to_email ] ?? 'unknown' );
+			return new WP_Error(
+				'mandrill_send_rejected',
+				sprintf( 'Mandrill rejected the email: %s.', $reason ),
+				[ 'status' => 500 ]
+			);
 		}
 
 		/**
@@ -99,6 +113,93 @@ class System_Email_Sender {
 		do_action( 'prc_email_builder_system_email_sent', $post_id, $to_email, $context );
 
 		return true;
+	}
+
+	/**
+	 * Send a dynamic-recipient newsletter to many recipients with one shared
+	 * render.
+	 *
+	 * Unlike {@see self::send()}, the merge context here is recipient-agnostic
+	 * (e.g. a quiz-group context shared by everyone in the batch): the body is
+	 * rendered once and dispatched in a single Mandrill messages/send call per
+	 * chunk of {@see self::MAX_RECIPIENTS_PER_CALL} recipients. The existing
+	 * `preserve_recipients: false` flag means recipients never see each other.
+	 *
+	 * @param int                  $post_id   Newsletter post ID (delivery mode must be 'dynamic').
+	 * @param array<int, string>   $to_emails Recipient email addresses.
+	 * @param array<string, mixed> $context   Merge-field data shared by every recipient.
+	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
+	 *         Per-recipient outcome partition, or WP_Error when nothing was
+	 *         dispatched (invalid post, no valid recipients, render failure, or
+	 *         a whole-call API failure on the first chunk).
+	 */
+	public static function send_many( int $post_id, array $to_emails, array $context = [] ): array|WP_Error {
+		$post = get_post( $post_id );
+
+		if ( ! $post instanceof WP_Post || ! Post_Type::is_transactional_post( $post ) ) {
+			return new WP_Error( 'invalid_post', 'Transactional email post not found.', [ 'status' => 404 ] );
+		}
+		if ( 'publish' !== $post->post_status ) {
+			return new WP_Error( 'not_published', 'Transactional email is not published.', [ 'status' => 409 ] );
+		}
+		if ( self::DELIVERY_MODE !== get_post_meta( $post_id, 'prc_email_delivery_mode', true ) ) {
+			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
+		}
+
+		$recipients = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'strval', $to_emails ),
+					static fn( string $email ): bool => (bool) is_email( $email )
+				)
+			)
+		);
+		if ( empty( $recipients ) ) {
+			return new WP_Error( 'invalid_email', 'At least one valid recipient email address is required.', [ 'status' => 400 ] );
+		}
+
+		/** This filter is documented in {@see self::send()}; for batch sends the third argument is the recipient list. */
+		$context = apply_filters( 'prc_email_builder_system_email_context', $context, $post_id, $recipients );
+
+		$html = self::render( $post, $context );
+		if ( is_wp_error( $html ) ) {
+			return $html;
+		}
+
+		$subject = self::resolve_subject( $post_id, $context );
+
+		$sent   = [];
+		$failed = [];
+
+		foreach ( array_chunk( $recipients, self::MAX_RECIPIENTS_PER_CALL ) as $chunk ) {
+			$result = self::dispatch( $chunk, $subject, $html );
+
+			if ( is_wp_error( $result ) ) {
+				// Whole-call failure: nothing in this chunk was dispatched. If
+				// no prior chunk succeeded either, surface the error so the
+				// caller can retry the entire batch safely.
+				if ( empty( $sent ) && empty( $failed ) ) {
+					return $result;
+				}
+				foreach ( $chunk as $email ) {
+					$failed[ $email ] = $result->get_error_message();
+				}
+				continue;
+			}
+
+			$sent   = array_merge( $sent, $result['sent'] );
+			$failed = array_merge( $failed, $result['failed'] );
+		}
+
+		foreach ( $sent as $to_email ) {
+			/** This action is documented in {@see self::send()}. */
+			do_action( 'prc_email_builder_system_email_sent', $post_id, $to_email, $context );
+		}
+
+		return [
+			'sent'   => $sent,
+			'failed' => $failed,
+		];
 	}
 
 	/**
@@ -198,9 +299,18 @@ class System_Email_Sender {
 	 * Send the rendered email via Mandrill messages/send (direct API).
 	 *
 	 * Bypasses wp_mail() / wpMandrill so the payload is not wrapped in a
-	 * default Mandrill template.
+	 * default Mandrill template. Accepts one or more recipients (callers must
+	 * stay within {@see self::MAX_RECIPIENTS_PER_CALL}); the response is
+	 * partitioned per recipient.
+	 *
+	 * @param array<int, string> $to_emails Recipient addresses.
+	 * @param string             $subject   Resolved subject line.
+	 * @param string             $html      Rendered email document.
+	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
+	 *         Per-recipient outcomes, or WP_Error when the whole call failed
+	 *         and nothing was dispatched.
 	 */
-	private static function dispatch( string $to_email, string $subject, string $html ): true|WP_Error {
+	private static function dispatch( array $to_emails, string $subject, string $html ): array|WP_Error {
 		$api_key = self::get_api_key();
 		if ( '' === $api_key ) {
 			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', [ 'status' => 500 ] );
@@ -224,7 +334,13 @@ class System_Email_Sender {
 			'subject'             => $subject,
 			'from_email'          => $from_email,
 			'from_name'           => self::FROM_NAME,
-			'to'                  => [ [ 'email' => $to_email, 'type' => 'to' ] ],
+			'to'                  => array_map(
+				static fn( string $to_email ): array => [
+					'email' => $to_email,
+					'type'  => 'to',
+				],
+				$to_emails
+			),
 			'headers'             => [ 'Reply-To' => $reply_to ],
 			'track_opens'         => (bool) ( $settings['track_opens'] ?? true ),
 			'track_clicks'        => (bool) ( $settings['track_clicks'] ?? true ),
@@ -267,29 +383,58 @@ class System_Email_Sender {
 			return new WP_Error( 'mandrill_api_error', (string) $detail, [ 'status' => 500 ] );
 		}
 
-		return self::parse_send_response( $response );
+		return self::parse_batch_send_response( $response, $to_emails );
 	}
 
 	/**
-	 * Evaluate a Mandrill messages/send response for a single recipient.
+	 * Partition a Mandrill messages/send response into per-recipient outcomes.
+	 *
+	 * Mandrill returns one `{ email, status, reject_reason }` entry per
+	 * recipient. Statuses sent/queued/scheduled count as sent; anything else
+	 * (rejected, invalid) is recorded against the recipient with its reject
+	 * reason. Recipients missing from the response are treated as failed.
+	 *
+	 * @param array              $response  wp_remote_post() response array.
+	 * @param array<int, string> $to_emails Recipients the call was made for.
+	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
 	 */
-	private static function parse_send_response( array $response ): true|WP_Error {
+	private static function parse_batch_send_response( array $response, array $to_emails ): array|WP_Error {
 		$results = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $results ) || ! isset( $results[0]['status'] ) ) {
 			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', [ 'status' => 500 ] );
 		}
 
-		$status = (string) $results[0]['status'];
-		if ( in_array( $status, [ 'sent', 'queued', 'scheduled' ], true ) ) {
-			return true;
+		$statuses = [];
+		foreach ( $results as $result ) {
+			if ( ! is_array( $result ) || ! isset( $result['email'], $result['status'] ) ) {
+				continue;
+			}
+			$statuses[ strtolower( (string) $result['email'] ) ] = [
+				'status' => (string) $result['status'],
+				'reason' => (string) ( $result['reject_reason'] ?? $result['status'] ),
+			];
 		}
 
-		$reason = (string) ( $results[0]['reject_reason'] ?? $status );
-		return new WP_Error(
-			'mandrill_send_rejected',
-			sprintf( 'Mandrill rejected the email: %s.', $reason ),
-			[ 'status' => 500 ]
-		);
+		$sent   = [];
+		$failed = [];
+
+		foreach ( $to_emails as $to_email ) {
+			$entry = $statuses[ strtolower( $to_email ) ] ?? null;
+			if ( null === $entry ) {
+				$failed[ $to_email ] = 'no recipient status returned';
+				continue;
+			}
+			if ( in_array( $entry['status'], [ 'sent', 'queued', 'scheduled' ], true ) ) {
+				$sent[] = $to_email;
+			} else {
+				$failed[ $to_email ] = $entry['reason'];
+			}
+		}
+
+		return [
+			'sent'   => $sent,
+			'failed' => $failed,
+		];
 	}
 
 	private static function get_api_key(): string {

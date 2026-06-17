@@ -5,7 +5,7 @@
 import { __ } from '@wordpress/i18n';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';
-import { useEntityProp } from '@wordpress/core-data';
+import { store as coreStore, useEntityProp } from '@wordpress/core-data';
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
@@ -34,12 +34,24 @@ export type TransactionalDeliveryMode = 'mandrill' | 'dynamic';
 
 export const CAMPAIGN_POST_TYPE = 'prc_email_campaign';
 export const TRANSACTIONAL_POST_TYPE = 'prc_email_txn';
+export const NEWSLETTER_LIST_TAXONOMY = 'prc_newsletter_list';
+
+export interface NewsletterListTerm {
+	id: number;
+	name: string;
+	meta?: {
+		prc_newsletter_list_audience_id?: string;
+		prc_newsletter_list_segment_id?: string;
+	};
+}
 
 export const config: {
 	restNamespace: string;
 	postTypes: string[];
 	campaignPostType: string;
 	transactionalPostType: string;
+	campaignPatternCategorySlug?: string;
+	transactionalPatternCategorySlug?: string;
 	nonce: string;
 } = (window as any).prcEmailBuilderConfig ?? {};
 
@@ -64,12 +76,52 @@ export function isTransactionalPostType(postType: string | undefined): boolean {
 	);
 }
 
+export function useNewsletterLists() {
+	const records = useSelect((select) => {
+		const query = { per_page: -1, context: 'edit' as const };
+		return select(coreStore).getEntityRecords(
+			'taxonomy',
+			NEWSLETTER_LIST_TAXONOMY,
+			query
+		) as NewsletterListTerm[] | null;
+	}, []);
+
+	return {
+		lists: records ?? [],
+		loading: records === null,
+	};
+}
+
 export function useNewsletterMeta() {
 	const postType = useSelect(
 		(select) => select(editorStore).getCurrentPostType(),
 		[]
 	);
 	const [meta, setMeta] = useEntityProp('postType', postType, 'meta');
+	const { editPost } = useDispatch(editorStore);
+	const { lists, loading: listsLoading } = useNewsletterLists();
+
+	const assignedListTermIds: number[] = useSelect((select) => {
+		const raw = select(editorStore).getEditedPostAttribute(
+			NEWSLETTER_LIST_TAXONOMY
+		);
+		if (!Array.isArray(raw)) {
+			return [];
+		}
+		return raw
+			.map((id) => Number(id))
+			.filter((id) => Number.isFinite(id) && id > 0);
+	}, []);
+
+	const selectedListTermId = assignedListTermIds[0] ?? 0;
+	const hasListTerm = selectedListTermId > 0;
+	const selectedListTerm = lists.find(
+		(list) => list.id === selectedListTermId
+	);
+	const listAudienceId =
+		selectedListTerm?.meta?.prc_newsletter_list_audience_id ?? '';
+	const listSegmentId =
+		selectedListTerm?.meta?.prc_newsletter_list_segment_id ?? '';
 
 	const subject: string = meta?.prc_email_subject ?? '';
 	const previewText: string = meta?.prc_email_preview_text ?? '';
@@ -81,6 +133,8 @@ export function useNewsletterMeta() {
 	const campaignId: string = meta?.prc_email_mailchimp_campaign_id ?? '';
 	const campaignAdminUrl: string =
 		meta?.prc_email_mailchimp_campaign_admin_url ?? '';
+	const campaignStatus: string =
+		meta?.prc_email_mailchimp_campaign_status ?? '';
 	const audienceOptionKey: string = meta?.prc_email_audience_option_key ?? '';
 	const mandrillSendStatus: string =
 		meta?.prc_email_mandrill_send_status ?? '';
@@ -120,21 +174,79 @@ export function useNewsletterMeta() {
 	const setSystemEmailKey = (value: string) =>
 		setMeta({ prc_email_system_email_key: value });
 
+	const selectNewsletterList = useCallback(
+		(termIdStr: string) => {
+			const termId = termIdStr ? parseInt(termIdStr, 10) : 0;
+			if (!termId) {
+				editPost({ [NEWSLETTER_LIST_TAXONOMY]: [] });
+				return;
+			}
+
+			const term = lists.find((list) => list.id === termId);
+			const nextAudienceId =
+				term?.meta?.prc_newsletter_list_audience_id ?? '';
+			const nextSegmentId =
+				term?.meta?.prc_newsletter_list_segment_id ?? '';
+
+			editPost({
+				[NEWSLETTER_LIST_TAXONOMY]: [termId],
+				meta: {
+					prc_email_mailchimp_audience_id: nextAudienceId,
+					prc_email_mailchimp_segment_id: nextSegmentId,
+				},
+			});
+		},
+		[editPost, lists]
+	);
+
+	// Align campaign Mailchimp meta with the assigned list term (load + term updates).
+	useEffect(() => {
+		if (!hasListTerm || listsLoading || !selectedListTerm) {
+			return;
+		}
+		if (audienceId === listAudienceId && segmentId === listSegmentId) {
+			return;
+		}
+		editPost({
+			meta: {
+				prc_email_mailchimp_audience_id: listAudienceId,
+				prc_email_mailchimp_segment_id: listSegmentId,
+			},
+		});
+	}, [
+		hasListTerm,
+		listsLoading,
+		selectedListTerm,
+		listAudienceId,
+		listSegmentId,
+		audienceId,
+		segmentId,
+		editPost,
+	]);
+
+	const effectiveAudienceId =
+		hasListTerm && selectedListTerm ? listAudienceId : audienceId;
+	const effectiveSegmentId =
+		hasListTerm && selectedListTerm ? listSegmentId : segmentId;
+
 	return {
 		postType,
 		rawDeliveryMode,
 		subject,
 		previewText,
 		deliveryMode,
-		audienceId,
-		segmentId,
+		audienceId: effectiveAudienceId,
+		segmentId: effectiveSegmentId,
 		campaignId,
 		campaignAdminUrl,
+		campaignStatus,
 		audienceOptionKey,
 		mandrillSendStatus,
 		mandrillSendSummary,
 		templateSlug,
 		systemEmailKey,
+		selectedListTermId,
+		hasListTerm,
 		setSubject,
 		setPreviewText,
 		setDeliveryMode,
@@ -143,6 +255,7 @@ export function useNewsletterMeta() {
 		setAudienceOptionKey,
 		setTemplateSlug,
 		setSystemEmailKey,
+		selectNewsletterList,
 	};
 }
 

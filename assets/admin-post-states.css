@@ -1,0 +1,46 @@
+/* Traffic-light dots for email CPT list tables (Campaigns + Transactional). */
+
+.post-type-prc_email_campaign .post-state::before,
+.post-type-prc_email_txn .post-state::before {
+	content: "";
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	margin-right: 4px;
+	vertical-align: middle;
+	position: relative;
+	top: -1px;
+}
+
+/* Success (green) */
+.post-type-prc_email_campaign .post-state.prc_email_mc_sent::before,
+.post-type-prc_email_txn .post-state.prc_email_mandrill_sent::before {
+	background: #1a8a1a;
+}
+
+/* Warning (yellow) */
+.post-type-prc_email_campaign .post-state.draft::before,
+.post-type-prc_email_txn .post-state.draft::before,
+.post-type-prc_email_campaign .post-state.prc_email_mc_save::before,
+.post-type-prc_email_campaign .post-state.prc_email_mc_sending::before,
+.post-type-prc_email_campaign .post-state.prc_email_mc_schedule::before,
+.post-type-prc_email_campaign .post-state.prc_email_mc_paused::before,
+.post-type-prc_email_txn .post-state.prc_email_mandrill_queued::before,
+.post-type-prc_email_txn .post-state.prc_email_mandrill_sending::before {
+	background: #c07800;
+}
+
+/* Error (red) */
+.post-type-prc_email_txn .post-state.prc_email_mandrill_failed::before,
+.post-type-prc_email_txn .post-state.prc_email_mandrill_partial::before {
+	background: #cc1818;
+}
+
+/* Neutral (grey) */
+.post-type-prc_email_campaign .post-state.prc_email_migrated::before,
+.post-type-prc_email_txn .post-state.prc_email_migrated::before,
+.post-type-prc_email_txn .post-state.prc_email_dynamic::before,
+.post-type-prc_email_txn .post-state.prc_email_bulk::before {
+	background: #757575;
+}

@@ -508,6 +508,15 @@ namespace Tests\Newsletter\Email {
 	$img_center = array_merge( $img_block, array( 'attrs' => array( 'url' => 'https://example.com/img.jpg', 'alt' => 'Center', 'align' => 'center' ) ) );
 	$html = call_user_func( Email_Block_Registry::get( 'core/image' ), $img_center, $post );
 	assert_contains( 'align="center"', $html, 'image center: td align' );
+	assert_contains( 'width="600"', $html, 'image center: undimensioned width defaults to 600px' );
+	assert_contains( 'max-width:600px', $html, 'image center: max-width 600px' );
+	assert_contains( 'width:100%', $html, 'image center: responsive width 100%' );
+
+	// Image — center alignment clamps wide declared width.
+	$img_center_wide = array_merge( $img_block, array( 'attrs' => array( 'url' => 'https://example.com/img.jpg', 'alt' => 'Center wide', 'align' => 'center', 'width' => 800 ) ) );
+	$html = call_user_func( Email_Block_Registry::get( 'core/image' ), $img_center_wide, $post );
+	assert_contains( 'width="600"', $html, 'image center: clamps declared width to 600' );
+	assert_contains( 'max-width:600px', $html, 'image center wide: max-width 600px' );
 
 	// Image — innerHTML src/width + class-based alignright (editor fidelity).
 	$img_inner = array(

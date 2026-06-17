@@ -82,6 +82,8 @@ class Post_Type {
 		$loader->add_action( 'init', $this, 'register_post_types' );
 		$loader->add_action( 'init', $this, 'register_taxonomy' );
 		$loader->add_action( 'init', $this, 'register_meta' );
+		$loader->add_action( 'admin_menu', $this, 'reorder_transactional_submenu', 999 );
+		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_list_table_assets' );
 		$loader->add_filter( 'display_post_states', $this, 'add_email_post_states', 10, 2 );
 		$loader->add_filter( 'allowed_block_types_all', $this, 'restrict_newsletter_blocks', 10, 2 );
 		$loader->add_filter( 'prc_platform_post_publish_pipeline_post_types', $this, 'add_email_post_types_to_publish_pipeline' );
@@ -186,7 +188,7 @@ class Post_Type {
 	}
 
 	public function register_post_types(): void {
-		$supports = [
+		$campaign_supports = [
 			'title',
 			'editor',
 			'excerpt',
@@ -200,6 +202,14 @@ class Post_Type {
 			'prc-art-direction',
 			'prc-publish-workflows',
 		];
+
+		// Transactional emails are not public web content; exclude pub-listing and SEO.
+		$transactional_supports = array_values(
+			array_diff(
+				$campaign_supports,
+				[ 'prc-publication-listing', 'prc-schema-seo' ]
+			)
+		);
 
 		register_post_type(
 			self::CAMPAIGN_POST_TYPE,
@@ -223,7 +233,7 @@ class Post_Type {
 				'show_in_rest'      => true,
 				'menu_icon'         => 'dashicons-email-alt',
 				'menu_position'     => 25,
-				'supports'          => $supports,
+				'supports'          => $campaign_supports,
 				'has_archive'       => true,
 				'rewrite'           => false,
 				'capability_type'   => 'post',
@@ -250,19 +260,74 @@ class Post_Type {
 				'show_ui'           => true,
 				'show_in_menu'      => 'edit.php?post_type=' . self::CAMPAIGN_POST_TYPE,
 				'show_in_rest'      => true,
-				'supports'          => $supports,
+				'supports'          => $transactional_supports,
 				'has_archive'       => false,
 				'rewrite'           => false,
 				'capability_type'   => 'post',
-				'taxonomies'        => [ self::TAXONOMY, 'category' ],
+				'taxonomies'        => [ 'category' ],
 			]
 		);
+	}
+
+	/**
+	 * Reorder the "Emails" admin submenu so the transactional entries sit
+	 * directly beneath "Add New Campaign", and add the "Add New Transactional"
+	 * link that core omits for post types nested via show_in_menu.
+	 *
+	 * @hook admin_menu (priority 999)
+	 */
+	public function reorder_transactional_submenu(): void {
+		global $submenu;
+
+		$parent = 'edit.php?post_type=' . self::CAMPAIGN_POST_TYPE;
+		if ( empty( $submenu[ $parent ] ) ) {
+			return;
+		}
+
+		// Core's _add_post_type_submenus() only adds the listing link for a
+		// post type nested via a string show_in_menu, never the "Add New" link.
+		add_submenu_page(
+			$parent,
+			__( 'Add New Transactional Email', 'prc-email-builder' ),
+			__( 'Add New Transactional', 'prc-email-builder' ),
+			'edit_posts',
+			'post-new.php?post_type=' . self::TRANSACTIONAL_POST_TYPE
+		);
+
+		$txn_list     = 'edit.php?post_type=' . self::TRANSACTIONAL_POST_TYPE;
+		$txn_new      = 'post-new.php?post_type=' . self::TRANSACTIONAL_POST_TYPE;
+		$campaign_new = 'post-new.php?post_type=' . self::CAMPAIGN_POST_TYPE;
+
+		// Pull the transactional entries out of their current positions.
+		$extracted = [];
+		foreach ( $submenu[ $parent ] as $key => $item ) {
+			if ( in_array( $item[2], [ $txn_list, $txn_new ], true ) ) {
+				$extracted[ $item[2] ] = $item;
+				unset( $submenu[ $parent ][ $key ] );
+			}
+		}
+
+		// Reinsert them immediately after "Add New Campaign".
+		$reordered = [];
+		foreach ( $submenu[ $parent ] as $item ) {
+			$reordered[] = $item;
+			if ( $campaign_new === $item[2] ) {
+				if ( isset( $extracted[ $txn_list ] ) ) {
+					$reordered[] = $extracted[ $txn_list ];
+				}
+				if ( isset( $extracted[ $txn_new ] ) ) {
+					$reordered[] = $extracted[ $txn_new ];
+				}
+			}
+		}
+
+		$submenu[ $parent ] = array_values( $reordered );
 	}
 
 	public function register_taxonomy(): void {
 		register_taxonomy(
 			self::TAXONOMY,
-			self::POST_TYPES,
+			self::CAMPAIGN_POST_TYPE,
 			[
 				'labels'            => [
 					'name'          => 'Newsletter Lists',
@@ -323,6 +388,12 @@ class Post_Type {
 		return ! empty( $ids ) ? (int) $ids[0] : null;
 	}
 
+	/** Term meta on prc_newsletter_list (Mailchimp list + segment). */
+	const TERM_META_KEYS = [
+		'prc_newsletter_list_audience_id' => 'Mailchimp audience (list) ID for this newsletter list.',
+		'prc_newsletter_list_segment_id'  => 'Mailchimp saved-segment ID; empty = entire audience.',
+	];
+
 	public function register_meta(): void {
 		$this->register_meta_for_post_type( self::CAMPAIGN_POST_TYPE, array_merge( self::SHARED_META_KEYS, self::CAMPAIGN_META_KEYS ) );
 		$this->register_meta_for_post_type(
@@ -330,6 +401,28 @@ class Post_Type {
 			array_merge( self::SHARED_META_KEYS, self::TRANSACTIONAL_META_KEYS ),
 			[ 'prc_email_delivery_mode' => 'mandrill' ]
 		);
+		$this->register_term_meta();
+	}
+
+	/**
+	 * Register term meta for prc_newsletter_list (exposed to REST for the editor sidebar).
+	 */
+	private function register_term_meta(): void {
+		foreach ( self::TERM_META_KEYS as $key => $description ) {
+			register_term_meta(
+				self::TAXONOMY,
+				$key,
+				[
+					'type'              => 'string',
+					'description'       => $description,
+					'single'            => true,
+					'show_in_rest'      => true,
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
+					'auth_callback'     => fn() => current_user_can( 'edit_posts' ),
+				]
+			);
+		}
 	}
 
 	/**
@@ -382,29 +475,44 @@ class Post_Type {
 				$post_states['prc_email_bulk'] = __( 'Bulk List', 'prc-email-builder' );
 			}
 
-			$send_status = get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true );
-			if ( 'sent' === $send_status ) {
-				$post_states['prc_email_mandrill_sent'] = __( 'Sent', 'prc-email-builder' );
-			} elseif ( 'queued' === $send_status ) {
-				$post_states['prc_email_mandrill_queued'] = __( 'Queued', 'prc-email-builder' );
+			$send_status = (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true );
+			$state       = Send_Status::mandrill_post_state( $send_status );
+			if ( null !== $state ) {
+				$post_states[ $state[0] ] = $state[1];
 			}
 
 			return $post_states;
 		}
 
-		$status = get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true );
-
-		$labels = [
-			'save'     => __( 'MC Draft', 'prc-email-builder' ),
-			'sent'     => __( 'MC Sent', 'prc-email-builder' ),
-			'sending'  => __( 'Sending', 'prc-email-builder' ),
-			'schedule' => __( 'Scheduled', 'prc-email-builder' ),
-		];
-
-		if ( isset( $labels[ $status ] ) ) {
-			$post_states['prc_email_mc_status'] = $labels[ $status ];
+		$status = (string) get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true );
+		$state  = Send_Status::mailchimp_post_state( $status );
+		if ( null !== $state ) {
+			$post_states[ $state[0] ] = $state[1];
 		}
 
 		return $post_states;
+	}
+
+	/**
+	 * Enqueue traffic-light styling for classic email list tables.
+	 *
+	 * @hook admin_enqueue_scripts
+	 */
+	public function enqueue_list_table_assets( string $hook_suffix ): void {
+		if ( 'edit.php' !== $hook_suffix ) {
+			return;
+		}
+
+		$screen = get_current_screen();
+		if ( ! $screen || ! self::is_email_post_type( $screen->post_type ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'prc-email-builder-post-states',
+			plugins_url( 'assets/admin-post-states.css', PRC_EMAIL_BUILDER_FILE ),
+			[],
+			PRC_EMAIL_BUILDER_VERSION
+		);
 	}
 }

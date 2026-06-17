@@ -112,8 +112,9 @@ namespace {
 		'body'     => wp_json_encode( [ [ 'status' => 'sent', 'email' => 'user@example.com' ] ] ),
 	];
 
-	$result = $dispatch->invoke( null, 'user@example.com', 'Test Subject', '<html>body</html>' );
-	assert_true( true === $result, 'dispatch returns true on sent status' );
+	$result = $dispatch->invoke( null, [ 'user@example.com' ], 'Test Subject', '<html>body</html>' );
+	assert_same( [ 'user@example.com' ], $result['sent'] ?? null, 'dispatch reports recipient sent' );
+	assert_same( [], $result['failed'] ?? null, 'dispatch reports no failures' );
 	assert_same( 1, count( $GLOBALS['__http_requests'] ), 'one HTTP request issued' );
 	assert_true(
 		str_contains( $GLOBALS['__http_requests'][0]['url'], 'messages/send' ),
@@ -138,12 +139,83 @@ namespace {
 	// ── Rejection path ──────────────────────────────────────────────────────
 	$GLOBALS['__http_response'] = [
 		'response' => [ 'code' => 200 ],
-		'body'     => wp_json_encode( [ [ 'status' => 'rejected', 'reject_reason' => 'invalid-sender' ] ] ),
+		'body'     => wp_json_encode(
+			[
+				[
+					'status'        => 'rejected',
+					'email'         => 'user@example.com',
+					'reject_reason' => 'invalid-sender',
+				],
+			]
+		),
 	];
 
-	$rejected = $dispatch->invoke( null, 'user@example.com', 'Test', '<html></html>' );
-	assert_instanceof( WP_Error::class, $rejected, 'rejected status yields WP_Error' );
-	assert_same( 'mandrill_send_rejected', $rejected->get_error_code(), 'rejection error code' );
+	$rejected = $dispatch->invoke( null, [ 'user@example.com' ], 'Test', '<html></html>' );
+	assert_same( [], $rejected['sent'] ?? null, 'rejected recipient is not in sent' );
+	assert_same(
+		[ 'user@example.com' => 'invalid-sender' ],
+		$rejected['failed'] ?? null,
+		'rejected recipient carries reject reason'
+	);
+
+	// ── Batch path: one POST, multi-recipient to array, mixed statuses ──────
+	$GLOBALS['__http_requests'] = [];
+	$GLOBALS['__http_response'] = [
+		'response' => [ 'code' => 200 ],
+		'body'     => wp_json_encode(
+			[
+				[ 'status' => 'sent', 'email' => 'a@example.com' ],
+				[ 'status' => 'queued', 'email' => 'b@example.com' ],
+				[
+					'status'        => 'rejected',
+					'email'         => 'c@example.com',
+					'reject_reason' => 'hard-bounce',
+				],
+			]
+		),
+	];
+
+	$batch = $dispatch->invoke(
+		null,
+		[ 'a@example.com', 'b@example.com', 'c@example.com', 'd@example.com' ],
+		'Batch Subject',
+		'<html>batch</html>'
+	);
+
+	assert_same( 1, count( $GLOBALS['__http_requests'] ), 'batch issues a single HTTP request' );
+
+	$batch_payload = json_decode( $GLOBALS['__http_requests'][0]['args']['body'], true );
+	assert_same(
+		[
+			[ 'email' => 'a@example.com', 'type' => 'to' ],
+			[ 'email' => 'b@example.com', 'type' => 'to' ],
+			[ 'email' => 'c@example.com', 'type' => 'to' ],
+			[ 'email' => 'd@example.com', 'type' => 'to' ],
+		],
+		$batch_payload['message']['to'],
+		'all recipients carried in a single to array'
+	);
+	assert_same( false, $batch_payload['message']['preserve_recipients'], 'recipients hidden from each other' );
+
+	assert_same( [ 'a@example.com', 'b@example.com' ], $batch['sent'] ?? null, 'sent and queued count as sent' );
+	assert_same(
+		[
+			'c@example.com' => 'hard-bounce',
+			'd@example.com' => 'no recipient status returned',
+		],
+		$batch['failed'] ?? null,
+		'rejects and missing statuses partition into failed'
+	);
+
+	// ── Whole-call failure path ──────────────────────────────────────────────
+	$GLOBALS['__http_response'] = [
+		'response' => [ 'code' => 500 ],
+		'body'     => wp_json_encode( [ 'name' => 'GeneralError', 'message' => 'upstream down' ] ),
+	];
+
+	$whole_call = $dispatch->invoke( null, [ 'a@example.com', 'b@example.com' ], 'Test', '<html></html>' );
+	assert_instanceof( WP_Error::class, $whole_call, 'whole-call HTTP failure yields WP_Error' );
+	assert_same( 'mandrill_api_error', $whole_call->get_error_code(), 'whole-call failure error code' );
 
 	fwrite( STDOUT, "OK: test-system-email-sender.php passed\n" );
 }

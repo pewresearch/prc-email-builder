@@ -22,9 +22,19 @@ namespace PRC\Platform\Email_Builder;
 class Email_Block_Integration {
 
 	/**
-	 * Usable content width inside the 600px card minus 32px side padding.
+	 * Maximum width (px) of the email card shell.
 	 */
-	const CONTENT_INNER_WIDTH = 536;
+	const EMAIL_CARD_MAX_WIDTH = 600;
+
+	/**
+	 * Side padding (px) on the body content cell in email templates.
+	 */
+	const CONTENT_SIDE_PADDING = 32;
+
+	/**
+	 * Usable content width inside the email card minus side padding.
+	 */
+	const CONTENT_INNER_WIDTH = self::EMAIL_CARD_MAX_WIDTH - ( 2 * self::CONTENT_SIDE_PADDING );
 
 	/**
 	 * Default body link colour (inline fallback when <style> is stripped).
@@ -57,6 +67,33 @@ class Email_Block_Integration {
 		Email_Block_Registry::register( 'core/group', array( $this, 'group' ) );
 		Email_Block_Registry::register( 'core/buttons', array( $this, 'buttons' ) );
 		Email_Block_Registry::register( 'core/button', array( $this, 'button' ) );
+	}
+
+	/**
+	 * Maximum width (px) for center-aligned images in email.
+	 */
+	public static function get_center_image_max_width(): int {
+		/**
+		 * Filter the maximum pixel width for center-aligned email images.
+		 *
+		 * @param int $max_width Default 600.
+		 */
+		$max = (int) apply_filters( 'prc_email_builder_email_center_image_max_width', self::EMAIL_CARD_MAX_WIDTH );
+		return max( 120, $max );
+	}
+
+	/**
+	 * Clamp a declared image width for center alignment.
+	 *
+	 * @param int $width Declared width in pixels.
+	 * @return int
+	 */
+	public static function clamp_center_width( int $width ): int {
+		$max = self::get_center_image_max_width();
+		if ( $width <= 0 ) {
+			return $max;
+		}
+		return min( $width, $max );
 	}
 
 	/**
@@ -128,14 +165,15 @@ class Email_Block_Integration {
 		}
 
 		if ( 'center' === $align ) {
-			$w = $width > 0 ? min( $width, self::CONTENT_INNER_WIDTH ) : 400;
+			$w = self::clamp_center_width( $width );
 			return sprintf(
 				'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
 				. '<tr><td align="center" style="padding:16px 0;">'
-				. '<img src="%s" alt="%s" width="%d" style="display:block;max-width:100%%;height:auto;border:0;" />'
+				. '<img src="%s" alt="%s" width="%d" style="display:block;width:100%%;max-width:%dpx;height:auto;border:0;" />'
 				. '</td></tr></table>',
 				esc_url( $url ),
 				esc_attr( $alt ),
+				$w,
 				$w
 			);
 		}

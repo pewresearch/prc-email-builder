@@ -27,7 +27,7 @@ class Mailchimp {
 	const SETTINGS_KEY            = 'prc_email_builder_settings';
 	const API_KEY_CONSTANT        = 'PRC_PLATFORM_MAILCHIMP_KEY';
 	const AUDIENCES_TRANSIENT     = 'prc_email_mailchimp_audiences';
-	const SEGMENTS_TRANSIENT_PREFIX = 'prc_email_mailchimp_segments_';
+	const SEGMENTS_TRANSIENT_PREFIX = 'prc_email_mailchimp_segments_saved_';
 
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
@@ -83,8 +83,10 @@ class Mailchimp {
 	}
 
 	/**
-	 * Returns saved segments for an audience, sorted by name. Fuzzy (tag-backed)
-	 * segments are excluded — they are not addressable via saved_segment_id.
+	 * Returns saved segments for an audience, sorted by name.
+	 *
+	 * Only type "saved" is included. Static segments (tags) and fuzzy segments
+	 * (ad-hoc campaign conditions) are excluded.
 	 * Result is cached per audience for 1 hour.
 	 *
 	 * @param string $audience_id Mailchimp list (audience) ID.
@@ -97,8 +99,8 @@ class Mailchimp {
 
 		$cache_key = self::SEGMENTS_TRANSIENT_PREFIX . md5( $audience_id );
 		$cached    = get_transient( $cache_key );
-		if ( false !== $cached ) {
-			return $cached;
+		if ( false !== $cached && is_array( $cached ) ) {
+			return self::filter_saved_segments( $cached );
 		}
 
 		$client = $this->get_client();
@@ -110,9 +112,10 @@ class Mailchimp {
 			$response = $client->lists->listSegments(
 				$audience_id,
 				'segments.id,segments.name,segments.type,segments.member_count',
-				null,  // $exclude_fields
-				1000,  // $count
-				null   // $offset
+				null,   // $exclude_fields
+				1000,   // $count
+				null,   // $offset
+				'saved' // $type — exclude static (tags) and fuzzy segments
 			);
 		} catch ( ApiException $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_segments_error' );
@@ -121,8 +124,7 @@ class Mailchimp {
 		$segments = [];
 		foreach ( $response->segments ?? [] as $s ) {
 			$type = (string) ( $s->type ?? '' );
-			if ( 'fuzzy' === $type ) {
-				// Tag-backed segments; not addressable via saved_segment_id.
+			if ( 'saved' !== $type ) {
 				continue;
 			}
 			$segments[] = [
@@ -136,7 +138,22 @@ class Mailchimp {
 
 		set_transient( $cache_key, $segments, HOUR_IN_SECONDS );
 
-		return $segments;
+		return self::filter_saved_segments( $segments );
+	}
+
+	/**
+	 * Keep only Mailchimp saved segments (excludes static/tag and fuzzy entries).
+	 *
+	 * @param array<int, array<string, mixed>> $segments Segment rows.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function filter_saved_segments( array $segments ): array {
+		return array_values(
+			array_filter(
+				$segments,
+				static fn( array $segment ): bool => 'saved' === (string) ( $segment['type'] ?? '' )
+			)
+		);
 	}
 
 	/**
@@ -202,6 +219,115 @@ class Mailchimp {
 		return [
 			'campaign_id' => $campaign_id,
 			'admin_url'   => self::build_campaign_admin_url( $web_id ),
+		];
+	}
+
+	/**
+	 * Overwrites HTML content and settings on an existing Mailchimp draft campaign.
+	 *
+	 * Only campaigns in "save" (draft) status can be updated. Sent, scheduled,
+	 * and in-flight campaigns are rejected.
+	 *
+	 * @param int $post_id Newsletter post ID.
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	public function update_campaign_draft( int $post_id ): array|WP_Error {
+		$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
+		if ( '' === $campaign_id ) {
+			return new WP_Error(
+				'no_campaign',
+				'No Mailchimp campaign exists for this newsletter.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$campaign = $this->get_campaign( $campaign_id );
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		$status = (string) ( $campaign['status'] ?? '' );
+		if ( 'save' !== $status ) {
+			return new WP_Error(
+				'campaign_not_editable',
+				sprintf(
+					'Mailchimp campaign cannot be edited while status is "%s".',
+					$status ?: 'unknown'
+				),
+				[ 'status' => 409 ]
+			);
+		}
+
+		$audience_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_audience_id', true );
+		if ( '' === $audience_id || $audience_id !== self::campaign_list_id( $campaign ) ) {
+			return new WP_Error(
+				'campaign_mismatch',
+				'Stored Mailchimp campaign does not match this newsletter audience.',
+				[ 'status' => 409 ]
+			);
+		}
+
+		$segment_id = (int) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true );
+		if ( $segment_id !== self::campaign_saved_segment_id( $campaign ) ) {
+			return new WP_Error(
+				'campaign_mismatch',
+				'Stored Mailchimp campaign does not match this newsletter segment.',
+				[ 'status' => 409 ]
+			);
+		}
+
+		$html = Cached_Email_Html::resolve( $post_id );
+		if ( is_wp_error( $html ) ) {
+			return $html;
+		}
+		if ( '' === $html ) {
+			return new WP_Error(
+				'empty_content',
+				'Newsletter has no renderable email content.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
+		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
+		$settings     = self::get_settings();
+
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		try {
+			$client->campaigns->update(
+				$campaign_id,
+				[
+					'settings' => [
+						'title'        => get_the_title( $post_id ),
+						'subject_line' => $subject,
+						'preview_text' => $preview_text,
+						'from_name'    => $settings['from_name'] ?? '',
+						'reply_to'     => $settings['from_email'] ?? '',
+					],
+				]
+			);
+		} catch ( ApiException $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_campaign_update_error' );
+		}
+
+		try {
+			$client->campaigns->setContent( $campaign_id, [ 'html' => $html ] );
+		} catch ( ApiException $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
+		}
+
+		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', 'save' );
+
+		$admin_url = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
+
+		return [
+			'campaign_id' => $campaign_id,
+			'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
+			'status'      => 'save',
 		];
 	}
 
@@ -479,6 +605,48 @@ class Mailchimp {
 	// -------------------------------------------------------------------------
 	// Private helpers
 	// -------------------------------------------------------------------------
+
+	/**
+	 * Mailchimp list ID from a campaign payload.
+	 *
+	 * @param array<string, mixed> $campaign Campaign object from the API.
+	 */
+	private static function campaign_list_id( array $campaign ): string {
+		$recipients = $campaign['recipients'] ?? null;
+		if ( is_array( $recipients ) ) {
+			return (string) ( $recipients['list_id'] ?? '' );
+		}
+		if ( is_object( $recipients ) && isset( $recipients->list_id ) ) {
+			return (string) $recipients->list_id;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Saved segment ID from a campaign payload (0 when whole-audience).
+	 *
+	 * @param array<string, mixed> $campaign Campaign object from the API.
+	 */
+	private static function campaign_saved_segment_id( array $campaign ): int {
+		$recipients = $campaign['recipients'] ?? null;
+		if ( is_array( $recipients ) ) {
+			$segment_opts = $recipients['segment_opts'] ?? null;
+		} elseif ( is_object( $recipients ) && isset( $recipients->segment_opts ) ) {
+			$segment_opts = $recipients->segment_opts;
+		} else {
+			return 0;
+		}
+
+		if ( is_array( $segment_opts ) ) {
+			return (int) ( $segment_opts['saved_segment_id'] ?? 0 );
+		}
+		if ( is_object( $segment_opts ) && isset( $segment_opts->saved_segment_id ) ) {
+			return (int) $segment_opts->saved_segment_id;
+		}
+
+		return 0;
+	}
 
 	private function get_api_key(): string {
 		if ( defined( self::API_KEY_CONSTANT ) ) {

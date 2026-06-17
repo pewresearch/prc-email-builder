@@ -20,6 +20,7 @@ use wpdb;
  *  GET /prc-email-builder/v1/audiences/{id}/segments         — Mailchimp saved segments for an audience
  *  GET /prc-email-builder/v1/audiences-system                — System-email audiences from wp_options
  *  POST /prc-email-builder/v1/send                           — Mandrill bulk send (explicit, edit_post scoped)
+ *  POST /prc-email-builder/v1/campaigns/update-draft         — Push post HTML/settings to existing Mailchimp draft
  */
 class REST_API {
 	const NAMESPACE = 'prc-email-builder/v1';
@@ -122,6 +123,23 @@ class REST_API {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/campaigns/update-draft',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'update_mailchimp_draft' ],
+				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
+				'args'                => [
+					'post_id' => [
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/audiences/(?P<audience_id>[a-f0-9]+)/segments',
 			[
 				'methods'             => WP_REST_Server::READABLE,
@@ -132,6 +150,71 @@ class REST_API {
 						'type'              => 'string',
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/library',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_library' ],
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+				'args'                => [
+					'post_type'         => [
+						'type'              => 'string',
+						'default'           => 'all',
+						'sanitize_callback' => 'sanitize_text_field',
+						'enum'              => [ 'all', 'campaign', 'txn' ],
+					],
+					'newsletter_list'   => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'mailchimp_status'  => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'mandrill_status'   => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'search'            => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'orderby'           => [
+						'type'              => 'string',
+						'default'           => 'date',
+						'sanitize_callback' => 'sanitize_text_field',
+						'enum'              => [ 'date', 'modified', 'title' ],
+					],
+					'order'             => [
+						'type'              => 'string',
+						'default'           => 'desc',
+						'sanitize_callback' => 'sanitize_text_field',
+						'enum'              => [ 'asc', 'desc' ],
+					],
+					'status'            => [
+						'type'              => 'string',
+						'default'           => 'publish,draft,private',
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'per_page'          => [
+						'type'              => 'integer',
+						'default'           => 20,
+						'sanitize_callback' => 'absint',
+					],
+					'page'              => [
+						'type'              => 'integer',
+						'default'           => 1,
+						'sanitize_callback' => 'absint',
 					],
 				],
 			]
@@ -360,6 +443,442 @@ class REST_API {
 		}
 
 		return rest_ensure_response( $segments );
+	}
+
+	/**
+	 * Push current post HTML and settings to an existing Mailchimp draft campaign.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 */
+	public function update_mailchimp_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return new \WP_Error(
+				'invalid_post_type',
+				'Mailchimp draft updates apply only to campaign newsletters.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$result = ( new Mailchimp() )->update_campaign_draft( $post_id );
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		return rest_ensure_response(
+			array_merge( [ 'success' => true ], $result )
+		);
+	}
+
+	/**
+	 * GET /library — paginated email listing for the Email Library DataViews UI.
+	 *
+	 * @param WP_REST_Request $request Request with filter/sort/pagination args.
+	 */
+	public function get_library( WP_REST_Request $request ): WP_REST_Response {
+		$post_type_param = (string) $request->get_param( 'post_type' );
+		$post_types      = $this->resolve_library_post_types( $post_type_param );
+
+		$per_page = max( 1, min( 100, (int) $request->get_param( 'per_page' ) ) );
+		$page     = max( 1, (int) $request->get_param( 'page' ) );
+
+		$status_param = (string) $request->get_param( 'status' );
+		$statuses     = array_filter(
+			array_map( 'sanitize_key', explode( ',', $status_param ) )
+		);
+		if ( empty( $statuses ) ) {
+			$statuses = [ 'publish', 'draft', 'private' ];
+		}
+
+		$mailchimp_values = $this->parse_library_status_values(
+			(string) $request->get_param( 'mailchimp_status' )
+		);
+		$mandrill_values  = $this->parse_library_status_values(
+			(string) $request->get_param( 'mandrill_status' )
+		);
+		$has_mailchimp    = ! empty( $mailchimp_values );
+		$has_mandrill     = ! empty( $mandrill_values );
+		$querying_both    = count( $post_types ) > 1;
+
+		// Provider meta keys only exist on their respective post types.
+		if ( $querying_both && ( $has_mailchimp || $has_mandrill ) ) {
+			if ( $has_mailchimp && ! $has_mandrill ) {
+				$post_types = array_values(
+					array_intersect( $post_types, [ Post_Type::CAMPAIGN_POST_TYPE ] )
+				);
+			} elseif ( $has_mandrill && ! $has_mailchimp ) {
+				$post_types = array_values(
+					array_intersect( $post_types, [ Post_Type::TRANSACTIONAL_POST_TYPE ] )
+				);
+			}
+		}
+
+		if ( empty( $post_types ) ) {
+			$response = rest_ensure_response( [] );
+			$response->header( 'X-WP-Total', '0' );
+			$response->header( 'X-WP-TotalPages', '0' );
+
+			return $response;
+		}
+
+		$query_args = [
+			'post_type'              => $post_types,
+			'post_status'            => $statuses,
+			'perm'                   => 'editable',
+			'posts_per_page'         => $per_page,
+			'paged'                  => $page,
+			'orderby'                => (string) $request->get_param( 'orderby' ),
+			'order'                  => strtoupper( (string) $request->get_param( 'order' ) ),
+			's'                      => (string) $request->get_param( 'search' ),
+			'no_found_rows'          => false,
+			'update_post_meta_cache' => true,
+			'update_post_term_cache' => true,
+		];
+
+		$tax_query = $this->build_library_tax_query( (string) $request->get_param( 'newsletter_list' ) );
+		if ( ! empty( $tax_query ) ) {
+			$query_args['tax_query'] = $tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+		}
+
+		if ( $querying_both && $has_mailchimp && $has_mandrill ) {
+			$query = $this->query_library_with_dual_status_filter(
+				$query_args,
+				$mailchimp_values,
+				$mandrill_values
+			);
+		} else {
+			$meta_query = $this->build_library_meta_query_from_values(
+				$mailchimp_values,
+				$mandrill_values
+			);
+			if ( ! empty( $meta_query ) ) {
+				$query_args['meta_query'] = $meta_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+			}
+
+			$query = new \WP_Query( $query_args );
+		}
+
+		$rows = array_map(
+			fn( \WP_Post $post ) => $this->shape_library_row( $post ),
+			$query->posts
+		);
+
+		$response = rest_ensure_response( $rows );
+		$response->header( 'X-WP-Total', (string) (int) $query->found_posts );
+		$response->header( 'X-WP-TotalPages', (string) (int) $query->max_num_pages );
+
+		return $response;
+	}
+
+	/**
+	 * Resolve post types for the library query from the post_type param.
+	 *
+	 * @param string $post_type_param One of all, campaign, txn.
+	 * @return string[]
+	 */
+	private function resolve_library_post_types( string $post_type_param ): array {
+		return match ( $post_type_param ) {
+			'campaign' => [ Post_Type::CAMPAIGN_POST_TYPE ],
+			'txn'      => [ Post_Type::TRANSACTIONAL_POST_TYPE ],
+			default    => Post_Type::POST_TYPES,
+		};
+	}
+
+	/**
+	 * Build tax_query for prc_newsletter_list slugs (comma-separated).
+	 *
+	 * @param string $newsletter_list Comma-separated term slugs.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function build_library_tax_query( string $newsletter_list ): array {
+		$slugs = array_filter(
+			array_map(
+				static fn( string $slug ) => sanitize_title( $slug ),
+				explode( ',', $newsletter_list )
+			)
+		);
+
+		if ( empty( $slugs ) ) {
+			return [];
+		}
+
+		return [
+			[
+				'taxonomy' => Post_Type::TAXONOMY,
+				'field'    => 'slug',
+				'terms'    => $slugs,
+				'operator' => 'IN',
+			],
+		];
+	}
+
+	/**
+	 * Build meta_query for Mailchimp and/or Mandrill status filters.
+	 *
+	 * When both are provided, matches posts satisfying either filter (OR).
+	 *
+	 * @param string $mailchimp_status Comma-separated Mailchimp status values.
+	 * @param string $mandrill_status  Comma-separated Mandrill status values.
+	 * @return array<int|string, mixed>
+	 */
+	private function build_library_meta_query( string $mailchimp_status, string $mandrill_status ): array {
+		return $this->build_library_meta_query_from_values(
+			$this->parse_library_status_values( $mailchimp_status ),
+			$this->parse_library_status_values( $mandrill_status )
+		);
+	}
+
+	/**
+	 * Build meta_query for Mailchimp and/or Mandrill status filters.
+	 *
+	 * When both are provided, matches posts satisfying either filter (OR).
+	 * Callers querying multiple post types must scope filters by post type first.
+	 *
+	 * @param string[] $mailchimp_values Parsed Mailchimp status values.
+	 * @param string[] $mandrill_values  Parsed Mandrill status values.
+	 * @return array<int|string, mixed>
+	 */
+	private function build_library_meta_query_from_values( array $mailchimp_values, array $mandrill_values ): array {
+		$clauses = [];
+
+		if ( ! empty( $mailchimp_values ) ) {
+			$clauses[] = $this->build_status_meta_clause(
+				'prc_email_mailchimp_campaign_status',
+				$mailchimp_values
+			);
+		}
+
+		if ( ! empty( $mandrill_values ) ) {
+			$clauses[] = $this->build_status_meta_clause(
+				'prc_email_mandrill_send_status',
+				$mandrill_values
+			);
+		}
+
+		if ( empty( $clauses ) ) {
+			return [];
+		}
+
+		if ( count( $clauses ) === 1 ) {
+			return $clauses;
+		}
+
+		return array_merge(
+			[ 'relation' => 'OR' ],
+			$clauses
+		);
+	}
+
+	/**
+	 * Query the library when both provider status filters are active across post types.
+	 *
+	 * Runs separate ID queries per post type so empty-provider filters do not leak rows.
+	 *
+	 * @param array<string, mixed> $query_args       Base library query args.
+	 * @param string[]             $mailchimp_values Parsed Mailchimp status values.
+	 * @param string[]             $mandrill_values  Parsed Mandrill status values.
+	 */
+	private function query_library_with_dual_status_filter(
+		array $query_args,
+		array $mailchimp_values,
+		array $mandrill_values
+	): \WP_Query {
+		$id_args = $query_args;
+		$id_args['posts_per_page'] = -1;
+		$id_args['fields']         = 'ids';
+		unset( $id_args['paged'] );
+
+		$campaign_args = array_merge(
+			$id_args,
+			[
+				'post_type'  => [ Post_Type::CAMPAIGN_POST_TYPE ],
+				'meta_query' => [
+					$this->build_status_meta_clause(
+						'prc_email_mailchimp_campaign_status',
+						$mailchimp_values
+					),
+				],
+			]
+		);
+
+		$txn_args = array_merge(
+			$id_args,
+			[
+				'post_type'  => [ Post_Type::TRANSACTIONAL_POST_TYPE ],
+				'meta_query' => [
+					$this->build_status_meta_clause(
+						'prc_email_mandrill_send_status',
+						$mandrill_values
+					),
+				],
+			]
+		);
+
+		$campaign_ids = ( new \WP_Query( $campaign_args ) )->posts; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+		$txn_ids      = ( new \WP_Query( $txn_args ) )->posts; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+		$ids          = array_values( array_unique( array_merge( $campaign_ids, $txn_ids ) ) );
+
+		if ( empty( $ids ) ) {
+			return new \WP_Query(
+				[
+					'post__in' => [ 0 ],
+					'post_type' => Post_Type::POST_TYPES,
+				]
+			);
+		}
+
+		$paged_args             = $query_args;
+		$paged_args['post__in'] = $ids;
+
+		return new \WP_Query( $paged_args );
+	}
+
+	/**
+	 * Parse comma-separated status filter values, preserving empty string sentinel.
+	 *
+	 * @param string $raw Raw comma-separated values.
+	 * @return string[]
+	 */
+	private function parse_library_status_values( string $raw ): array {
+		if ( '' === $raw ) {
+			return [];
+		}
+
+		return array_values(
+			array_filter(
+				array_map(
+					static fn( string $value ) => sanitize_text_field( $value ),
+					explode( ',', $raw )
+				),
+				static fn( string $value ) => '__empty__' === $value || '' !== $value
+			)
+		);
+	}
+
+	/**
+	 * Build a meta_query clause for a status meta key and allowed values.
+	 *
+	 * Supports the __empty__ sentinel for posts with no status meta value.
+	 *
+	 * @param string   $meta_key Meta key.
+	 * @param string[] $values   Allowed values.
+	 * @return array<string, mixed>
+	 */
+	private function build_status_meta_clause( string $meta_key, array $values ): array {
+		$includes_empty = in_array( '__empty__', $values, true );
+		$non_empty      = array_values(
+			array_filter(
+				$values,
+				static fn( string $value ) => '__empty__' !== $value
+			)
+		);
+
+		if ( $includes_empty && ! empty( $non_empty ) ) {
+			return [
+				'relation' => 'OR',
+				[
+					'key'     => $meta_key,
+					'value'   => $non_empty,
+					'compare' => 'IN',
+				],
+				[
+					'relation' => 'OR',
+					[
+						'key'     => $meta_key,
+						'compare' => 'NOT EXISTS',
+					],
+					[
+						'key'     => $meta_key,
+						'value'   => '',
+						'compare' => '=',
+					],
+				],
+			];
+		}
+
+		if ( $includes_empty ) {
+			return [
+				'relation' => 'OR',
+				[
+					'key'     => $meta_key,
+					'compare' => 'NOT EXISTS',
+				],
+				[
+					'key'     => $meta_key,
+					'value'   => '',
+					'compare' => '=',
+				],
+			];
+		}
+
+		return [
+			'key'     => $meta_key,
+			'value'   => $non_empty,
+			'compare' => 'IN',
+		];
+	}
+
+	/**
+	 * Shape a WP_Post into a library row for the DataViews UI.
+	 *
+	 * @param \WP_Post $post Post object.
+	 * @return array<string, mixed>
+	 */
+	private function shape_library_row( \WP_Post $post ): array {
+		$terms = wp_get_post_terms(
+			$post->ID,
+			Post_Type::TAXONOMY,
+			[ 'fields' => 'all' ]
+		);
+
+		if ( is_wp_error( $terms ) ) {
+			$terms = [];
+		}
+
+		$newsletter_lists = array_map(
+			static fn( \WP_Term $term ) => [
+				'slug'  => $term->slug,
+				'label' => $term->name,
+			],
+			$terms
+		);
+
+		$type = Post_Type::CAMPAIGN_POST_TYPE === $post->post_type ? 'campaign' : 'txn';
+
+		return [
+			'id'               => $post->ID,
+			'type'             => $type,
+			'title'            => get_the_title( $post ),
+			'status'           => $post->post_status,
+			'date'             => mysql2date( 'c', $post->post_date, false ),
+			'modified'         => mysql2date( 'c', $post->post_modified, false ),
+			'edit_url'         => get_edit_post_link( $post->ID, 'raw' ),
+			'newsletter_lists' => $newsletter_lists,
+			'subject'          => (string) get_post_meta( $post->ID, 'prc_email_subject', true ),
+			'mailchimp_status' => (string) get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true ),
+			'mandrill_status'  => (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true ),
+			'delivery_mode'    => Post_Type::is_transactional_post( $post )
+				? Post_Type::transactional_delivery_mode( $post )
+				: '',
+		];
+	}
+
+	/**
+	 * Ensure a WP_Error carries an HTTP status for REST serialization.
+	 */
+	private function normalize_rest_error( \WP_Error $error ): \WP_Error {
+		$data   = $error->get_error_data();
+		$status = 500;
+		if ( is_array( $data ) && isset( $data['status'] ) ) {
+			$status = (int) $data['status'];
+		}
+
+		return new \WP_Error(
+			$error->get_error_code(),
+			$error->get_error_message(),
+			[ 'status' => $status > 0 ? $status : 500 ]
+		);
 	}
 
 }

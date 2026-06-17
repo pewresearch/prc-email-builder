@@ -33,117 +33,15 @@ import {
 import { PreviewModal } from './preview/preview-modal';
 import {
 	useNewsletterMeta,
-	useAudiences,
-	useSegments,
 	useSystemAudiences,
 	useEmailPreviewStatus,
 	isCampaignPostType,
 	isTransactionalPostType,
 	type PreviewStatus,
 } from './use-newsletter-data';
+import { CampaignMailchimpSettings } from './campaign-mailchimp-settings';
 import { InboxSubjectAI } from './inbox-subject-ai';
 import { InboxPreviewAI } from './inbox-preview-ai';
-
-// ─── Template picker (newsletter posts, mailchimp mode) ───────────────────────
-
-interface RegisteredTemplate {
-	slug: string;
-	label: string;
-}
-
-interface TemplateSelectorProps {
-	templateSlug: string;
-	setTemplateSlug: (value: string) => void;
-}
-
-function TemplateSelector({
-	templateSlug,
-	setTemplateSlug,
-}: TemplateSelectorProps) {
-	const registeredTemplates: RegisteredTemplate[] =
-		(window as any).prcEmailBuilderConfig?.templates ?? [];
-
-	const options = [
-		{
-			value: '',
-			label: __(
-				'Auto (matched by audience + segment)',
-				'prc-email-builder'
-			),
-		},
-		...registeredTemplates.map((t) => ({
-			value: t.slug,
-			label: t.label,
-		})),
-	];
-
-	return (
-		<SelectControl
-			__nextHasNoMarginBottom
-			label={__('Email template', 'prc-email-builder')}
-			value={templateSlug}
-			options={options}
-			onChange={setTemplateSlug}
-			help={__(
-				'Wraps the newsletter with a header and footer. "Auto" uses the template whose audience/segment matches.',
-				'prc-email-builder'
-			)}
-		/>
-	);
-}
-
-// ─── Mailchimp segment picker ─────────────────────────────────────────────────
-
-interface SegmentPickerProps {
-	audienceId: string;
-	segmentId: string;
-	setSegmentId: (value: string) => void;
-}
-
-function SegmentPicker({
-	audienceId,
-	segmentId,
-	setSegmentId,
-}: SegmentPickerProps) {
-	const { segments, loading, error } = useSegments(audienceId);
-
-	if (error) {
-		return (
-			<Notice status="warning" isDismissible={false}>
-				{error}
-			</Notice>
-		);
-	}
-
-	if (loading) {
-		return <Spinner />;
-	}
-
-	const options = [
-		{
-			value: '',
-			label: __('Entire audience', 'prc-email-builder'),
-		},
-		...segments.map((s) => ({
-			value: String(s.id),
-			label: `${s.name} (${s.member_count.toLocaleString()})`,
-		})),
-	];
-
-	return (
-		<SelectControl
-			__nextHasNoMarginBottom
-			label={__('Segment (optional)', 'prc-email-builder')}
-			value={segmentId}
-			options={options}
-			onChange={setSegmentId}
-			help={__(
-				'Restrict delivery to a saved segment of the audience.',
-				'prc-email-builder'
-			)}
-		/>
-	);
-}
 
 // ─── Sub-panels ──────────────────────────────────────────────────────────────
 
@@ -172,30 +70,19 @@ function SettingsPanel() {
 		setAudienceOptionKey,
 		setTemplateSlug,
 		setSystemEmailKey,
+		selectedListTermId,
+		hasListTerm,
+		selectNewsletterList,
 	} = useNewsletterMeta();
 
 	const isCampaign = isCampaignPostType(postType);
 	const isTransactional = isTransactionalPostType(postType);
 
 	const {
-		audiences,
-		loading: audiencesLoading,
-		error: audiencesError,
-	} = useAudiences();
-
-	const {
 		audiences: systemAudiences,
 		loading: systemAudiencesLoading,
 		error: systemAudiencesError,
 	} = useSystemAudiences();
-
-	const audienceOptions = [
-		{
-			value: '',
-			label: __('— Select audience —', 'prc-email-builder'),
-		},
-		...audiences.map((a) => ({ value: a.id, label: a.name })),
-	];
 
 	const systemAudienceOptions = [
 		{
@@ -266,39 +153,17 @@ function SettingsPanel() {
 				/>
 
 				{isCampaign && (
-					<>
-						{audiencesError && (
-							<Notice status="error" isDismissible={false}>
-								{audiencesError}
-							</Notice>
-						)}
-						{audiencesLoading ? (
-							<Spinner />
-						) : (
-							<SelectControl
-								__nextHasNoMarginBottom
-								label={__(
-									'Mailchimp audience',
-									'prc-email-builder'
-								)}
-								value={audienceId}
-								options={audienceOptions}
-								onChange={setAudienceId}
-							/>
-						)}
-						{audienceId && (
-							<SegmentPicker
-								audienceId={audienceId}
-								segmentId={segmentId}
-								setSegmentId={setSegmentId}
-							/>
-						)}
-
-						<TemplateSelector
-							templateSlug={templateSlug}
-							setTemplateSlug={setTemplateSlug}
-						/>
-					</>
+					<CampaignMailchimpSettings
+						audienceId={audienceId}
+						segmentId={segmentId}
+						templateSlug={templateSlug}
+						selectedListTermId={selectedListTermId}
+						hasListTerm={hasListTerm}
+						setAudienceId={setAudienceId}
+						setSegmentId={setSegmentId}
+						setTemplateSlug={setTemplateSlug}
+						selectNewsletterList={selectNewsletterList}
+					/>
 				)}
 
 				{isTransactional && deliveryMode === 'mandrill' && (

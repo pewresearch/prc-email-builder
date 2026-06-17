@@ -10,6 +10,7 @@ import { store as editorStore } from '@wordpress/editor';
 import NewsletterPanel from './newsletter-panel';
 import { EmailPreviewMenuItem } from './preview/index';
 import { SendNewsletterSidebar } from './send/index';
+import EmailPatternSelector from './pattern-selector';
 import { isEmailPostType } from './use-newsletter-data';
 
 function NewsletterBuilderSidebar() {
@@ -24,6 +25,7 @@ function NewsletterBuilderSidebar() {
 
 	return (
 		<>
+			<EmailPatternSelector />
 			<NewsletterPanel />
 			<SendNewsletterSidebar />
 			<EmailPreviewMenuItem />

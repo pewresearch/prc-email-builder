@@ -71,9 +71,9 @@ class Plugin {
 		// Load plugin loading class.
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-loader.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-post-type.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/class-newsletter-list.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-template-resolver.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-mailchimp.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-auto-visibility.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-mandrill-sender.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-system-email-sender.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-form-send-system-email.php';
@@ -82,6 +82,8 @@ class Plugin {
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-assets.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-patterns.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-settings.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/class-send-status.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/class-library.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-template-registry.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-email-template.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/class-preview.php';
@@ -125,14 +127,15 @@ class Plugin {
 		$this->loader->add_action( 'init', $this, 'fire_register_email_callbacks', 5 );
 
 		new Post_Type( $this->loader );
+		new Newsletter_List( $this->loader );
 		new Mailchimp( $this->loader );
-		new Auto_Visibility( $this->loader );
 		new Mandrill_Sender( $this->loader );
 		new REST_API( $this->loader );
 		new Assets( $this->loader );
 		new Patterns( $this->loader );
 		new Form_Send_System_Email( $this->loader );
 		new Settings( $this->loader );
+		new Library( $this->loader );
 		new Preview( $this->loader );
 		new Email_Block_Integration( $this->loader );
 
@@ -161,6 +164,7 @@ class Plugin {
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/trait-newsletter-ai-ability-helpers.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-suggest-subject-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-suggest-preview-text-ability.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-generate-links-newsletter-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-newsletter-builder-ai-feature.php';
 
 		add_action(

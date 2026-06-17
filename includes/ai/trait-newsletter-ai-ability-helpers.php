@@ -57,4 +57,32 @@ trait Newsletter_AI_Ability_Helpers {
 
 		return (string) $result;
 	}
+
+	/**
+	 * Generate JSON text from the WP AI client with system instructions.
+	 */
+	private function generate_json_via_ai_client( string $prompt, string $system_instruction ): string {
+		if ( ! function_exists( 'wp_ai_client_prompt' ) ) {
+			return '';
+		}
+
+		$builder = wp_ai_client_prompt( $prompt );
+		if ( is_wp_error( $builder ) ) {
+			return '';
+		}
+
+		$builder = $builder->using_system_instruction( $system_instruction );
+		$builder = $builder->using_temperature( 0.4 );
+
+		if ( method_exists( $builder, 'as_json_response' ) ) {
+			$builder = $builder->as_json_response();
+		}
+
+		$result = $builder->generate_text();
+		if ( is_wp_error( $result ) ) {
+			return '';
+		}
+
+		return (string) $result;
+	}
 }

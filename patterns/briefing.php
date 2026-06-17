@@ -7,7 +7,7 @@ return [
 	'slug'        => 'prc-newsletter/briefing',
 	'title'       => __( 'Briefing', 'prc-email-builder' ),
 	'description' => __( 'Standard Pew Research Center briefing newsletter with lead story, and supporting items.', 'prc-email-builder' ),
-	'categories'  => [ 'prc-newsletter' ],
+	'categories'  => [ 'email-campaign' ],
 	'postTypes'   => [ 'prc_email_campaign', 'prc_email_txn' ],
 	'blockTypes'  => [ 'core/post-content' ],
 	'content'     => <<<'PATTERN'
