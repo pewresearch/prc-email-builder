@@ -1,5 +1,5 @@
 
-> @prc/email-builder@1.2.0 build
+> @prc/email-builder@1.1.1 build
 > wp-scripts build && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js
 
 assets by path [1m[32msidebar/[39m[22m 170 KiB
@@ -33,7 +33,7 @@ built modules 404 KiB (javascript) 4.7 KiB (css/mini-extract) [1m[33m[built][
   css modules 4.7 KiB
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/pattern-selector/style.scss[39m[22m 924 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/preview/style.scss[39m[22m 3.79 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 41751 ms
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 29043 ms
 assets by chunk 11.4 KiB (name: index)
   asset [1m[32mindex.js[39m[22m 11.2 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
   asset [1m[32mindex.asset.php[39m[22m 203 bytes [1m[32m[emitted][39m[22m (name: index)
@@ -46,7 +46,7 @@ runtime modules 3.07 KiB 5 modules
 built modules 18.2 KiB (javascript) 1.92 KiB (css/mini-extract) [1m[33m[built][39m[22m
   [1m./src/settings/index.tsx + 16 modules[39m[22m 18.2 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
   css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/settings/style.scss[39m[22m 1.92 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 15576 ms
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 8562 ms
 assets by chunk 942 KiB (name: index)
   assets by path [1m[32m*.css[39m[22m 2.9 KiB
     asset [1m[32mindex-rtl.css[39m[22m 1.45 KiB [1m[32m[emitted][39m[22m (name: index)
@@ -112,4 +112,4 @@ Entrypoints:
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
 For more info visit https://webpack.js.org/guides/code-splitting/[39m[22m
 
-webpack 5.106.2 compiled with [1m[33m6 warnings[39m[22m in 94463 ms
+webpack 5.106.2 compiled with [1m[33m6 warnings[39m[22m in 22573 ms

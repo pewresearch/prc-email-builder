@@ -22,24 +22,21 @@ use WP_Error;
  *   { formName, formId, redirectTarget, formFields: [ { name, type, value, ... } ] }
  *
  * This handler:
- *   1. verifies the form nonce
- *   2. for non-privileged submissions (callers without `edit_post` on the
+ *   1. for non-privileged submissions (callers without `edit_post` on the
  *      resolved template), verifies the Cloudflare
- *      Turnstile captcha token carried in the form envelope — the reusable
- *      `prc-block-form` nonce is page-embedded and trivially scrapeable, so a
- *      proof-of-work captcha is the real human gate (see {@see verify_captcha()})
- *   3. reads the recipient address from the first `email` field
- *   4. resolves the target dynamic newsletter from a `newsletter_post_id` or
+ *      Turnstile captcha token carried in the form envelope (see {@see verify_captcha()})
+ *   2. reads the recipient address from the first `email` field
+ *   3. resolves the target dynamic newsletter from a `newsletter_post_id` or
  *      `system_email_key` field (set on the form by the consumer, e.g. mapped
  *      from quiz state)
- *   5. enforces per-IP and per-recipient send throttling on public submissions
+ *   4. enforces per-IP and per-recipient send throttling on public submissions
  *      so a single client cannot automate unsolicited outbound sends (see
  *      {@see enforce_send_throttle()})
- *   6. builds the merge context via the
+ *   5. builds the merge context via the
  *      `prc_email_builder_system_email_form_context` filter (client
  *      `merge:*` fields are only trusted for capability-gated requests; public
  *      sends rely on the consumer filter to build context server-side)
- *   7. delegates to {@see System_Email_Sender::send()}
+ *   6. delegates to {@see System_Email_Sender::send()}
  *
  * Resolution by `system_email_key` uses the published newsletter's
  * `prc_email_system_email_key` meta (see {@see Post_Type::get_by_system_email_key()}),
@@ -47,8 +44,7 @@ use WP_Error;
  * without hard-coding post IDs.
  */
 class Form_Send_System_Email {
-	const NONCE_ACTION = 'prc-block-form';
-	const ROUTE        = 'form/send-system-email';
+	const ROUTE = 'form/send-system-email';
 
 	/**
 	 * Object-cache group for the public send throttle buckets.
@@ -84,12 +80,7 @@ class Form_Send_System_Email {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this, 'handle_submission' ],
-				'permission_callback' => '__return_true', // Public; nonce-gated below.
-				'args'                => [
-					'nonce' => [
-						'validate_callback' => fn( $param ) => is_string( $param ),
-					],
-				],
+				'permission_callback' => '__return_true',
 			]
 		);
 	}
@@ -101,11 +92,6 @@ class Form_Send_System_Email {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_submission( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$nonce = (string) $request->get_param( 'nonce' );
-		if ( ! wp_verify_nonce( $nonce, self::NONCE_ACTION ) ) {
-			return new WP_Error( 'invalid_nonce', 'Unauthorized: invalid nonce.', [ 'status' => 403 ] );
-		}
-
 		$form_data = json_decode( $request->get_body(), true );
 		if ( ! is_array( $form_data ) ) {
 			return new WP_Error( 'invalid_form_data', 'Invalid form data provided.', [ 'status' => 400 ] );
@@ -136,10 +122,8 @@ class Form_Send_System_Email {
 		// Trust boundary: client-supplied merge:* values, the captcha/throttle
 		// bypass, and the dry_run preview are only granted to a user who can edit
 		// *this specific* transactional template — not anyone merely holding the
-		// generic edit_posts cap. A public (logged-out) submission is authenticated
-		// only by the page-embedded prc-block-form nonce, which is trivially
-		// scrapeable, so its merge context must be built entirely server-side by a
-		// consumer filter (see build_context()).
+		// generic edit_posts cap. Public (logged-out) submissions have merge
+		// context built entirely server-side by a consumer filter (see build_context()).
 		//
 		// The intended privileged use case is the capability-gated dry_run below:
 		// an editor in wp-admin verifying wiring / merge:* rendering for a template
@@ -150,12 +134,10 @@ class Form_Send_System_Email {
 		$is_privileged      = current_user_can( 'edit_post', $post_id );
 		$allow_client_merge = $is_privileged;
 
-		// Captcha gate: the prc-block-form nonce is reusable and page-scrapeable,
-		// so a harvested nonce could otherwise be replayed to automate sends. For
-		// non-privileged submissions we require a valid Cloudflare Turnstile token
-		// (the prc-block/form-captcha block submits it in the form envelope). Users
-		// who can edit this template are exempt — their wp-admin previews/tests
-		// render no widget.
+		// Captcha gate: for non-privileged submissions we require a valid Cloudflare
+		// Turnstile token (the prc-block/form-captcha block submits it in the form
+		// envelope). Users who can edit this template are exempt — their wp-admin
+		// previews/tests render no widget.
 		if ( ! $is_privileged ) {
 			$captcha_token = function_exists( '\\PRC\\Platform\\find_captcha_token_in_form_fields' )
 				? \PRC\Platform\find_captcha_token_in_form_fields( $form_fields )
@@ -185,9 +167,9 @@ class Form_Send_System_Email {
 		}
 
 		// Defense in depth: throttle public sends per-IP and per-recipient so a
-		// single client cannot fan out unsolicited mail even with a valid nonce
-		// and captcha. Editors (edit_posts) are exempt. Counted here, immediately
-		// before dispatch, so only real send attempts consume a slot.
+		// single client cannot fan out unsolicited mail even with a valid captcha.
+		// Editors are exempt. Counted here, immediately before dispatch, so only
+		// real send attempts consume a slot.
 		if ( ! $is_privileged ) {
 			$throttled = $this->enforce_send_throttle( $email );
 			if ( is_wp_error( $throttled ) ) {
@@ -234,7 +216,7 @@ class Form_Send_System_Email {
 	 * When no secret key is configured (e.g. local dev without Turnstile env
 	 * vars) verification is skipped — the per-IP / per-recipient send throttle
 	 * still applies. When a key *is* configured, an empty or invalid token is
-	 * rejected, closing the nonce-replay path.
+	 * rejected. Per-IP / per-recipient send throttling still applies when no key is configured.
 	 *
 	 * @param string $token The client-supplied Turnstile response token.
 	 * @return true|WP_Error True when verified (or unenforceable); WP_Error otherwise.
@@ -353,8 +335,7 @@ class Form_Send_System_Email {
 	 * Build the merge context passed to the sender.
 	 *
 	 * Trust boundary: client-supplied `merge:<key>` fields are attacker-
-	 * controllable on a public send (the endpoint is gated only by the
-	 * page-embedded prc-block-form nonce). If they were copied into the render
+	 * controllable on a public send. If they were copied into the render
 	 * context unconditionally, a caller could POST a direct `newsletter_post_id`
 	 * plus crafted `merge:*` fields and have a Pew-branded email sent with
 	 * attacker-controlled copy in the body (block bits) and `{{key}}` subject
