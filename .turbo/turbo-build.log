@@ -1,103 +1,103 @@
 
-> @prc/email-builder@1.1.1 build
+> @prc/email-builder@1.1.0 build
 > wp-scripts build && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js
 
-assets by path [1m[32msidebar/[39m[22m 170 KiB
+assets by path sidebar/ 170 KiB
   assets by chunk 161 KiB (name: sidebar/index)
-    asset [1m[32msidebar/index.js[39m[22m 160 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: sidebar/index)
-    asset [1m[32msidebar/index.asset.php[39m[22m 365 bytes [1m[32m[emitted][39m[22m (name: sidebar/index)
-  assets by path [1m[32msidebar/*.css[39m[22m 9.4 KiB
-    asset [1m[32msidebar/style-index-rtl.css[39m[22m 4.7 KiB [1m[32m[emitted][39m[22m (name: sidebar/style-index) (id hint: style)
-    asset [1m[32msidebar/style-index.css[39m[22m 4.7 KiB [1m[32m[emitted][39m[22m (name: sidebar/style-index) (id hint: style)
-assets by path [1m[32mterm-admin/[39m[22m 2.04 KiB
-  asset [1m[32mterm-admin/index.js[39m[22m 1.95 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: term-admin/index)
-  asset [1m[32mterm-admin/index.asset.php[39m[22m 98 bytes [1m[32m[emitted][39m[22m (name: term-admin/index)
-assets by path [1m[32mform-action/[39m[22m 904 bytes
-  asset [1m[32mform-action/index.js[39m[22m 795 bytes [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: form-action/index)
-  asset [1m[32mform-action/index.asset.php[39m[22m 109 bytes [1m[32m[emitted][39m[22m (name: form-action/index)
-Entrypoint [1msidebar/index[39m[22m 170 KiB = [1m[32msidebar/style-index.css[39m[22m 4.7 KiB [1m[32msidebar/style-index-rtl.css[39m[22m 4.7 KiB [1m[32msidebar/index.js[39m[22m 160 KiB [1m[32msidebar/index.asset.php[39m[22m 365 bytes
-Entrypoint [1mform-action/index[39m[22m 904 bytes = [1m[32mform-action/index.js[39m[22m 795 bytes [1m[32mform-action/index.asset.php[39m[22m 109 bytes
-Entrypoint [1mterm-admin/index[39m[22m 2.04 KiB = [1m[32mterm-admin/index.js[39m[22m 1.95 KiB [1m[32mterm-admin/index.asset.php[39m[22m 98 bytes
-orphan modules 1.06 MiB (javascript) 1.83 KiB (runtime) [1m[33m[orphan][39m[22m 769 modules
+    asset sidebar/index.js 160 KiB [compared for emit] [minimized] (name: sidebar/index)
+    asset sidebar/index.asset.php 365 bytes [compared for emit] (name: sidebar/index)
+  assets by path sidebar/*.css 9.4 KiB
+    asset sidebar/style-index-rtl.css 4.7 KiB [compared for emit] (name: sidebar/style-index) (id hint: style)
+    asset sidebar/style-index.css 4.7 KiB [compared for emit] (name: sidebar/style-index) (id hint: style)
+assets by path term-admin/ 2.04 KiB
+  asset term-admin/index.js 1.95 KiB [compared for emit] [minimized] (name: term-admin/index)
+  asset term-admin/index.asset.php 98 bytes [compared for emit] (name: term-admin/index)
+assets by path form-action/ 904 bytes
+  asset form-action/index.js 795 bytes [compared for emit] [minimized] (name: form-action/index)
+  asset form-action/index.asset.php 109 bytes [compared for emit] (name: form-action/index)
+Entrypoint sidebar/index 170 KiB = sidebar/style-index.css 4.7 KiB sidebar/style-index-rtl.css 4.7 KiB sidebar/index.js 160 KiB sidebar/index.asset.php 365 bytes
+Entrypoint form-action/index 904 bytes = form-action/index.js 795 bytes form-action/index.asset.php 109 bytes
+Entrypoint term-admin/index 2.04 KiB = term-admin/index.js 1.95 KiB term-admin/index.asset.php 98 bytes
+orphan modules 1.06 MiB (javascript) 1.83 KiB (runtime) [orphan] 769 modules
 runtime modules 5.78 KiB 13 modules
-built modules 404 KiB (javascript) 4.7 KiB (css/mini-extract) [1m[33m[built][39m[22m
+built modules 404 KiB (javascript) 4.7 KiB (css/mini-extract) [built]
   javascript modules 404 KiB
-    modules by path [1m./src/[39m[22m 395 KiB
-      [1m./src/sidebar/index.tsx + 144 modules[39m[22m 390 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    modules by path ./src/ 395 KiB
+      ./src/sidebar/index.tsx + 144 modules 390 KiB [not cacheable] [built] [code generated]
       + 2 modules
     cacheable modules 8.22 KiB
-      [1m../../node_modules/remove-accents/index.js[39m[22m 6.07 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-      [1m../../node_modules/use-sync-external-store/shim/index.js[39m[22m 234 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-      [1m../../node_modules/use-sync-external-store/cjs/use-sync-external-store-shim...(truncated)[39m[22m 1.92 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-    [1mexternal "React"[39m[22m 42 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      ../../node_modules/remove-accents/index.js 6.07 KiB [built] [code generated]
+      ../../node_modules/use-sync-external-store/shim/index.js 234 bytes [built] [code generated]
+      ../../node_modules/use-sync-external-store/cjs/use-sync-external-store-shim...(truncated) 1.92 KiB [built] [code generated]
+    external "React" 42 bytes [built] [code generated]
   css modules 4.7 KiB
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/pattern-selector/style.scss[39m[22m 924 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/preview/style.scss[39m[22m 3.79 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 29043 ms
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/pattern-selector/style.scss 924 bytes [built] [code generated]
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/preview/style.scss 3.79 KiB [built] [code generated]
+webpack 5.106.2 compiled successfully in 15135 ms
 assets by chunk 11.4 KiB (name: index)
-  asset [1m[32mindex.js[39m[22m 11.2 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
-  asset [1m[32mindex.asset.php[39m[22m 203 bytes [1m[32m[emitted][39m[22m (name: index)
-assets by path [1m[32m./*.css[39m[22m 3.85 KiB
-  asset [1m[32m./style-index-rtl.css[39m[22m 1.93 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
-  asset [1m[32m./style-index.css[39m[22m 1.92 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
-Entrypoint [1mindex[39m[22m 15.2 KiB = [1m[32m./style-index.css[39m[22m 1.92 KiB [1m[32m./style-index-rtl.css[39m[22m 1.93 KiB [1m[32mindex.js[39m[22m 11.2 KiB [1m[32mindex.asset.php[39m[22m 203 bytes
-orphan modules 232 KiB (javascript) 937 bytes (runtime) [1m[33m[orphan][39m[22m 337 modules
+  asset index.js 11.2 KiB [emitted] [minimized] (name: index)
+  asset index.asset.php 203 bytes [emitted] (name: index)
+assets by path ./*.css 3.85 KiB
+  asset ./style-index-rtl.css 1.93 KiB [emitted] (name: ./style-index) (id hint: style)
+  asset ./style-index.css 1.92 KiB [emitted] (name: ./style-index) (id hint: style)
+Entrypoint index 15.2 KiB = ./style-index.css 1.92 KiB ./style-index-rtl.css 1.93 KiB index.js 11.2 KiB index.asset.php 203 bytes
+orphan modules 232 KiB (javascript) 937 bytes (runtime) [orphan] 337 modules
 runtime modules 3.07 KiB 5 modules
-built modules 18.2 KiB (javascript) 1.92 KiB (css/mini-extract) [1m[33m[built][39m[22m
-  [1m./src/settings/index.tsx + 16 modules[39m[22m 18.2 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/settings/style.scss[39m[22m 1.92 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 8562 ms
+built modules 18.2 KiB (javascript) 1.92 KiB (css/mini-extract) [built]
+  ./src/settings/index.tsx + 16 modules 18.2 KiB [not cacheable] [built] [code generated]
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/settings/style.scss 1.92 KiB [built] [code generated]
+webpack 5.106.2 compiled successfully in 3318 ms
 assets by chunk 942 KiB (name: index)
-  assets by path [1m[32m*.css[39m[22m 2.9 KiB
-    asset [1m[32mindex-rtl.css[39m[22m 1.45 KiB [1m[32m[emitted][39m[22m (name: index)
-    asset [1m[32mindex.css[39m[22m 1.45 KiB [1m[32m[emitted][39m[22m (name: index)
-  asset [1m[33mindex.js[39m[22m [1m[33m938 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: index)
-  asset [1m[32mindex.asset.php[39m[22m 418 bytes [1m[32m[emitted][39m[22m (name: index)
-assets by path [1m[32m./*.css[39m[22m 60.6 KiB
-  asset [1m[32m./style-index-rtl.css[39m[22m 30.3 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
-  asset [1m[32m./style-index.css[39m[22m 30.3 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
-Entrypoint [1mindex[39m[22m [1m[33m[big][39m[22m 1000 KiB = 6 assets
-orphan modules 3.63 MiB (javascript) 3.66 KiB (runtime) [1m[33m[orphan][39m[22m 1425 modules
+  assets by path *.css 2.9 KiB
+    asset index-rtl.css 1.45 KiB [emitted] (name: index)
+    asset index.css 1.45 KiB [emitted] (name: index)
+  asset index.js 938 KiB [emitted] [minimized] [big] (name: index)
+  asset index.asset.php 418 bytes [emitted] (name: index)
+assets by path ./*.css 60.6 KiB
+  asset ./style-index-rtl.css 30.3 KiB [emitted] (name: ./style-index) (id hint: style)
+  asset ./style-index.css 30.3 KiB [emitted] (name: ./style-index) (id hint: style)
+Entrypoint index [big] 1000 KiB = 6 assets
+orphan modules 3.63 MiB (javascript) 3.66 KiB (runtime) [orphan] 1425 modules
 runtime modules 4.48 KiB 7 modules
-built modules 2.45 MiB (javascript) 31.8 KiB (css/mini-extract) [1m[33m[built][39m[22m
+built modules 2.45 MiB (javascript) 31.8 KiB (css/mini-extract) [built]
   javascript modules 2.45 MiB
     cacheable modules 92.1 KiB 9 modules
-    [1m./src/library/index.tsx + 420 modules[39m[22m 2.36 MiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-    [1mexternal "React"[39m[22m 42 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    ./src/library/index.tsx + 420 modules 2.36 MiB [not cacheable] [built] [code generated]
+    external "React" 42 bytes [built] [code generated]
   css modules 31.8 KiB
-    modules by path [1m../prc-scripts/includes/scripts/src/@prc/components/[39m[22m 1.45 KiB
-      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m../prc-scripts/includes/scripts/src/@prc/components/icon-picker/styles.scss[39m[22m 558 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m../prc-scripts/includes/scripts/src/@prc/components/ai/styles.scss[39m[22m 927 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/library/style.scss[39m[22m 30.2 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m../prc-scripts/includes/scripts/src/@prc/icons/src/style.scss[39m[22m 143 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    modules by path ../prc-scripts/includes/scripts/src/@prc/components/ 1.45 KiB
+      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!../prc-scripts/includes/scripts/src/@prc/components/icon-picker/styles.scss 558 bytes [built] [code generated]
+      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!../prc-scripts/includes/scripts/src/@prc/components/ai/styles.scss 927 bytes [built] [code generated]
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/library/style.scss 30.2 KiB [built] [code generated]
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!../prc-scripts/includes/scripts/src/@prc/icons/src/style.scss 143 bytes [built] [code generated]
 
-[1m[33mWARNING[39m[22m in [1m../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js[39m[22m [1m[32m108:14-38[39m[22m
-[1mexport 'currentUser' (imported as 'firebaseAuth') was [1m[31mnot found[39m[22m[1m in 'firebase/auth' (possible exports: [1m[32mActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode[39m[22m[1m)[39m[22m
+WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 108:14-38
+export 'currentUser' (imported as 'firebaseAuth') was not found in 'firebase/auth' (possible exports: ActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode)
  @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
  @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
  @ ./src/library/email-library.tsx 5:0-88 41:26-54
  @ ./src/library/index.tsx 2:0-43 8:34-46
 
-[1m[33mWARNING[39m[22m in [1m../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js[39m[22m [1m[32m120:14-38[39m[22m
-[1mexport 'currentUser' (imported as 'firebaseAuth') was [1m[31mnot found[39m[22m[1m in 'firebase/auth' (possible exports: [1m[32mActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode[39m[22m[1m)[39m[22m
+WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 120:14-38
+export 'currentUser' (imported as 'firebaseAuth') was not found in 'firebase/auth' (possible exports: ActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode)
  @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
  @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
  @ ./src/library/email-library.tsx 5:0-88 41:26-54
  @ ./src/library/index.tsx 2:0-43 8:34-46
 
-[1m[33mWARNING[39m[22m in [1m../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js[39m[22m [1m[32m171:4-21[39m[22m
-[1mexport 'database' (imported as 'firebase') was [1m[31mnot found[39m[22m[1m in 'firebase/app' (possible exports: [1m[32mFirebaseError, SDK_VERSION, _DEFAULT_ENTRY_NAME, _addComponent, _addOrOverwriteComponent, _apps, _clearComponents, _components, _getProvider, _isFirebaseApp, _isFirebaseServerApp, _registerComponent, _removeServiceInstance, _serverApps, deleteApp, getApp, getApps, initializeApp, initializeServerApp, onLog, registerVersion, setLogLevel[39m[22m[1m)[39m[22m
+WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 171:4-21
+export 'database' (imported as 'firebase') was not found in 'firebase/app' (possible exports: FirebaseError, SDK_VERSION, _DEFAULT_ENTRY_NAME, _addComponent, _addOrOverwriteComponent, _apps, _clearComponents, _components, _getProvider, _isFirebaseApp, _isFirebaseServerApp, _registerComponent, _removeServiceInstance, _serverApps, deleteApp, getApp, getApps, initializeApp, initializeServerApp, onLog, registerVersion, setLogLevel)
  @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
  @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
  @ ./src/library/email-library.tsx 5:0-88 41:26-54
  @ ./src/library/index.tsx 2:0-43 8:34-46
 
-[1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
+WARNING in asset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
 This can impact web performance.
 Assets: 
-  index.js (938 KiB)[39m[22m
+  index.js (938 KiB)
 
-[1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
+WARNING in entrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
 Entrypoints:
   index (1000 KiB)
       ./style-index.css
@@ -106,10 +106,9 @@ Entrypoints:
       index.js
       index-rtl.css
       index.asset.php
-[39m[22m
 
-[1m[33mWARNING[39m[22m in [1mwebpack performance recommendations: 
+WARNING in webpack performance recommendations: 
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
-For more info visit https://webpack.js.org/guides/code-splitting/[39m[22m
+For more info visit https://webpack.js.org/guides/code-splitting/
 
-webpack 5.106.2 compiled with [1m[33m6 warnings[39m[22m in 22573 ms
+webpack 5.106.2 compiled with 6 warnings in 13189 ms
