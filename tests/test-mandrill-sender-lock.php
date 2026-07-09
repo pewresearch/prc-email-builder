@@ -214,7 +214,7 @@ namespace PRC\Platform\Email_Builder {
 
 namespace {
 
-	require_once dirname( __DIR__ ) . '/includes/class-mandrill-sender.php';
+	require_once dirname( __DIR__ ) . '/includes/mandrill/class-mandrill-sender.php';
 
 	use PRC\Platform\Email_Builder\Loader;
 	use PRC\Platform\Email_Builder\Mandrill_Sender;

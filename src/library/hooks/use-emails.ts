@@ -15,6 +15,9 @@ export interface EmailLibraryRow {
 	mailchimp_status: string;
 	mandrill_status: string;
 	delivery_mode: string;
+	open_rate: number | null;
+	click_rate: number | null;
+	report_sync_state?: string;
 }
 
 interface PaginationInfo {
@@ -53,6 +56,8 @@ function viewToQueryArgs(view: DataViewsView) {
 			title: 'title',
 			date: 'date',
 			modified: 'modified',
+			openRate: 'open_rate',
+			clickRate: 'click_rate',
 		};
 		args.orderby = fieldToOrderby[view.sort.field] || 'date';
 		args.order = view.sort.direction || 'desc';

@@ -23,8 +23,8 @@ namespace PRC\Platform\Email_Builder {
 	}
 
 	require_once PRC_EMAIL_BUILDER_DIR . '/includes/class-post-type.php';
-	require_once PRC_EMAIL_BUILDER_DIR . '/includes/class-template-registry.php';
-	require_once PRC_EMAIL_BUILDER_DIR . '/includes/class-template-resolver.php';
+	require_once PRC_EMAIL_BUILDER_DIR . '/includes/templates/class-template-registry.php';
+	require_once PRC_EMAIL_BUILDER_DIR . '/includes/templates/class-template-resolver.php';
 
 	function assert_same( mixed $expected, mixed $actual, string $message ): void {
 		if ( $expected !== $actual ) {

@@ -17,7 +17,7 @@ namespace {
 		return $default;
 	}
 
-	require_once dirname( __DIR__ ) . '/includes/class-mailchimp.php';
+	require_once dirname( __DIR__ ) . '/includes/mailchimp/class-mailchimp.php';
 
 	$failures = 0;
 

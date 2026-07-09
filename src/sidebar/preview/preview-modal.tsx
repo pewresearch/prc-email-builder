@@ -1,11 +1,11 @@
 /**
  * Email preview modal — redesigned to match the Newsletter Glue-style layout.
  *
- * Layout zones (top → bottom, all fixed except content):
+ * Layout zones (top → bottom):
  *  1. InboxBar        — compact horizontal FROM / SUBJECT / PREVIEW bar
  *  2. Toolbar         — VIEWPORT / SCHEME / VIEW toggle groups with all-caps labels
- *  3. Content         — size badge + browser chrome + iframe (scrollable) or HtmlView
- *  4. TestSendFooter  — borderless SEND TEST EMAIL TO strip
+ *  3. Content         — size badge + browser chrome + iframe or HtmlView (scrollable)
+ *  4. TestSendFooter  — pinned to modal bottom via flex layout (outside scroll region)
  */
 
 import { __, sprintf } from '@wordpress/i18n';
@@ -466,7 +466,7 @@ export function PreviewModal({ postId, onClose }: PreviewModalProps) {
 					)}
 				</div>
 
-				{/* Zone 4: Test-send footer */}
+				{/* Zone 4: Test-send footer (pinned to modal bottom) */}
 				<TestSendFooter postId={postId} />
 			</div>
 		</Modal>

@@ -102,7 +102,7 @@ namespace {
 		}
 	}
 
-	require dirname( __DIR__ ) . '/includes/class-system-email-sender.php';
+	require dirname( __DIR__ ) . '/includes/system-email/class-system-email-sender.php';
 
 	$dispatch = new ReflectionMethod( PRC\Platform\Email_Builder\System_Email_Sender::class, 'dispatch' );
 

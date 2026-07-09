@@ -11,6 +11,7 @@ import NewsletterPanel from './newsletter-panel';
 import { EmailPreviewMenuItem } from './preview/index';
 import { SendNewsletterSidebar } from './send/index';
 import EmailPatternSelector from './pattern-selector';
+import { EngagementPanel } from './engagement';
 import { isEmailPostType } from './use-newsletter-data';
 
 function NewsletterBuilderSidebar() {
@@ -27,6 +28,7 @@ function NewsletterBuilderSidebar() {
 		<>
 			<EmailPatternSelector />
 			<NewsletterPanel />
+			<EngagementPanel />
 			<SendNewsletterSidebar />
 			<EmailPreviewMenuItem />
 		</>

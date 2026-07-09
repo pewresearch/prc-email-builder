@@ -1,0 +1,87 @@
+.prc-email-engagement-panel {
+	.prc-email-engagement-metric {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 2px 0;
+	}
+
+	.prc-email-engagement-metric__label {
+		flex: 1 1 auto;
+		min-width: 0;
+		color: #757575;
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.prc-email-engagement-metric__value {
+		flex: 0 0 auto;
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1.4;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.prc-email-engagement-section-title {
+		margin: 0 0 4px;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: #757575;
+	}
+
+	.prc-email-engagement-clicks {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.prc-email-engagement-click {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 4px 0;
+		border-bottom: 1px solid #f0f0f0;
+
+		&:last-child {
+			border-bottom: none;
+		}
+	}
+
+	.prc-email-engagement-click__count {
+		flex: 0 0 auto;
+		min-width: 1.5em;
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1.4;
+		text-align: right;
+	}
+
+	.prc-email-engagement-click__url {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-size: 12px;
+		line-height: 1.4;
+		word-break: break-word;
+		text-decoration: none;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
+	.prc-email-engagement-clicks-more {
+		margin: 4px 0 0;
+		font-size: 11px;
+		color: #757575;
+	}
+
+	.prc-email-engagement-last-updated {
+		margin: 0;
+		font-size: 11px;
+		color: #757575;
+	}
+}

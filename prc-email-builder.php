@@ -19,7 +19,7 @@
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       prc-email-builder
- * Requires Plugins:  prc-scripts, prc-post-publish-pipeline
+ * Requires Plugins:  prc-scripts, prc-post-publish-pipeline, prc-block-forms
  */
 
 namespace PRC\Platform\Email_Builder;
@@ -53,8 +53,11 @@ if ( ! defined( 'PRC_PLATFORM' ) ) {
 function activate() {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-loader.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-post-type.php';
-	require_once plugin_dir_path( __FILE__ ) . 'includes/class-migration.php';
-	require_once plugin_dir_path( __FILE__ ) . 'includes/class-migration-scheduler.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/migration/class-migration.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/migration/class-migration-scheduler.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/system-email/class-system-email-recipients-table.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-enrollment.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-scheduler.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-plugin-activator.php';
 	Plugin_Activator::activate();
 }

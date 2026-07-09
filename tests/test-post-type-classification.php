@@ -78,8 +78,8 @@ namespace PRC\Platform\Email_Builder {
 	$GLOBALS['test_meta'] = [];
 
 	assert_true(
-		'mandrill' === Post_Type::transactional_delivery_mode( $txn ),
-		'Empty delivery_mode meta should default to mandrill on transactional posts.'
+		'dynamic' === Post_Type::transactional_delivery_mode( $txn ),
+		'Empty delivery_mode meta should default to dynamic on transactional posts.'
 	);
 
 	$GLOBALS['test_meta'][ 2 ] = [ 'prc_email_delivery_mode' => 'dynamic' ];

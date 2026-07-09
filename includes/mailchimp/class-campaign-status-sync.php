@@ -145,6 +145,13 @@ class Campaign_Status_Sync {
 	/**
 	 * Queue a Slack notification when Mailchimp reports the campaign as sent.
 	 * Uses Action Scheduler so delivery errors can retry without blocking status sync.
+	 *
+	 * Deduplicated per (post, campaign): both values are passed as the action
+	 * arguments with `$unique = true`. Action Scheduler 4.0.0 folds the arguments
+	 * into the uniqueness key (3.x keyed on hook + group only), which makes this
+	 * dedup correctly per post + campaign rather than collapsing every campaign's
+	 * notification in the `prc-email-builder` group into one. The handler is
+	 * additionally idempotent via the SENT_SLACK_NOTIFIED_META guard.
 	 */
 	private static function schedule_mailchimp_sent_slack_notification( int $post_id, string $campaign_id ): void {
 		if ( ! function_exists( 'as_enqueue_async_action' ) ) {

@@ -125,7 +125,7 @@ namespace {
 		}
 	}
 
-	require dirname( __DIR__ ) . '/includes/class-form-send-system-email.php';
+	require dirname( __DIR__ ) . '/includes/system-email/class-form-send-system-email.php';
 
 	$handler = new PRC\Platform\Email_Builder\Form_Send_System_Email();
 

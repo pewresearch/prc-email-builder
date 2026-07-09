@@ -206,4 +206,25 @@ test.describe('Editor: Email Preview View-menu item', () => {
 		await page.getByRole('button', { name: 'Close' }).click();
 		await expect(modal).not.toBeVisible();
 	});
+
+	test('test-send footer is reachable on a mobile viewport', async ({
+		admin,
+		page,
+	}) => {
+		await page.setViewportSize({ width: 375, height: 667 });
+		await admin.visitAdminPage(`post.php?post=${postId}&action=edit`);
+
+		const viewMenuButton = page.getByRole('button', { name: /^View$/ });
+		await viewMenuButton.click();
+		await page.getByRole('menuitem', { name: 'Email Preview' }).click();
+
+		await expect(
+			page.getByRole('dialog', { name: 'Email Preview' })
+		).toBeVisible();
+
+		await expect(page.getByText('SEND TEST EMAIL TO')).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: /Send test/i })
+		).toBeInViewport();
+	});
 });

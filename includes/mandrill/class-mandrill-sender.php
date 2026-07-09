@@ -68,6 +68,14 @@ class Mandrill_Sender {
 	/**
 	 * Queue a bulk Mandrill send to run outside the current HTTP request.
 	 *
+	 * Deduplicated per post: the post ID is passed as the action argument with a
+	 * constant group and `$unique = true`. Under Action Scheduler 3.x uniqueness
+	 * was keyed on hook + group only, so a pending send for *any* post in the
+	 * `prc-email-builder` group blocked every other post's send — a latent
+	 * over-dedup bug that contradicted the per-post "already queued for post %d"
+	 * error below. Action Scheduler 4.0.0 folds the arguments into the dedup key
+	 * (hook + group + post ID), so this now correctly dedupes per post.
+	 *
 	 * @param int $post_id Newsletter post ID.
 	 * @return int|WP_Error Action Scheduler action ID, or WP_Error on failure.
 	 */

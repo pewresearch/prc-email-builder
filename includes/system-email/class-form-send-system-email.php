@@ -19,7 +19,7 @@ use WP_Error;
  * action `sendSystemEmail` is slugified by the form view script). The submission
  * body is the standard prc-block/form envelope:
  *
- *   { formName, formId, redirectTarget, formFields: [ { name, type, value, ... } ] }
+ *   { formName, formId, actionConfig, formFields: [ { name, type, value, ... } ] }
  *
  * This handler:
  *   1. for non-privileged submissions (callers without `edit_post` on the
@@ -39,7 +39,7 @@ use WP_Error;
  *   6. delegates to {@see System_Email_Sender::send()}
  *
  * Resolution by `system_email_key` uses the published newsletter's
- * `prc_email_system_email_key` meta (see {@see Post_Type::get_by_system_email_key()}),
+ * post slug (see {@see Post_Type::get_by_system_email_key()}),
  * so a form can map an abstract key (e.g. a quiz group slug) to the newsletter
  * without hard-coding post IDs.
  */
@@ -179,10 +179,14 @@ class Form_Send_System_Email {
 
 		$result = System_Email_Sender::send( $post_id, $email, $context );
 		if ( is_wp_error( $result ) ) {
+			// A failed send should never lose the submission.
+			$this->log_response( $form_data, $form_fields, 'send_failed' );
 			return $result;
 		}
 
 		$newsletter_signup = $this->maybe_subscribe_to_mailchimp( $email, $form_fields, $post_id, $form_data, $request );
+
+		$this->log_response( $form_data, $form_fields, 'sent', $newsletter_signup );
 
 		$response = [
 			'status'  => 'success',
@@ -193,6 +197,44 @@ class Form_Send_System_Email {
 		}
 
 		return new WP_REST_Response( $response, 200 );
+	}
+
+	/**
+	 * Log the submission to the prc-block-library form responses table.
+	 *
+	 * Opt-in integration: guarded by class_exists so prc-email-builder never
+	 * hard-depends on prc-block-library. Dry runs return before this is
+	 * reached, so editor previews are never logged. The log API sanitizes
+	 * the fields and strips captcha/nonce system tokens.
+	 *
+	 * @param array<string, mixed> $form_data         Parsed form envelope.
+	 * @param array                $form_fields       Raw submitted form fields.
+	 * @param string               $status            Response status: 'sent' or 'send_failed'.
+	 * @param string|null          $newsletter_signup Mailchimp opt-in outcome, when a signup field was present.
+	 */
+	private function log_response( array $form_data, array $form_fields, string $status, ?string $newsletter_signup = null ): void {
+		if ( ! class_exists( '\\PRC\\Platform\\Block_Forms\\Form_Response_Log' ) ) {
+			return;
+		}
+
+		if ( null !== $newsletter_signup ) {
+			$form_fields[] = [
+				'name'  => 'newsletter_signup_result',
+				'label' => 'Newsletter Signup',
+				'type'  => 'text',
+				'value' => $newsletter_signup,
+			];
+		}
+
+		\PRC\Platform\Block_Forms\Form_Response_Log::log(
+			[
+				'form_post_id' => absint( $form_data['formPostId'] ?? 0 ),
+				'form_name'    => sanitize_text_field( (string) ( $form_data['formName'] ?? '' ) ),
+				'action'       => 'sendSystemEmail',
+				'status'       => $status,
+				'fields'       => $form_fields,
+			]
+		);
 	}
 
 	/**
@@ -299,7 +341,7 @@ class Form_Send_System_Email {
 	 * Resolve the target newsletter post ID from the submitted fields.
 	 *
 	 * Accepts either a direct `newsletter_post_id` field or a
-	 * `system_email_key` field resolved against published newsletter meta.
+	 * `system_email_key` field resolved against the published newsletter slug.
 	 *
 	 * @param array $form_fields Submitted form fields.
 	 */
@@ -589,9 +631,14 @@ class Form_Send_System_Email {
 	 * @param array<string, mixed> $form_data Parsed form envelope.
 	 */
 	private function resolve_origin_url( array $form_data, WP_REST_Request $request ): string {
-		$redirect = isset( $form_data['redirectTarget'] ) ? (string) $form_data['redirectTarget'] : '';
-		if ( '' !== $redirect && filter_var( $redirect, FILTER_VALIDATE_URL ) ) {
-			return esc_url_raw( $redirect );
+		$action_config = $form_data['actionConfig'] ?? array();
+		if ( ! is_array( $action_config ) ) {
+			$action_config = array();
+		}
+
+		$origin_url = isset( $action_config['originUrl'] ) ? (string) $action_config['originUrl'] : '';
+		if ( '' !== $origin_url && filter_var( $origin_url, FILTER_VALIDATE_URL ) ) {
+			return esc_url_raw( $origin_url );
 		}
 
 		$referer = $request->get_header( 'referer' );

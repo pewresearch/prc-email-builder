@@ -26,8 +26,9 @@ use WP_Error;
 class Mailchimp {
 	const SETTINGS_KEY            = 'prc_email_builder_settings';
 	const API_KEY_CONSTANT        = 'PRC_PLATFORM_MAILCHIMP_KEY';
-	const AUDIENCES_TRANSIENT     = 'prc_email_mailchimp_audiences';
+	const AUDIENCES_TRANSIENT       = 'prc_email_mailchimp_audiences';
 	const SEGMENTS_TRANSIENT_PREFIX = 'prc_email_mailchimp_segments_saved_';
+	const LIST_TOTAL_TRANSIENT_PREFIX = 'prc_email_mailchimp_list_total_';
 
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
@@ -157,6 +158,87 @@ class Mailchimp {
 	}
 
 	/**
+	 * Returns the total subscribed member count for a Mailchimp audience (list).
+	 * Result is cached per audience for 1 hour.
+	 *
+	 * @param string $audience_id Mailchimp list (audience) ID.
+	 * @return int|WP_Error
+	 */
+	public function get_list_total_count( string $audience_id ): int|WP_Error {
+		if ( '' === $audience_id ) {
+			return 0;
+		}
+
+		$cache_key = self::LIST_TOTAL_TRANSIENT_PREFIX . md5( $audience_id );
+		$cached    = get_transient( $cache_key );
+		if ( false !== $cached && is_numeric( $cached ) ) {
+			return (int) $cached;
+		}
+
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		try {
+			$response = $client->lists->getList( $audience_id, 'stats.member_count' );
+		} catch ( ApiException $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_list_total_error' );
+		}
+
+		$count = (int) ( $response->stats->member_count ?? 0 );
+		set_transient( $cache_key, $count, HOUR_IN_SECONDS );
+
+		return $count;
+	}
+
+	/**
+	 * Returns subscriber count for an audience, optionally scoped to a saved segment.
+	 *
+	 * @param string $audience_id Mailchimp list (audience) ID.
+	 * @param string $segment_id  Mailchimp saved-segment ID; empty = entire audience.
+	 * @return int|WP_Error
+	 */
+	public function get_subscriber_count( string $audience_id, string $segment_id = '' ): int|WP_Error {
+		if ( '' === $audience_id ) {
+			return 0;
+		}
+
+		if ( '' !== $segment_id ) {
+			$segments = $this->get_segments( $audience_id );
+			if ( is_wp_error( $segments ) ) {
+				return $segments;
+			}
+
+			$segment_id_int = (int) $segment_id;
+			foreach ( $segments as $segment ) {
+				if ( $segment_id_int === (int) ( $segment['id'] ?? 0 ) ) {
+					return (int) ( $segment['member_count'] ?? 0 );
+				}
+			}
+
+			$client = $this->get_client();
+			if ( is_wp_error( $client ) ) {
+				return $client;
+			}
+
+			try {
+				$response = $client->lists->getSegment(
+					$audience_id,
+					$segment_id,
+					'member_count'
+				);
+			} catch ( ApiException $e ) {
+				return $this->to_wp_error( $e, 'mailchimp_segment_count_error' );
+			}
+
+			return (int) ( $response->member_count ?? 0 );
+		}
+
+		return $this->get_list_total_count( $audience_id );
+	}
+
+	/**
 	 * Creates a Mailchimp campaign draft for a newsletter post and sets its HTML
 	 * content. When prc_email_mailchimp_segment_id is set, restricts the
 	 * recipients to that saved segment. Returns the Mailchimp campaign ID on success.
@@ -170,7 +252,7 @@ class Mailchimp {
 		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
 		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
 		$segment_id   = (int) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true );
-		$settings     = $this->get_settings();
+		$from         = self::resolve_from_for_post( $post_id );
 
 		if ( empty( $audience_id ) ) {
 			return new WP_Error( 'missing_audience', 'No Mailchimp audience selected for this newsletter.' );
@@ -194,8 +276,8 @@ class Mailchimp {
 					'title'        => get_the_title( $post_id ),
 					'subject_line' => $subject,
 					'preview_text' => $preview_text,
-					'from_name'    => $settings['from_name'] ?? '',
-					'reply_to'     => $settings['from_email'] ?? '',
+					'from_name'    => $from['from_name'],
+					'reply_to'     => $from['from_email'],
 					'auto_footer'  => false,
 				],
 			] );
@@ -290,7 +372,7 @@ class Mailchimp {
 
 		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
 		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
-		$settings     = self::get_settings();
+		$from         = self::resolve_from_for_post( $post_id );
 
 		$client = $this->get_client();
 		if ( is_wp_error( $client ) ) {
@@ -305,8 +387,8 @@ class Mailchimp {
 						'title'        => get_the_title( $post_id ),
 						'subject_line' => $subject,
 						'preview_text' => $preview_text,
-						'from_name'    => $settings['from_name'] ?? '',
-						'reply_to'     => $settings['from_email'] ?? '',
+						'from_name'    => $from['from_name'],
+						'reply_to'     => $from['from_email'],
 					],
 				]
 			);
@@ -415,6 +497,54 @@ class Mailchimp {
 	}
 
 	/**
+	 * Fetches aggregate campaign report metrics (no member sub-resources).
+	 *
+	 * @param string $campaign_id Mailchimp campaign ID.
+	 * @return array|WP_Error
+	 */
+	public function get_campaign_report( string $campaign_id ): array|WP_Error {
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		$fields = 'emails_sent,send_time,opens,clicks,bounces,unsubscribed,abuse_reports';
+
+		try {
+			$response = $client->reports->getCampaignReport( $campaign_id, $fields );
+		} catch ( ApiException $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_report_error' );
+		}
+
+		return (array) $response;
+	}
+
+	/**
+	 * Fetches aggregate click-by-URL details (no member sub-resources).
+	 *
+	 * @param string $campaign_id Mailchimp campaign ID.
+	 * @param int    $count       Max URLs to request from Mailchimp.
+	 * @return array|WP_Error
+	 */
+	public function get_campaign_click_details( string $campaign_id, int $count = 100 ): array|WP_Error {
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		$count = max( 1, min( 1000, $count ) );
+		$fields = 'urls_clicked.url,urls_clicked.total_clicks';
+
+		try {
+			$response = $client->reports->getCampaignClickDetails( $campaign_id, $fields, null, $count );
+		} catch ( ApiException $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_click_details_error' );
+		}
+
+		return (array) $response;
+	}
+
+	/**
 	 * Subscribes an email address to a Mailchimp audience.
 	 * Uses the members upsert endpoint so re-subscribing is safe.
 	 *
@@ -471,6 +601,49 @@ class Mailchimp {
 	// -------------------------------------------------------------------------
 	// Settings helpers (no REST exposure)
 	// -------------------------------------------------------------------------
+
+	/**
+	 * Resolve From name/email for a campaign, preferring the assigned newsletter list term meta.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ from_name: string, from_email: string }
+	 */
+	public static function resolve_from_for_post( int $post_id ): array {
+		$settings   = self::get_settings();
+		$from_name  = (string) ( $settings['from_name'] ?? '' );
+		$from_email = (string) ( $settings['from_email'] ?? '' );
+
+		$term_ids = wp_get_object_terms(
+			$post_id,
+			Post_Type::TAXONOMY,
+			[
+				'fields' => 'ids',
+			]
+		);
+
+		if ( is_wp_error( $term_ids ) || empty( $term_ids ) ) {
+			return [
+				'from_name'  => $from_name,
+				'from_email' => $from_email,
+			];
+		}
+
+		$term_id         = (int) $term_ids[0];
+		$list_from_name  = (string) get_term_meta( $term_id, 'prc_newsletter_list_from_name', true );
+		$list_from_email = (string) get_term_meta( $term_id, 'prc_newsletter_list_from_email', true );
+
+		if ( '' !== $list_from_name ) {
+			$from_name = $list_from_name;
+		}
+		if ( '' !== $list_from_email && is_email( $list_from_email ) ) {
+			$from_email = $list_from_email;
+		}
+
+		return [
+			'from_name'  => $from_name,
+			'from_email' => $from_email,
+		];
+	}
 
 	/**
 	 * Returns saved settings merged with defaults.
@@ -695,10 +868,15 @@ class Mailchimp {
 	 */
 	private function to_wp_error( \Throwable $e, string $code ): WP_Error {
 		$detail = $e->getMessage();
+		$status = 500;
 		if ( $e instanceof ApiException ) {
 			$body   = json_decode( (string) $e->getResponseBody(), true );
 			$detail = $body['detail'] ?? $body['title'] ?? $detail;
+			$status = (int) $e->getCode();
+			if ( $status < 100 || $status > 599 ) {
+				$status = 500;
+			}
 		}
-		return new WP_Error( $code, $detail, [ 'status' => (int) $e->getCode() ?: 500 ] );
+		return new WP_Error( $code, $detail, [ 'status' => $status ] );
 	}
 }

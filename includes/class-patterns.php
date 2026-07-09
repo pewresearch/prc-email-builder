@@ -21,6 +21,7 @@ class Patterns {
 
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'init', $this, 'register_category' );
+		$loader->add_action( 'admin_menu', $this, 'register_pattern_admin_links' );
 		// $loader->add_action( 'init', $this, 'register_patterns' );
 	}
 
@@ -32,6 +33,46 @@ class Patterns {
 		register_block_pattern_category(
 			self::TRANSACTIONAL_CATEGORY_SLUG,
 			[ 'label' => _x( 'Transactional Email', 'Block pattern category', 'prc-email-builder' ) ]
+		);
+	}
+
+	/**
+	 * Submenu links to the site editor pattern library filtered by email category.
+	 *
+	 * @hook admin_menu
+	 */
+	public function register_pattern_admin_links(): void {
+		$parent = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
+		$cap    = 'edit_theme_options';
+
+		add_submenu_page(
+			$parent,
+			__( 'Campaign Patterns', 'prc-email-builder' ),
+			__( 'Campaign Patterns', 'prc-email-builder' ),
+			$cap,
+			add_query_arg(
+				[
+					'path'       => '/pattern',
+					'postType'   => 'wp_block',
+					'categoryId' => self::CAMPAIGN_CATEGORY_SLUG,
+				],
+				'site-editor.php'
+			)
+		);
+
+		add_submenu_page(
+			$parent,
+			__( 'Transactional Patterns', 'prc-email-builder' ),
+			__( 'Transactional Patterns', 'prc-email-builder' ),
+			$cap,
+			add_query_arg(
+				[
+					'path'       => '/pattern',
+					'postType'   => 'wp_block',
+					'categoryId' => self::TRANSACTIONAL_CATEGORY_SLUG,
+				],
+				'site-editor.php'
+			)
 		);
 	}
 

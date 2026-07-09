@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
+use PRC\Platform\Email_Builder\Reports\Report_Store;
+use PRC\Platform\Email_Builder\Reports\Report_Sync;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -140,6 +142,40 @@ class REST_API {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/campaigns/(?P<post_id>\d+)/report',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_campaign_report' ],
+				'permission_callback' => [ $this, 'campaign_report_permission_check' ],
+				'args'                => [
+					'post_id' => [
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/campaigns/(?P<post_id>\d+)/report/refresh',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'refresh_campaign_report' ],
+				'permission_callback' => [ $this, 'campaign_report_permission_check' ],
+				'args'                => [
+					'post_id' => [
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/audiences/(?P<audience_id>[a-f0-9]+)/segments',
 			[
 				'methods'             => WP_REST_Server::READABLE,
@@ -149,6 +185,28 @@ class REST_API {
 					'audience_id' => [
 						'type'              => 'string',
 						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audiences/(?P<audience_id>[a-f0-9]+)/count',
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'get_audience_subscriber_count' ],
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+				'args'                => [
+					'audience_id' => [
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					],
+					'segment_id'  => [
+						'type'              => 'string',
+						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
 					],
 				],
@@ -193,7 +251,7 @@ class REST_API {
 						'type'              => 'string',
 						'default'           => 'date',
 						'sanitize_callback' => 'sanitize_text_field',
-						'enum'              => [ 'date', 'modified', 'title' ],
+						'enum'              => [ 'date', 'modified', 'title', 'open_rate', 'click_rate' ],
 					],
 					'order'             => [
 						'type'              => 'string',
@@ -303,6 +361,56 @@ class REST_API {
 		$post_id = (int) $request->get_param( 'post_id' );
 
 		return $post_id > 0 && current_user_can( 'edit_post', $post_id );
+	}
+
+	/**
+	 * Permission check for campaign engagement report endpoints.
+	 */
+	public function campaign_report_permission_check( WP_REST_Request $request ): bool {
+		$post_id = (int) $request->get_param( 'post_id' );
+
+		return $post_id > 0 && current_user_can( 'edit_post', $post_id );
+	}
+
+	/**
+	 * GET /campaigns/{post_id}/report — stored engagement envelope for the editor panel.
+	 */
+	public function get_campaign_report( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+		$post    = get_post( $post_id );
+
+		if ( ! $post || ! Post_Type::is_campaign_post( $post ) ) {
+			return new \WP_Error(
+				'invalid_post',
+				__( 'Invalid campaign post.', 'prc-email-builder' ),
+				[ 'status' => 404 ]
+			);
+		}
+
+		return rest_ensure_response( Report_Store::envelope( $post_id ) );
+	}
+
+	/**
+	 * POST /campaigns/{post_id}/report/refresh — on-demand Mailchimp report pull.
+	 */
+	public function refresh_campaign_report( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+		$post    = get_post( $post_id );
+
+		if ( ! $post || ! Post_Type::is_campaign_post( $post ) ) {
+			return new \WP_Error(
+				'invalid_post',
+				__( 'Invalid campaign post.', 'prc-email-builder' ),
+				[ 'status' => 404 ]
+			);
+		}
+
+		$result = Report_Sync::refresh_now( $post_id );
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		return rest_ensure_response( $result );
 	}
 
 	/**
@@ -446,6 +554,31 @@ class REST_API {
 	}
 
 	/**
+	 * Returns subscriber count for an audience, optionally scoped to a saved segment.
+	 *
+	 * @param WP_REST_Request $request Request with audience_id and optional segment_id.
+	 */
+	public function get_audience_subscriber_count( WP_REST_Request $request ): WP_REST_Response {
+		$audience_id = (string) $request['audience_id'];
+		$segment_id  = (string) ( $request['segment_id'] ?? '' );
+		$count       = ( new Mailchimp() )->get_subscriber_count( $audience_id, $segment_id );
+
+		if ( is_wp_error( $count ) ) {
+			return new WP_REST_Response(
+				[ 'error' => $count->get_error_message() ],
+				503
+			);
+		}
+
+		return rest_ensure_response(
+			[
+				'count' => (int) $count,
+				'scope' => '' !== $segment_id ? 'segment' : 'audience',
+			]
+		);
+	}
+
+	/**
 	 * Push current post HTML and settings to an existing Mailchimp draft campaign.
 	 *
 	 * @param WP_REST_Request $request Request with post_id.
@@ -536,6 +669,18 @@ class REST_API {
 			'update_post_term_cache' => true,
 		];
 
+		$orderby_param      = (string) $request->get_param( 'orderby' );
+		$engagement_sort    = in_array( $orderby_param, [ 'open_rate', 'click_rate' ], true );
+		$engagement_meta_key = $orderby_param === 'click_rate'
+			? Report_Store::META_CLICK_RATE
+			: Report_Store::META_OPEN_RATE;
+
+		if ( $engagement_sort ) {
+			$query_args['posts_per_page'] = -1;
+			$query_args['paged']          = 1;
+			$query_args['orderby']        = 'date';
+		}
+
 		$tax_query = $this->build_library_tax_query( (string) $request->get_param( 'newsletter_list' ) );
 		if ( ! empty( $tax_query ) ) {
 			$query_args['tax_query'] = $tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
@@ -559,16 +704,87 @@ class REST_API {
 			$query = new \WP_Query( $query_args );
 		}
 
+		$posts = $query->posts;
+
+		if ( $engagement_sort ) {
+			$order = strtoupper( (string) $request->get_param( 'order' ) ) === 'ASC' ? 'ASC' : 'DESC';
+			$posts = $this->sort_posts_by_engagement_rate( $posts, $engagement_meta_key, $order );
+			$total       = count( $posts );
+			$total_pages = max( 1, (int) ceil( $total / $per_page ) );
+			$offset      = ( $page - 1 ) * $per_page;
+			$posts       = array_slice( $posts, $offset, $per_page );
+		} else {
+			$total       = (int) $query->found_posts;
+			$total_pages = (int) $query->max_num_pages;
+		}
+
 		$rows = array_map(
 			fn( \WP_Post $post ) => $this->shape_library_row( $post ),
-			$query->posts
+			$posts
 		);
 
 		$response = rest_ensure_response( $rows );
-		$response->header( 'X-WP-Total', (string) (int) $query->found_posts );
-		$response->header( 'X-WP-TotalPages', (string) (int) $query->max_num_pages );
+		$response->header( 'X-WP-Total', (string) $total );
+		$response->header( 'X-WP-TotalPages', (string) $total_pages );
 
 		return $response;
+	}
+
+	/**
+	 * Sort library posts by denormalized engagement rate with nulls last.
+	 *
+	 * @param \WP_Post[] $posts     Posts to sort.
+	 * @param string     $meta_key  Open or click rate meta key.
+	 * @param string     $order     ASC or DESC.
+	 * @return \WP_Post[]
+	 */
+	private function sort_posts_by_engagement_rate( array $posts, string $meta_key, string $order ): array {
+		usort(
+			$posts,
+			function ( \WP_Post $a, \WP_Post $b ) use ( $meta_key, $order ): int {
+				$va = $this->engagement_rate_for_sort( $a->ID, $meta_key );
+				$vb = $this->engagement_rate_for_sort( $b->ID, $meta_key );
+
+				if ( null === $va && null === $vb ) {
+					return 0;
+				}
+				if ( null === $va ) {
+					return 1;
+				}
+				if ( null === $vb ) {
+					return -1;
+				}
+
+				if ( 'ASC' === $order ) {
+					return $va <=> $vb;
+				}
+
+				return $vb <=> $va;
+			}
+		);
+
+		return $posts;
+	}
+
+	/**
+	 * @return float|null Null when the row has no stored engagement rate.
+	 */
+	private function engagement_rate_for_sort( int $post_id, string $meta_key ): ?float {
+		if ( Post_Type::CAMPAIGN_POST_TYPE !== get_post_type( $post_id ) ) {
+			return null;
+		}
+
+		if ( Report_Store::STATE_OK !== Report_Store::get_sync_state( $post_id )
+			&& null === Report_Store::get_report( $post_id ) ) {
+			return null;
+		}
+
+		$value = get_post_meta( $post_id, $meta_key, true );
+		if ( '' === $value && null === Report_Store::get_report( $post_id ) ) {
+			return null;
+		}
+
+		return (float) $value;
 	}
 
 	/**
@@ -860,6 +1076,15 @@ class REST_API {
 			'mandrill_status'  => (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true ),
 			'delivery_mode'    => Post_Type::is_transactional_post( $post )
 				? Post_Type::transactional_delivery_mode( $post )
+				: '',
+			'open_rate'        => $type === 'campaign' && null !== Report_Store::get_report( $post->ID )
+				? (float) get_post_meta( $post->ID, Report_Store::META_OPEN_RATE, true )
+				: null,
+			'click_rate'       => $type === 'campaign' && null !== Report_Store::get_report( $post->ID )
+				? (float) get_post_meta( $post->ID, Report_Store::META_CLICK_RATE, true )
+				: null,
+			'report_sync_state' => $type === 'campaign'
+				? Report_Store::get_sync_state( $post->ID )
 				: '',
 		];
 	}

@@ -66,7 +66,7 @@ class System_Email_Sender {
 		if ( 'publish' !== $post->post_status ) {
 			return new WP_Error( 'not_published', 'Transactional email is not published.', [ 'status' => 409 ] );
 		}
-		if ( self::DELIVERY_MODE !== get_post_meta( $post_id, 'prc_email_delivery_mode', true ) ) {
+		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
 			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
 		}
 		if ( ! is_email( $to_email ) ) {
@@ -142,7 +142,7 @@ class System_Email_Sender {
 		if ( 'publish' !== $post->post_status ) {
 			return new WP_Error( 'not_published', 'Transactional email is not published.', [ 'status' => 409 ] );
 		}
-		if ( self::DELIVERY_MODE !== get_post_meta( $post_id, 'prc_email_delivery_mode', true ) ) {
+		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
 			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
 		}
 
@@ -219,7 +219,7 @@ class System_Email_Sender {
 		if ( ! $post instanceof WP_Post || ! Post_Type::is_transactional_post( $post ) ) {
 			return new WP_Error( 'invalid_post', 'Transactional email post not found.', [ 'status' => 404 ] );
 		}
-		if ( self::DELIVERY_MODE !== get_post_meta( $post_id, 'prc_email_delivery_mode', true ) ) {
+		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
 			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
 		}
 

@@ -50,7 +50,8 @@ class Assets {
 			return;
 		}
 
-		if ( ! Post_Type::is_email_post_type( $screen->post_type ) ) {
+		$post_type = $this->resolve_editor_post_type( $screen->post_type );
+		if ( ! Post_Type::is_email_post_type( $post_type ) ) {
 			return;
 		}
 
@@ -113,5 +114,39 @@ class Assets {
 				],
 			]
 		);
+	}
+
+	/**
+	 * Resolve the post type for the current block editor screen.
+	 *
+	 * `WP_Screen::$post_type` is not always populated during
+	 * `enqueue_block_editor_assets` (e.g. some CPT edit screens report `post`),
+	 * so fall back to the edited post or `post_type` query arg.
+	 */
+	private function resolve_editor_post_type( string $screen_post_type ): string {
+		if ( Post_Type::is_email_post_type( $screen_post_type ) ) {
+			return $screen_post_type;
+		}
+
+		global $post;
+		if ( $post instanceof \WP_Post && Post_Type::is_email_post_type( $post->post_type ) ) {
+			return $post->post_type;
+		}
+
+		if ( isset( $_GET['post'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$post_type = get_post_type( (int) $_GET['post'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( is_string( $post_type ) && Post_Type::is_email_post_type( $post_type ) ) {
+				return $post_type;
+			}
+		}
+
+		if ( isset( $_GET['post_type'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$post_type = sanitize_key( (string) wp_unslash( $_GET['post_type'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( Post_Type::is_email_post_type( $post_type ) ) {
+				return $post_type;
+			}
+		}
+
+		return $screen_post_type;
 	}
 }

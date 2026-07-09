@@ -5,18 +5,40 @@ Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platfor
 ## What it does
 
 - Registers two custom post types — `prc_email_campaign` (Mailchimp campaigns) and `prc_email_txn` (Mandrill bulk + dynamic system emails) — plus a `prc_newsletter_list` taxonomy for organizing email products (The Briefing, Notifications, etc.)
-- Provides an editor sidebar panel for setting the email subject line, preview text, and Mailchimp audience
+- Provides editor panels for subject line, preview text, and newsletter list assignment (see [Editor sidebars](#editor-sidebars))
 - Converts block content to email-safe HTML via the deterministic `Email_Block_Converter` pipeline
 - Creates a Mailchimp campaign draft automatically on publish
 - Registers the "The Briefing" block pattern as a starting-point template
 - Supports a `dynamic` delivery channel: a newsletter is published as a reusable, per-recipient template sent on demand (e.g. from a `prc-block/form` via the `sendSystemEmail` action), with block-bits resolving merge fields per send
 - Settings page under **Newsletters → Settings** for Mailchimp API key, From Name, and From Email
-- **Email Library** admin page (`Newsletters → Library`) — DataViews listing of campaigns and transactional emails with filters for type, newsletter list, and combined Mailchimp/Mandrill send status
+- **Email Library** admin page (`Newsletters → Library`) — DataViews listing of campaigns and transactional emails with filters for type, newsletter list, combined Mailchimp/Mandrill send status, and sortable open/click-rate columns for sent campaigns
+- **Engagement reporting** for Mailchimp campaigns — daily Action Scheduler sync plus on-demand refresh; sidebar **Engagement** panel on campaign posts shows opens, clicks, bounces, unsubscribes, and click-by-URL breakdown
+- **Scheduled automations** for dynamic system emails — configure follow-up (drip) steps that send X calendar days after the initial email in a fixed daily send window (see [Scheduled automations](#scheduled-automations))
+- **System email audience tooling** — durable per-recipient send log plus WP-CLI builders for Mandrill activity exports and log-derived bulk audiences (see [System email audiences](#system-email-audiences))
+
+## Editor sidebars
+
+Email posts split producer controls across the **document panel** (always visible) and a pinned **plugin sidebar** (toolbar send icon):
+
+| Post type | Document panel ("Newsletter Settings") | Plugin sidebar |
+| --- | --- | --- |
+| `prc_email_campaign` | Subject, preview text, newsletter list picker | **Campaign Setup** — Mailchimp audience/segment/template overrides, draft update, and send actions |
+| `prc_email_txn` | Subject and preview text only | **Transactional Setup** — delivery type, Mandrill recipient list or dynamic system email slug, automations, and send actions |
+
+**Campaign Setup** (`src/sidebar/send/`) is available before and after publish. When a `prc_newsletter_list` term is assigned, audience/segment fields in Campaign Setup show "Locked by newsletter list" (values copied from term meta on save).
+
+**Transactional Setup** hosts:
+
+- **Dispatch Info** (collapsible) — transactional type (`mandrill` bulk vs `dynamic` per-recipient), Mandrill recipient list picker, or dynamic **system email slug**
+- **Automations** (collapsible, dynamic only) — follow-up step configuration (moved from the document panel)
+- Send / draft actions and delivery status notices
+
+Dynamic system emails are identified by their **post slug** (`post_name`), not a separate meta field. The slug control in Transactional Setup is the lookup key forms and other plugins use when sending (e.g. `typology-loyal-liberals`). Legacy `prc_email_system_email_key` meta is migrated with `wp prc email migrate-system-keys`.
 
 ## Publish flow
 
-1. Author creates a `prc_email_campaign` post and sets subject, preview text, and audience in the sidebar
-2. _(Optional)_ Assign a `prc_newsletter_list` term — when present, audience and segment post meta are overwritten from the term's Mailchimp settings on save (see [Newsletter lists](#newsletter-lists))
+1. Author creates a `prc_email_campaign` post and sets subject, preview text, and (optionally) newsletter list in the document panel
+2. _(Optional)_ Assign a `prc_newsletter_list` term — when present, audience and segment post meta are overwritten from the term's Mailchimp settings on save (see [Newsletter lists](#newsletter-lists)). Advanced audience/segment/template overrides live in **Campaign Setup**.
 3. _(Optional)_ Open **Email Preview** or click **Refresh preview** in the sidebar to verify rendered HTML
 4. Author publishes — email HTML is rendered synchronously and a Mailchimp campaign draft is created immediately
 5. Author reviews and sends the campaign from the Mailchimp dashboard
@@ -39,13 +61,13 @@ Constraints (enforced server-side):
 `Newsletters → Library` renders a `@wordpress/dataviews` table backed by
 `GET /prc-email-builder/v1/library`. Filters:
 
-| Query param | Values | Notes |
-| --- | --- | --- |
-| `post_type` | `all`, `campaign`, `txn` | Campaign vs transactional emails |
-| `newsletter_list` | comma-separated term slugs | `prc_newsletter_list` taxonomy |
-| `mailchimp_status` | `campaign:<status>` values | e.g. `campaign:save`, `campaign:sent` |
-| `mandrill_status` | `txn:<status>` values | Mandrill send status for transactional posts |
-| `search`, `orderby`, `order`, `page`, `per_page` | standard | Pagination via `X-WP-Total` headers |
+| Query param                                      | Values                     | Notes                                        |
+| ------------------------------------------------ | -------------------------- | -------------------------------------------- |
+| `post_type`                                      | `all`, `campaign`, `txn`   | Campaign vs transactional emails             |
+| `newsletter_list`                                | comma-separated term slugs | `prc_newsletter_list` taxonomy               |
+| `mailchimp_status`                               | `campaign:<status>` values | e.g. `campaign:save`, `campaign:sent`        |
+| `mandrill_status`                                | `txn:<status>` values      | Mandrill send status for transactional posts |
+| `search`, `orderby`, `order`, `page`, `per_page` | standard                   | Pagination via `X-WP-Total` headers          |
 
 Send-status filter labels are merged from Mailchimp and Mandrill option sets in
 `Send_Status::library_filter_options()`.
@@ -54,10 +76,10 @@ Send-status filter labels are merged from Mailchimp and Mandrill option sets in
 
 `prc_newsletter_list` taxonomy terms can store default Mailchimp targeting:
 
-| Term meta key | Purpose |
-| --- | --- |
+| Term meta key                     | Purpose                                               |
+| --------------------------------- | ----------------------------------------------------- |
 | `prc_newsletter_list_audience_id` | Default Mailchimp audience for campaigns on this list |
-| `prc_newsletter_list_segment_id` | Default saved segment within that audience |
+| `prc_newsletter_list_segment_id`  | Default saved segment within that audience            |
 
 When a campaign is saved with one or more list terms assigned,
 `Newsletter_List::override_campaign_audience_from_list()` (priority 9 on
@@ -66,32 +88,127 @@ When a campaign is saved with one or more list terms assigned,
 - Keeps only the first assigned term if multiple are set
 - Overwrites `prc_email_mailchimp_audience_id` and `prc_email_mailchimp_segment_id` post meta from the term
 
-In the editor sidebar, audience/segment fields show "Locked by newsletter list" when
+In the editor, audience/segment fields in **Campaign Setup** show "Locked by newsletter list" when
 a list term drives the values. Term admin UI (`src/term-admin/`) loads segments
 dynamically when the audience changes.
 
+## System email audiences
+
+Bulk transactional sends (`prc_email_txn` + `prc_email_delivery_mode = mandrill`) target a **recipient list** stored in `wp_options` as `prc_email_audience_{key}` with companion `{key}_meta` (label, count, `built_at`, source). The Transactional Setup sidebar lists available audiences built via CLI.
+
+Every dynamic system email send is also logged durably in `{prefix}prc_email_system_email_recipients` (`system_email_key`, `post_id`, `email`, first/last sent timestamps, send count). The key is the newsletter post slug.
+
+### WP-CLI
+
+```bash
+# List / create / delete test audiences
+wp prc email audience list
+wp prc email audience create --emails=you@example.com,qa@example.com --key=qa --label="QA test"
+wp prc email audience delete --key=qa --yes
+
+# Build from Mandrill activity export (API or local CSV)
+wp prc email audience build-from-mandrill \
+  --key=typology-2026-requesters \
+  --date-from=2026-05-01 \
+  --label="Typology system-email requesters" \
+  --dry-run
+
+# Build from the durable send log (exact key, comma-separated, or prefix wildcard)
+wp prc email audience build-from-log \
+  --system-email-key=typology-2026-* \
+  --key=typology-2026-requesters \
+  --dry-run
+
+# Migrate legacy prc_email_system_email_key meta to post slugs
+wp prc email migrate-system-keys --dry-run
+wp prc email migrate-system-keys --dry-run=false
+```
+
+Both `build-from-*` commands accept `--create-post` to draft a `prc_email_txn` newsletter pre-targeted at the new audience.
+
+## Scheduled automations
+
+Dynamic system emails (`prc_email_txn` + `prc_email_delivery_mode = dynamic`) can carry
+a follow-up **automation**: when the initial email is sent to a recipient, the platform
+schedules one or more follow-up messages after a configurable delay (e.g. 3 days, 7 days),
+delivered in a fixed daily **send window**.
+
+**Authoring.** The **Automations** collapsible panel in **Transactional Setup** (dynamic system emails only)
+edits the `prc_email_automation_config` object meta:
+
+```json
+{
+	"send_window": { "timezone": "America/New_York", "hour": 9, "minute": 0 },
+	"steps": [
+		{ "follow_up_post_id": 123, "delay_days": 3 },
+		{
+			"follow_up_post_id": 124,
+			"delay_days": 7,
+			"send_window": {
+				"timezone": "America/New_York",
+				"hour": 14,
+				"minute": 0
+			}
+		}
+	]
+}
+```
+
+Each step references a published dynamic system email. Delays are **calendar days** relative
+to the previous step's send (or the initial send for step 1).
+
+**Send-window cascade** (most specific wins): per-step `send_window` → automation
+`send_window` → site default (`prc_email_automation_default_send_window` option, set under
+**Newsletters → Settings → Automations**, defaulting to 9:00 AM ET).
+
+**Runtime.** Enrollment hangs off the `prc_email_builder_system_email_sent` action, so every
+send path (REST, form action, batch) enrolls automatically when the trigger defines steps.
+Rather than one Action Scheduler job per enrollment, a single recurring dispatcher
+(`prc_email_automation_process_due`, every 15 minutes) processes every enrollment whose
+computed `due_at` has passed, grouping recipients by render key (`follow_up_post_id` +
+`context_hash`) so identical-render recipients batch into one `System_Email_Sender::send_many()`
+call. Enrollments live in the `{prefix}prc_email_automation_enrollments` table.
+
+Merge context is frozen at enrollment; the `prc_email_builder_automation_context` filter
+allows opt-in re-resolution at send time. Re-enrolling the same recipient supersedes (cancels)
+prior active enrollments, and unpublishing a follow-up template cancels enrollments pointed at it.
+
+**Ops (WP-CLI).**
+
+```bash
+wp prc email automations list [--status=active|completed|cancelled] [--limit=<n>]
+wp prc email automations cancel <enrollment-id>
+wp prc email automations run-due [--limit=<n>]   # manually trigger the dispatcher
+```
+
 ## Architecture
 
-| File                             | Purpose                                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `includes/class-post-type.php`   | Registers `prc_email_campaign` + `prc_email_txn` CPTs and `prc_newsletter_list` taxonomy; registers post meta |
-| `includes/class-mailchimp.php`   | Mailchimp API v3 wrapper; `on_rest_publish` creates campaign drafts                                      |
-| `includes/class-cached-email-html.php` | Shared helper that renders wrapped email HTML via `Email_Block_Converter`                          |
-| `includes/class-preview.php`     | REST endpoints for the Email Preview modal (`/preview`, `/test-send`)                                    |
-| `includes/email/class-email-block-converter.php` | Deterministic block-to-email-HTML conversion pipeline                                    |
-| `includes/class-settings.php`    | Admin settings page + REST endpoint (`/prc-email-builder/v1/settings`)                              |
-| `includes/class-library.php`     | Email Library admin page (`Newsletters → Library`)                                                |
-| `includes/class-newsletter-list.php` | Newsletter list term meta + campaign audience override on save                                |
-| `src/library/`                   | DataViews Email Library UI                                                                        |
-| `src/term-admin/`                | Term edit screen: Mailchimp audience/segment fields                                               |
-| `includes/class-patterns.php`    | Auto-registers block patterns from `patterns/*.php`                                                      |
-| `includes/class-quiz-email.php`  | REST endpoint for the quiz results email block                                                           |
-| `includes/class-assets.php`      | Enqueues editor sidebar JS (injects `from_name`/`from_email` defaults into `prcEmailBuilderConfig`) |
-| `src/sidebar/`                   | Editor sidebar panels (Newsletter Settings, Email Content)                                               |
-| `src/sidebar/preview/`           | Email Preview View-menu item + modal (see below)                                                         |
-| `src/settings/`                  | React settings page (Mailchimp connection, From Name/Email)                                              |
-| `src/form-action/`               | Registers the `sendSystemEmail` prc-block/form action in the editor                                      |
-| `patterns/the-briefing.php`      | "The Briefing" starter template pattern                                                                  |
+| File                                             | Purpose                                                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `includes/class-post-type.php`                   | Registers `prc_email_campaign` + `prc_email_txn` CPTs and `prc_newsletter_list` taxonomy; registers post meta |
+| `includes/mailchimp/class-mailchimp.php`         | Mailchimp API v3 wrapper; `on_rest_publish` creates campaign drafts                                           |
+| `includes/email/class-cached-email-html.php`     | Shared helper that renders wrapped email HTML via `Email_Block_Converter`                                     |
+| `includes/class-preview.php`                     | REST endpoints for the Email Preview modal (`/preview`, `/test-send`)                                         |
+| `includes/email/class-email-block-converter.php` | Deterministic block-to-email-HTML conversion pipeline                                                         |
+| `includes/class-settings.php`                    | Admin settings page + REST endpoint (`/prc-email-builder/v1/settings`)                                        |
+| `includes/class-library.php`                     | Email Library admin page (`Newsletters → Library`)                                                            |
+| `includes/class-newsletter-list.php`             | Newsletter list term meta + campaign audience override on save                                                |
+| `includes/system-email/class-system-email-recipients-table.php` | Durable send log + audience builders from log data |
+| `includes/cli/class-cli-audience.php`            | `wp prc email audience *` commands                                                                            |
+| `includes/cli/class-cli-system-key-migrate.php`  | `wp prc email migrate-system-keys` — legacy key → slug migration                                              |
+| `src/library/`                                   | DataViews Email Library UI                                                                                    |
+| `src/term-admin/`                                | Term edit screen: Mailchimp audience/segment fields                                                           |
+| `src/sidebar/send/`                              | Campaign Setup / Transactional Setup plugin sidebar                                                           |
+| `src/sidebar/campaign-mailchimp-settings.tsx`    | Campaign list picker + Mailchimp overrides                                                                    |
+| `src/sidebar/transactional-settings.tsx`         | Transactional type, Mandrill audience, dynamic system email slug                                              |
+| `includes/class-patterns.php`                    | Auto-registers block patterns from `patterns/*.php`                                                           |
+| `includes/class-quiz-email.php`                  | REST endpoint for the quiz results email block                                                                |
+| `includes/class-assets.php`                      | Enqueues editor sidebar JS (injects `from_name`/`from_email` defaults into `prcEmailBuilderConfig`)           |
+| `src/sidebar/`                                   | Editor document panels (Newsletter Settings, Email Content)                                                   |
+| `src/sidebar/preview/`                           | Email Preview View-menu item + modal (see below)                                                              |
+| `src/settings/`                                  | React settings page (Mailchimp connection, From Name/Email)                                                   |
+| `src/form-action/`                               | Registers the `sendSystemEmail` prc-block/form action in the editor                                           |
+| `patterns/the-briefing.php`                      | "The Briefing" starter template pattern                                                                       |
 
 ### Email Preview
 
@@ -111,22 +228,29 @@ The preview renders email HTML synchronously via `Email_Block_Converter` — the
 
 ## REST endpoints
 
-| Method     | Path                                            | Description                                              |
-| ---------- | ----------------------------------------------- | -------------------------------------------------------- |
-| `GET`      | `/prc-email-builder/v1/connection`         | Mailchimp connection status                              |
-| `GET`      | `/prc-email-builder/v1/audiences`          | Available Mailchimp audiences                            |
-| `GET/POST` | `/prc-email-builder/v1/settings`           | Read/write plugin settings                               |
-| `POST`     | `/prc-email-builder/v1/send-system-email`  | Render + send a dynamic-recipient newsletter (editors)   |
-| `POST`     | `/prc-api/v3/form/send-system-email`            | prc-block/form action: send a system email to submitter  |
-| `GET`      | `/prc-email-builder/v1/preview`            | Render email HTML + metadata for the preview modal       |
-| `POST`     | `/prc-email-builder/v1/test-send`          | Send a test email via `wp_mail()`                        |
-| `GET`      | `/prc-email-builder/v1/library`            | Paginated email listing for the Email Library DataViews UI |
-| `POST`     | `/prc-email-builder/v1/campaigns/update-draft` | Push current HTML/settings to an existing Mailchimp draft |
-| `GET`      | `/prc-email-builder/v1/audiences/{id}/segments` | Saved segments for a Mailchimp audience (term admin + sidebar) |
+| Method     | Path                                                  | Description                                                    |
+| ---------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `GET`      | `/prc-email-builder/v1/connection`                    | Mailchimp connection status                                    |
+| `GET`      | `/prc-email-builder/v1/audiences`                     | Available Mailchimp audiences                                  |
+| `GET/POST` | `/prc-email-builder/v1/settings`                      | Read/write plugin settings                                     |
+| `POST`     | `/prc-email-builder/v1/send-system-email`             | Render + send a dynamic-recipient newsletter (editors)         |
+| `POST`     | `/prc-api/v3/form/send-system-email`                  | prc-block/form action: send a system email to submitter        |
+| `GET`      | `/prc-email-builder/v1/preview`                       | Render email HTML + metadata for the preview modal             |
+| `POST`     | `/prc-email-builder/v1/test-send`                     | Send a test email via `wp_mail()`                              |
+| `GET`      | `/prc-email-builder/v1/library`                       | Paginated email listing for the Email Library DataViews UI     |
+| `GET`      | `/prc-email-builder/v1/campaigns/{id}/report`         | Stored Mailchimp engagement report for a campaign              |
+| `POST`     | `/prc-email-builder/v1/campaigns/{id}/report/refresh` | On-demand Mailchimp report pull (throttled)                    |
+| `POST`     | `/prc-email-builder/v1/campaigns/update-draft`        | Push current HTML/settings to an existing Mailchimp draft      |
+| `GET`      | `/prc-email-builder/v1/audiences/{id}/segments`       | Saved segments for a Mailchimp audience (term admin + sidebar) |
 
 ### `sendSystemEmail` form action + Mailchimp opt-in
 
-Forms using the **Send System Email** action (`POST /prc-api/v3/form/send-system-email`) can optionally include a `prc-block/form-input-checkbox` named `mailchimp_signup` (insert via the **Newsletter Signup** block variation). The checkbox `value` attribute holds the Mailchimp interest ID for the target segment.
+Forms using the **Send System Email** action (`POST /prc-api/v3/form/send-system-email`) resolve the target newsletter by:
+
+- `newsletter_post_id` hidden field (post ID), or
+- `system_email_key` hidden field matching the published dynamic newsletter's **post slug** (legacy meta keys are still resolved during migration)
+
+Optionally include a `prc-block/form-input-checkbox` named `mailchimp_signup` (insert via the **Newsletter Signup** block variation). The checkbox `value` attribute holds the Mailchimp interest ID for the target segment.
 
 When the checkbox is checked, the handler subscribes the submitter's email to that interest **after** a successful system email send. Mailchimp failures are logged and non-fatal — the form still returns `status: success` for the send. The response may include `newsletter_signup: subscribed | failed | skipped` when the field is present.
 
@@ -180,9 +304,9 @@ npm run start -w @prc/email-builder
 # Watch mode (settings page)
 npm run start:settings -w @prc/email-builder
 
-# Run E2E tests (Playground on port 8889)
-npm run playground:start -- --port=8889
-WP_BASE_URL=http://127.0.0.1:8889 npx playwright test tests/prc-email-builder/
+# Run E2E tests (VIP dev-env required)
+npm run vip:start
+npm test -- tests/prc-email-builder/
 ```
 
 ## Tests

@@ -6,6 +6,16 @@ import {
 	resolveSendStatus,
 } from '../utils/send-status';
 
+function formatEngagementRate(rate: number | null | undefined): string {
+	if (rate === null || rate === undefined || Number.isNaN(rate)) {
+		return '—';
+	}
+	if (rate <= 0 && rate !== 0) {
+		return '—';
+	}
+	return `${(rate * 100).toFixed(1)}%`;
+}
+
 declare global {
 	interface Window {
 		prcEmailLibrary?: {
@@ -103,6 +113,26 @@ const fields = [
 			operators: ['isAny'],
 		},
 		enableSorting: false,
+	},
+	{
+		id: 'openRate',
+		label: __('Open rate', 'prc-email-builder'),
+		getValue: ({ item }: { item: EmailLibraryRow }) =>
+			formatEngagementRate(item?.open_rate),
+		render: ({ item }: { item: EmailLibraryRow }) => (
+			<span>{formatEngagementRate(item?.open_rate)}</span>
+		),
+		enableSorting: true,
+	},
+	{
+		id: 'clickRate',
+		label: __('Click rate', 'prc-email-builder'),
+		getValue: ({ item }: { item: EmailLibraryRow }) =>
+			formatEngagementRate(item?.click_rate),
+		render: ({ item }: { item: EmailLibraryRow }) => (
+			<span>{formatEngagementRate(item?.click_rate)}</span>
+		),
+		enableSorting: true,
 	},
 	{
 		id: 'subject',

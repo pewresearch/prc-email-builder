@@ -68,43 +68,73 @@ class Plugin {
 	 * @access   private
 	 */
 	private function load_dependencies() {
-		// Load plugin loading class.
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-loader.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-post-type.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-newsletter-list.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-template-resolver.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-mailchimp.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-mandrill-sender.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-system-email-sender.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-form-send-system-email.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-cached-email-html.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-rest-api.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-assets.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-patterns.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-settings.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-send-status.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-library.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-template-registry.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-email-template.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-preview.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-migration.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-migration-scheduler.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/class-campaign-status-sync.php';
+		$includes = plugin_dir_path( __DIR__ ) . '/includes/';
 
-		// Deterministic email-HTML pipeline.
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-block-registry.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-block-resolver.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-dark-mode-registry.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-preset-resolver.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-style-resolver.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-html-to-email-converter.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-block-converter.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/email/class-email-block-integration.php';
+		// Bootstrap and core WordPress integration.
+		require_once $includes . 'class-loader.php';
+		require_once $includes . 'class-rewrites.php';
+		require_once $includes . 'class-post-type.php';
+		require_once $includes . 'class-newsletter-list.php';
+		require_once $includes . 'templates/class-template-resolver.php';
+		require_once $includes . 'templates/class-template-registry.php';
+		require_once $includes . 'class-rest-api.php';
+		require_once $includes . 'class-assets.php';
+		require_once $includes . 'class-patterns.php';
+		require_once $includes . 'class-settings.php';
+		require_once $includes . 'class-send-status.php';
+		require_once $includes . 'class-library.php';
+		require_once $includes . 'class-preview.php';
+
+		// Mailchimp integration.
+		require_once $includes . 'mailchimp/class-mailchimp.php';
+		require_once $includes . 'mailchimp/class-campaign-status-sync.php';
+
+		// Mandrill delivery.
+		require_once $includes . 'mandrill/class-mandrill-sender.php';
+		require_once $includes . 'mandrill/class-mandrill-activity-export.php';
+
+		// System (transactional) email.
+		require_once $includes . 'system-email/class-system-email-sender.php';
+		require_once $includes . 'system-email/class-system-email-recipients-table.php';
+		require_once $includes . 'system-email/class-system-email-send-log.php';
+		require_once $includes . 'system-email/class-form-send-system-email.php';
+
+		// Scheduled follow-up automations.
+		require_once $includes . 'automations/class-automation-window.php';
+		require_once $includes . 'automations/class-automation-config.php';
+		require_once $includes . 'automations/class-automation-enrollment.php';
+		require_once $includes . 'automations/class-automation-scheduler.php';
+
+		// Email HTML pipeline.
+		require_once $includes . 'email/class-cached-email-html.php';
+		require_once $includes . 'email/class-email-merge-tags.php';
+		require_once $includes . 'email/class-email-template.php';
+		require_once $includes . 'email/class-email-block-registry.php';
+		require_once $includes . 'email/class-email-block-resolver.php';
+		require_once $includes . 'email/class-dark-mode-registry.php';
+		require_once $includes . 'email/class-email-preset-resolver.php';
+		require_once $includes . 'email/class-email-style-resolver.php';
+		require_once $includes . 'email/class-html-to-email-converter.php';
+		require_once $includes . 'email/class-email-block-converter.php';
+		require_once $includes . 'email/class-email-block-integration.php';
+
+		// NGL migration.
+		require_once $includes . 'migration/class-migration.php';
+		require_once $includes . 'migration/class-migration-scheduler.php';
+
+		// Mailchimp analytics reports.
+		require_once $includes . 'reports/interface-report-provider.php';
+		require_once $includes . 'reports/class-report-schema.php';
+		require_once $includes . 'reports/class-mailchimp-report-provider.php';
+		require_once $includes . 'reports/class-report-store.php';
+		require_once $includes . 'reports/class-report-sync.php';
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			require_once plugin_dir_path( __DIR__ ) . '/includes/class-cli-migrate.php';
-			require_once plugin_dir_path( __DIR__ ) . '/includes/class-cli-audience.php';
-			require_once plugin_dir_path( __DIR__ ) . '/includes/class-cli-resend.php';
+			require_once $includes . 'cli/class-cli-migrate.php';
+			require_once $includes . 'cli/class-cli-audience.php';
+			require_once $includes . 'cli/class-cli-resend.php';
+			require_once $includes . 'cli/class-cli-automations.php';
+			require_once $includes . 'cli/class-cli-system-key-migrate.php';
 		}
 
 		// Initialize the loader.
@@ -127,6 +157,7 @@ class Plugin {
 		$this->loader->add_action( 'init', $this, 'fire_register_email_callbacks', 5 );
 
 		new Post_Type( $this->loader );
+		new Rewrites( $this->loader );
 		new Newsletter_List( $this->loader );
 		new Mailchimp( $this->loader );
 		new Mandrill_Sender( $this->loader );
@@ -134,6 +165,8 @@ class Plugin {
 		new Assets( $this->loader );
 		new Patterns( $this->loader );
 		new Form_Send_System_Email( $this->loader );
+		new Automation_Config( $this->loader );
+		new System_Email_Send_Log( $this->loader );
 		new Settings( $this->loader );
 		new Library( $this->loader );
 		new Preview( $this->loader );
@@ -141,13 +174,17 @@ class Plugin {
 
 		Migration_Scheduler::init();
 		Campaign_Status_Sync::init();
+		Automation_Scheduler::init();
+		\PRC\Platform\Email_Builder\Reports\Report_Sync::init();
 
 		$this->loader->add_action( 'plugins_loaded', $this, 'register_wp_ai_features', 11 );
 
 		if ( defined( 'WP_CLI' ) && \WP_CLI ) {
 			\WP_CLI::add_command( 'prc email migrate', CLI_Migrate::class );
+			\WP_CLI::add_command( 'prc email migrate-system-keys', CLI_System_Key_Migrate::class );
 			\WP_CLI::add_command( 'prc email audience', CLI_Audience::class );
 			\WP_CLI::add_command( 'prc email resend', CLI_Resend::class );
+			\WP_CLI::add_command( 'prc email automations', CLI_Automations::class );
 		}
 	}
 

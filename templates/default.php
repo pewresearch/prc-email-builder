@@ -6,7 +6,8 @@
  * Variables available when this file is included by newsletter-email-shell.php:
  *   string $content      Table-based HTML fragment from the content transformer.
  *   string $subject      Newsletter subject line.
- *   string $preview_text Preview / preheader text.
+ *   string $preview_text    Preview / preheader text.
+ *   string $view_online_url  Website permalink for "View in browser" (campaign posts).
  */
 
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;
@@ -62,7 +63,7 @@ $card_attr  = '' !== $card_class ? ' class="' . esc_attr( $card_class ) . '"' : 
 		</tr>
 		<tr>
 			<td align="center" style="padding:20px 32px 8px;font-size:12px;color:#999999;line-height:1.6;font-family:'franklin-gothic-urw',Verdana,Geneva,sans-serif;">
-				<a href="*|ARCHIVE|*" class="footer-link" style="color:#999999;text-decoration:underline;">View in browser</a>
+				<a href="<?php echo esc_url( $view_online_url ?? '' ); ?>" class="footer-link" style="color:#999999;text-decoration:underline;">View in browser</a>
 				&nbsp;&middot;&nbsp;
 				<a href="*|UPDATE_PROFILE|*" class="footer-link" style="color:#999999;text-decoration:underline;">Manage preferences</a>
 				&nbsp;&middot;&nbsp;

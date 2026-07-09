@@ -1,14 +1,19 @@
 /**
- * Campaign sidebar: newsletter list picker, Mailchimp audience/segment, template.
+ * Campaign sidebar controls, split across two surfaces:
+ *  - CampaignListControl:     newsletter list picker (primary document sidebar).
+ *  - CampaignAdvancedSettings: Mailchimp audience/segment + template overrides
+ *                              (Campaign Setup plugin sidebar).
  */
 
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { SelectControl, Notice, Spinner } from '@wordpress/components';
 
 import {
+	useNewsletterMeta,
 	useNewsletterLists,
 	useAudiences,
 	useSegments,
+	config,
 } from './use-newsletter-data';
 
 interface RegisteredTemplate {
@@ -119,31 +124,83 @@ function SegmentPicker({
 	);
 }
 
-export interface CampaignMailchimpSettingsProps {
-	audienceId: string;
-	segmentId: string;
-	templateSlug: string;
-	selectedListTermId: number;
-	hasListTerm: boolean;
-	setAudienceId: (value: string) => void;
-	setSegmentId: (value: string) => void;
-	setTemplateSlug: (value: string) => void;
-	selectNewsletterList: (value: string) => void;
-}
-
-export function CampaignMailchimpSettings({
-	audienceId,
-	segmentId,
-	templateSlug,
-	selectedListTermId,
-	hasListTerm,
-	setAudienceId,
-	setSegmentId,
-	setTemplateSlug,
-	selectNewsletterList,
-}: CampaignMailchimpSettingsProps) {
+/**
+ * Newsletter list picker for the primary document sidebar. Selecting a list
+ * locks the Mailchimp audience/segment to the list configuration (enforced
+ * server-side and reflected as read-only fields in Campaign Setup).
+ */
+export function CampaignListControl() {
+	const { selectedListTermId, selectNewsletterList } = useNewsletterMeta();
 	const { lists: newsletterLists, loading: newsletterListsLoading } =
 		useNewsletterLists();
+
+	const newsletterListOptions = [
+		{
+			value: '',
+			label: __('— None —', 'prc-email-builder'),
+		},
+		...newsletterLists.map((list) => ({
+			value: String(list.id),
+			label: list.name,
+		})),
+	];
+
+	const selectedList = newsletterLists.find(
+		(list) => list.id === selectedListTermId
+	);
+	const globalFromName = config.defaults?.from_name ?? '';
+	const globalFromEmail = config.defaults?.from_email ?? '';
+	const effectiveFromName =
+		selectedList?.meta?.prc_newsletter_list_from_name || globalFromName;
+	const effectiveFromEmail =
+		selectedList?.meta?.prc_newsletter_list_from_email || globalFromEmail;
+
+	if (newsletterListsLoading) {
+		return <Spinner />;
+	}
+
+	return (
+		<>
+			<SelectControl
+				__nextHasNoMarginBottom
+				label={__('Newsletter list', 'prc-email-builder')}
+				value={selectedListTermId ? String(selectedListTermId) : ''}
+				options={newsletterListOptions}
+				onChange={selectNewsletterList}
+				help={__(
+					'Optional. When set, audience and segment are locked to the list configuration. Manage lists under Emails → Newsletter Lists.',
+					'prc-email-builder'
+				)}
+			/>
+			{(effectiveFromName || effectiveFromEmail) && (
+				<p className="description">
+					{sprintf(
+						/* translators: 1: sender name, 2: sender email */
+						__('Sending as: %1$s <%2$s>', 'prc-email-builder'),
+						effectiveFromName || '—',
+						effectiveFromEmail || '—'
+					)}
+				</p>
+			)}
+		</>
+	);
+}
+
+/**
+ * Advanced Mailchimp overrides (audience, segment, template) for the Campaign
+ * Setup plugin sidebar. Audience/segment are read-only when a newsletter list
+ * is assigned; producers are steered toward the list control instead.
+ */
+export function CampaignAdvancedSettings() {
+	const {
+		audienceId,
+		segmentId,
+		templateSlug,
+		hasListTerm,
+		setAudienceId,
+		setSegmentId,
+		setTemplateSlug,
+	} = useNewsletterMeta();
 	const {
 		audiences,
 		loading: audiencesLoading,
@@ -158,34 +215,8 @@ export function CampaignMailchimpSettings({
 		...audiences.map((a) => ({ value: a.id, label: a.name })),
 	];
 
-	const newsletterListOptions = [
-		{
-			value: '',
-			label: __('— None —', 'prc-email-builder'),
-		},
-		...newsletterLists.map((list) => ({
-			value: String(list.id),
-			label: list.name,
-		})),
-	];
-
 	return (
 		<>
-			{newsletterListsLoading ? (
-				<Spinner />
-			) : (
-				<SelectControl
-					__nextHasNoMarginBottom
-					label={__('Newsletter list', 'prc-email-builder')}
-					value={selectedListTermId ? String(selectedListTermId) : ''}
-					options={newsletterListOptions}
-					onChange={selectNewsletterList}
-					help={__(
-						'Optional. When set, audience and segment are locked to the list configuration. Manage lists under Emails → Newsletter Lists.',
-						'prc-email-builder'
-					)}
-				/>
-			)}
 			{audiencesError && (
 				<Notice status="error" isDismissible={false}>
 					{audiencesError}

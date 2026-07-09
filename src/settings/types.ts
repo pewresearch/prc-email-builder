@@ -1,4 +1,8 @@
-import type { ReactNode } from 'react';
+export interface AutomationSendWindow {
+	timezone: string;
+	hour: number;
+	minute: number;
+}
 
 export interface Settings {
 	mailchimp_api_key: string;
@@ -12,6 +16,7 @@ export interface Settings {
 	connected: boolean;
 	api_key_via_constant: boolean;
 	mandrill_configured: boolean;
+	automation_default_send_window: AutomationSendWindow;
 }
 
 export interface ApiResponse {
@@ -21,19 +26,4 @@ export interface ApiResponse {
 export interface SettingsStoreState {
 	settings: Settings;
 	isLoaded: boolean;
-}
-
-export interface SettingsAccordionProps {
-	title: string;
-	description: string;
-	children: ReactNode;
-	contentId?: string;
-	headingId?: string;
-	descriptionId?: string;
-}
-
-export interface SettingsAccordionItem {
-	title: string;
-	description: string;
-	slug: string;
 }

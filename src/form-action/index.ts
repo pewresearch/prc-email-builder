@@ -13,6 +13,8 @@
 import { dispatch } from '@wordpress/data';
 import domReady from '@wordpress/dom-ready';
 
+import OriginUrlConfigComponent from './origin-url-config';
+
 // `namespace` is the form provider's dropdown-visibility key, not a PHP
 // namespace. The form block only surfaces a `rest` action whose namespace
 // matches the parent block's name or the literal `prc-block/form`, so this
@@ -24,6 +26,10 @@ const SYSTEM_EMAIL_FORM = {
 	namespace: 'prc-block/form',
 	action: 'sendSystemEmail',
 	method: 'rest',
+	configDefaults: {
+		originUrl: '',
+	},
+	ConfigComponent: OriginUrlConfigComponent,
 };
 
 function registerSystemEmailForm(): void {

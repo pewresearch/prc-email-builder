@@ -107,7 +107,7 @@ namespace PRC\Platform\Slack {
 }
 
 namespace {
-	require_once dirname( __DIR__ ) . '/includes/class-campaign-status-sync.php';
+	require_once dirname( __DIR__ ) . '/includes/mailchimp/class-campaign-status-sync.php';
 
 	use PRC\Platform\Email_Builder\Campaign_Status_Sync;
 	use PRC\Platform\Slack\Bot;

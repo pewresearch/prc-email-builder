@@ -133,9 +133,10 @@ class Migration {
 		$delivery_mode = $mapped_meta['mapped']['prc_email_delivery_mode'] ?? 'mailchimp';
 
 		$post_data = [
-			'post_type'    => Post_Type::post_type_for_delivery_mode( (string) $delivery_mode ),
-			'post_title'   => $ngl_post->post_title,
-			'post_content' => $transformed_content,
+			'post_type'     => Post_Type::post_type_for_delivery_mode( (string) $delivery_mode ),
+			'post_title'    => $ngl_post->post_title,
+			'post_name'     => $ngl_post->post_name,
+			'post_content'  => $transformed_content,
 			'post_status'  => $ngl_post->post_status,
 			'post_date'    => $ngl_post->post_date,
 			'post_date_gmt' => $ngl_post->post_date_gmt,

@@ -1,16 +1,14 @@
 const path = require('path');
-const baseConfig = require('@wordpress/scripts/config/webpack.config');
+const config = require('../../webpack.config');
 
 module.exports = {
-	...baseConfig,
+	...config,
 	entry: {
 		index: path.resolve(__dirname, 'src/settings/index.tsx'),
 	},
 	output: {
-		...baseConfig.output,
+		...config.output,
 		path: path.resolve(__dirname, 'build/settings'),
+		library: undefined,
 	},
-	plugins: baseConfig.plugins
-		.filter(Boolean)
-		.filter((plugin) => plugin.constructor.name !== 'CopyPlugin'),
 };

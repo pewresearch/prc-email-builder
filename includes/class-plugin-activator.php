@@ -22,7 +22,11 @@ class Plugin_Activator {
 	public static function activate() {
 		flush_rewrite_rules();
 
+		System_Email_Recipients_Table::maybe_create_table();
+		Automation_Enrollment::maybe_create_table();
+
 		Migration_Scheduler::schedule_dispatch();
+		Automation_Scheduler::maybe_schedule();
 
 		wp_mail(
 			DEFAULT_TECHNICAL_CONTACT,

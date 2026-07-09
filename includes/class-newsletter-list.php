@@ -25,6 +25,8 @@ class Newsletter_List {
 		$loader->add_action( "created_{$taxonomy}", $this, 'save_term_meta' );
 		$loader->add_action( "edited_{$taxonomy}", $this, 'save_term_meta' );
 		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_term_admin_assets' );
+		$loader->add_filter( "manage_edit-{$taxonomy}_columns", $this, 'add_term_list_columns' );
+		$loader->add_filter( "manage_{$taxonomy}_custom_column", $this, 'render_term_list_column', 10, 3 );
 		$loader->add_action(
 			'rest_after_insert_' . Post_Type::CAMPAIGN_POST_TYPE,
 			$this,
@@ -39,6 +41,9 @@ class Newsletter_List {
 	 */
 	public function render_add_form_fields(): void {
 		wp_nonce_field( self::NONCE_ACTION, self::NONCE_FIELD );
+		echo '<div class="form-field">';
+		$this->render_from_fields();
+		echo '</div>';
 		echo '<div class="form-field prc-newsletter-list-mailchimp-wrap">';
 		$this->render_mailchimp_fields();
 		echo '</div>';
@@ -52,8 +57,17 @@ class Newsletter_List {
 	public function render_edit_form_fields( \WP_Term $term ): void {
 		wp_nonce_field( self::NONCE_ACTION, self::NONCE_FIELD );
 
+		$from_name   = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_name', true );
+		$from_email  = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_email', true );
 		$audience_id = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_audience_id', true );
 		$segment_id  = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
+
+		echo '<tr class="form-field">';
+		echo '<th scope="row"><label>' . esc_html__( 'Default From', 'prc-email-builder' ) . '</label></th>';
+		echo '<td>';
+		$this->render_from_fields( $from_name, $from_email );
+		echo '</td>';
+		echo '</tr>';
 
 		echo '<tr class="form-field prc-newsletter-list-mailchimp-wrap">';
 		echo '<th scope="row"><label>' . esc_html__( 'Mailchimp', 'prc-email-builder' ) . '</label></th>';
@@ -61,6 +75,32 @@ class Newsletter_List {
 		$this->render_mailchimp_fields( $audience_id, $segment_id );
 		echo '</td>';
 		echo '</tr>';
+	}
+
+	/**
+	 * @param string $from_name  Saved From name (edit form).
+	 * @param string $from_email Saved From email (edit form).
+	 */
+	private function render_from_fields( string $from_name = '', string $from_email = '' ): void {
+		echo '<p>';
+		echo '<label for="prc_newsletter_list_from_name">' . esc_html__( 'Default From name', 'prc-email-builder' ) . '</label><br />';
+		printf(
+			'<input type="text" name="prc_newsletter_list_from_name" id="prc_newsletter_list_from_name" value="%1$s" class="regular-text" />',
+			esc_attr( $from_name )
+		);
+		echo '</p>';
+
+		echo '<p>';
+		echo '<label for="prc_newsletter_list_from_email">' . esc_html__( 'Default From email', 'prc-email-builder' ) . '</label><br />';
+		printf(
+			'<input type="email" name="prc_newsletter_list_from_email" id="prc_newsletter_list_from_email" value="%1$s" class="regular-text" />',
+			esc_attr( $from_email )
+		);
+		echo '<p class="description">' . esc_html__(
+			'Optional. Campaigns using this list send with these values when set; otherwise the global default from Newsletter Builder Settings is used. On Mailchimp sends, the email address is used as the reply-to.',
+			'prc-email-builder'
+		) . '</p>';
+		echo '</p>';
 	}
 
 	/**
@@ -139,6 +179,72 @@ class Newsletter_List {
 			'prc-email-builder'
 		) . '</p>';
 		echo '</p>';
+
+		$this->render_subscriber_stat( $audience_id, $segment_id );
+	}
+
+	/**
+	 * Read-only subscriber count for the selected audience/segment.
+	 *
+	 * @param string $audience_id Saved audience ID.
+	 * @param string $segment_id  Saved segment ID.
+	 */
+	private function render_subscriber_stat( string $audience_id = '', string $segment_id = '' ): void {
+		$scope = '' !== $segment_id ? 'segment' : 'audience';
+		$label = esc_html__( 'Subscribers', 'prc-email-builder' );
+
+		if ( '' === $audience_id ) {
+			printf(
+				'<p class="description prc-newsletter-list-subscriber-stat"><strong>%1$s:</strong> <span id="prc_newsletter_list_subscriber_count" data-scope="audience">—</span></p>',
+				$label
+			);
+			return;
+		}
+
+		$mailchimp = new Mailchimp();
+		$count     = $mailchimp->get_subscriber_count( $audience_id, $segment_id );
+		$display   = is_wp_error( $count ) ? '—' : number_format_i18n( (int) $count );
+
+		printf(
+			'<p class="description prc-newsletter-list-subscriber-stat"><strong>%1$s:</strong> <span id="prc_newsletter_list_subscriber_count" data-scope="%2$s">%3$s</span></p>',
+			$label,
+			esc_attr( $scope ),
+			esc_html( $display )
+		);
+	}
+
+	/**
+	 * @param array<string, string> $columns Term list table columns.
+	 * @return array<string, string>
+	 */
+	public function add_term_list_columns( array $columns ): array {
+		$columns['subscribers'] = __( 'Subscribers', 'prc-email-builder' );
+		return $columns;
+	}
+
+	/**
+	 * @param string $content     Column output.
+	 * @param string $column_name Column key.
+	 * @param int    $term_id     Term ID.
+	 */
+	public function render_term_list_column( string $content, string $column_name, int $term_id ): string {
+		if ( 'subscribers' !== $column_name ) {
+			return $content;
+		}
+
+		$audience_id = (string) get_term_meta( $term_id, 'prc_newsletter_list_audience_id', true );
+		if ( '' === $audience_id ) {
+			return '—';
+		}
+
+		$segment_id = (string) get_term_meta( $term_id, 'prc_newsletter_list_segment_id', true );
+		$count      = ( new Mailchimp() )->get_subscriber_count( $audience_id, $segment_id );
+
+		if ( is_wp_error( $count ) ) {
+			return '—';
+		}
+
+		return esc_html( number_format_i18n( (int) $count ) );
 	}
 
 	/**
@@ -175,8 +281,21 @@ class Newsletter_List {
 			$segment_id = '';
 		}
 
+		$from_name = isset( $_POST['prc_newsletter_list_from_name'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_text_field( wp_unslash( (string) $_POST['prc_newsletter_list_from_name'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: '';
+		$from_email_raw = isset( $_POST['prc_newsletter_list_from_email'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_text_field( wp_unslash( (string) $_POST['prc_newsletter_list_from_email'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: '';
+		$from_email     = sanitize_email( $from_email_raw );
+		if ( '' !== $from_email_raw && ! is_email( $from_email ) ) {
+			$from_email = '';
+		}
+
 		update_term_meta( $term_id, 'prc_newsletter_list_audience_id', $audience_id );
 		update_term_meta( $term_id, 'prc_newsletter_list_segment_id', $segment_id );
+		update_term_meta( $term_id, 'prc_newsletter_list_from_name', $from_name );
+		update_term_meta( $term_id, 'prc_newsletter_list_from_email', $from_email );
 	}
 
 	/**

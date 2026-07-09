@@ -10,6 +10,11 @@ interface Segment {
 	member_count: number;
 }
 
+interface SubscriberCountResponse {
+	count: number;
+	scope: 'segment' | 'audience';
+}
+
 interface TermAdminConfig {
 	restNamespace: string;
 	nonce: string;
@@ -36,6 +41,72 @@ function getSegmentSelect(): HTMLSelectElement | null {
 
 function getSegmentSpinner(): HTMLElement | null {
 	return document.getElementById('prc_newsletter_list_segment_spinner');
+}
+
+function getSubscriberCountElement(): HTMLElement | null {
+	return document.getElementById('prc_newsletter_list_subscriber_count');
+}
+
+function setSubscriberCountDisplay(
+	count: number | null,
+	scope: 'segment' | 'audience'
+): void {
+	const el = getSubscriberCountElement();
+	if (!el) {
+		return;
+	}
+
+	el.dataset.scope = scope;
+	el.textContent = count === null ? '…' : count.toLocaleString();
+}
+
+async function fetchAudienceSubscriberCount(audienceId: string): Promise<void> {
+	if (!audienceId) {
+		setSubscriberCountDisplay(null, 'audience');
+		const el = getSubscriberCountElement();
+		if (el) {
+			el.textContent = '—';
+		}
+		return;
+	}
+
+	setSubscriberCountDisplay(null, 'audience');
+
+	try {
+		const response = await apiFetch<SubscriberCountResponse>({
+			path: `/${config.restNamespace}/audiences/${encodeURIComponent(audienceId)}/count`,
+		});
+		setSubscriberCountDisplay(response.count, response.scope);
+	} catch {
+		const el = getSubscriberCountElement();
+		if (el) {
+			el.textContent = '—';
+		}
+	}
+}
+
+function updateSubscriberCountFromSegmentSelection(
+	segments: Segment[],
+	segmentId: string
+): void {
+	if (!segmentId) {
+		const audienceSelect = getAudienceSelect();
+		if (audienceSelect?.value) {
+			void fetchAudienceSubscriberCount(audienceSelect.value);
+		}
+		return;
+	}
+
+	const segment = segments.find((item) => String(item.id) === segmentId);
+	if (segment) {
+		setSubscriberCountDisplay(segment.member_count, 'segment');
+		return;
+	}
+
+	const audienceSelect = getAudienceSelect();
+	if (audienceSelect?.value) {
+		void fetchAudienceSubscriberCount(audienceSelect.value);
+	}
 }
 
 function clearSelectOptions(select: HTMLSelectElement): void {
@@ -118,6 +189,14 @@ function populateSegments(
 
 	segmentSelect.disabled = false;
 	setSpinnerActive(false);
+
+	const audienceSelect = getAudienceSelect();
+	if (audienceSelect?.value) {
+		updateSubscriberCountFromSegmentSelection(
+			segments,
+			segmentSelect.value
+		);
+	}
 }
 
 function showSegmentLoadError(
@@ -155,6 +234,11 @@ async function loadSegments(
 
 	if (!audienceId) {
 		showNoAudienceState(segmentSelect);
+		const el = getSubscriberCountElement();
+		if (el) {
+			el.textContent = '—';
+			el.dataset.scope = 'audience';
+		}
 		return;
 	}
 
@@ -167,6 +251,9 @@ async function loadSegments(
 		populateSegments(segmentSelect, segments, preserveSegmentId);
 	} catch {
 		showSegmentLoadError(segmentSelect, preserveSegmentId);
+		if (!preserveSegmentId) {
+			void fetchAudienceSubscriberCount(audienceId);
+		}
 	}
 }
 
@@ -185,6 +272,35 @@ function init(): void {
 
 	audienceSelect.addEventListener('change', () => {
 		void loadSegments(audienceSelect.value);
+	});
+
+	segmentSelect.addEventListener('change', () => {
+		const audienceId = audienceSelect.value;
+		if (!audienceId) {
+			const el = getSubscriberCountElement();
+			if (el) {
+				el.textContent = '—';
+			}
+			return;
+		}
+
+		if (segmentSelect.value) {
+			void (async () => {
+				try {
+					const segments = await apiFetch<Segment[]>({
+						path: `/${config.restNamespace}/audiences/${encodeURIComponent(audienceId)}/segments`,
+					});
+					updateSubscriberCountFromSegmentSelection(
+						segments,
+						segmentSelect.value
+					);
+				} catch {
+					void fetchAudienceSubscriberCount(audienceId);
+				}
+			})();
+		} else {
+			void fetchAudienceSubscriberCount(audienceId);
+		}
 	});
 
 	if (audienceSelect.value) {

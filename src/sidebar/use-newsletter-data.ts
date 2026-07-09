@@ -42,6 +42,8 @@ export interface NewsletterListTerm {
 	meta?: {
 		prc_newsletter_list_audience_id?: string;
 		prc_newsletter_list_segment_id?: string;
+		prc_newsletter_list_from_name?: string;
+		prc_newsletter_list_from_email?: string;
 	};
 }
 
@@ -53,6 +55,10 @@ export const config: {
 	campaignPatternCategorySlug?: string;
 	transactionalPatternCategorySlug?: string;
 	nonce: string;
+	defaults?: {
+		from_name: string;
+		from_email: string;
+	};
 } = (window as any).prcEmailBuilderConfig ?? {};
 
 export function isEmailPostType(postType: string | undefined): boolean {
@@ -97,8 +103,20 @@ export function useNewsletterMeta() {
 		(select) => select(editorStore).getCurrentPostType(),
 		[]
 	);
-	const [meta, setMeta] = useEntityProp('postType', postType, 'meta');
+	const postId = useSelect(
+		(select) => select(editorStore).getCurrentPostId(),
+		[]
+	);
+	const [meta, setMeta] = useEntityProp('postType', postType, 'meta', postId);
 	const { editPost } = useDispatch(editorStore);
+
+	const persistMeta = useCallback(
+		(patch: Record<string, string>) => {
+			setMeta(patch);
+			editPost({ meta: patch });
+		},
+		[setMeta, editPost]
+	);
 	const { lists, loading: listsLoading } = useNewsletterLists();
 
 	const assignedListTermIds: number[] = useSelect((select) => {
@@ -127,7 +145,7 @@ export function useNewsletterMeta() {
 	const previewText: string = meta?.prc_email_preview_text ?? '';
 	const rawDeliveryMode: string = meta?.prc_email_delivery_mode ?? '';
 	const deliveryMode: TransactionalDeliveryMode =
-		rawDeliveryMode === 'dynamic' ? 'dynamic' : 'mandrill';
+		rawDeliveryMode === 'mandrill' ? 'mandrill' : 'dynamic';
 	const audienceId: string = meta?.prc_email_mailchimp_audience_id ?? '';
 	const segmentId: string = meta?.prc_email_mailchimp_segment_id ?? '';
 	const campaignId: string = meta?.prc_email_mailchimp_campaign_id ?? '';
@@ -152,27 +170,29 @@ export function useNewsletterMeta() {
 		}
 	}
 	const templateSlug: string = meta?.prc_email_template_slug ?? '';
-	const systemEmailKey: string = meta?.prc_email_system_email_key ?? '';
+	const slug: string =
+		useSelect((select) => select(editorStore).getEditedPostSlug(), []) ??
+		'';
 
-	const setSubject = (value: string) => setMeta({ prc_email_subject: value });
+	const setSubject = (value: string) =>
+		persistMeta({ prc_email_subject: value });
 	const setPreviewText = (value: string) =>
-		setMeta({ prc_email_preview_text: value });
+		persistMeta({ prc_email_preview_text: value });
 	const setDeliveryMode = (value: string) =>
-		setMeta({ prc_email_delivery_mode: value });
+		persistMeta({ prc_email_delivery_mode: value });
 	// Changing the audience resets the segment selection.
 	const setAudienceId = (value: string) =>
-		setMeta({
+		persistMeta({
 			prc_email_mailchimp_audience_id: value,
 			prc_email_mailchimp_segment_id: '',
 		});
 	const setSegmentId = (value: string) =>
-		setMeta({ prc_email_mailchimp_segment_id: value });
+		persistMeta({ prc_email_mailchimp_segment_id: value });
 	const setAudienceOptionKey = (value: string) =>
-		setMeta({ prc_email_audience_option_key: value });
+		persistMeta({ prc_email_audience_option_key: value });
 	const setTemplateSlug = (value: string) =>
-		setMeta({ prc_email_template_slug: value });
-	const setSystemEmailKey = (value: string) =>
-		setMeta({ prc_email_system_email_key: value });
+		persistMeta({ prc_email_template_slug: value });
+	const setSlug = (value: string) => editPost({ slug: value });
 
 	const selectNewsletterList = useCallback(
 		(termIdStr: string) => {
@@ -244,7 +264,7 @@ export function useNewsletterMeta() {
 		mandrillSendStatus,
 		mandrillSendSummary,
 		templateSlug,
-		systemEmailKey,
+		slug,
 		selectedListTermId,
 		hasListTerm,
 		setSubject,
@@ -254,7 +274,7 @@ export function useNewsletterMeta() {
 		setSegmentId,
 		setAudienceOptionKey,
 		setTemplateSlug,
-		setSystemEmailKey,
+		setSlug,
 		selectNewsletterList,
 	};
 }
@@ -443,7 +463,9 @@ export function useSyncMailchimpCampaignMeta(
 
 	useEffect(() => {
 		if (!shouldSync || !postId || !postType) {
-			setSyncTimedOut(false);
+			// Keep any prior timeout so unpublishing a timed-out campaign does
+			// not hide the Mailchimp failure notice. It resets when a new poll
+			// cycle starts below (i.e. on republish).
 			return undefined;
 		}
 

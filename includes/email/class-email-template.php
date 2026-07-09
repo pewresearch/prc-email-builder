@@ -41,12 +41,15 @@ class Email_Template {
 			return $content;
 		}
 
-		$body_template = $template['path'];
+		$body_template    = $template['path'];
+		$view_online_url  = Email_Merge_Tags::get_view_online_url( $post_id );
 
 		ob_start();
 		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
 		include PRC_EMAIL_BUILDER_DIR . '/templates/newsletter-email-shell.php';
 		$html = (string) ob_get_clean();
+
+		$html = Email_Merge_Tags::resolve( $html, $post_id );
 
 		self::warn_if_large( $html, $post_id );
 

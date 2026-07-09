@@ -24,6 +24,7 @@ namespace PRC\Platform\Email_Builder {
 		}
 	}
 
+	require_once dirname( __DIR__ ) . '/includes/class-rewrites.php';
 	require_once dirname( __DIR__ ) . '/includes/class-post-type.php';
 
 	function assert_true( bool $condition, string $message ): void {
@@ -39,6 +40,13 @@ namespace PRC\Platform\Email_Builder {
 
 	function assert_not_contains( array $haystack, string $needle, string $message ): void {
 		assert_true( ! in_array( $needle, $haystack, true ), $message );
+	}
+
+	function assert_editor_notes_enabled( array $supports, string $message ): void {
+		assert_true(
+			isset( $supports['editor'] ) && is_array( $supports['editor'] ) && ! empty( $supports['editor']['notes'] ),
+			$message
+		);
 	}
 
 	$post_type = new Post_Type( new Loader() );
@@ -83,6 +91,14 @@ namespace PRC\Platform\Email_Builder {
 		$transactional_supports,
 		'prc-post-publish-pipeline',
 		'transactional post type should still support prc-post-publish-pipeline'
+	);
+	assert_editor_notes_enabled(
+		$campaign_supports,
+		'campaign post type should enable editor notes'
+	);
+	assert_editor_notes_enabled(
+		$transactional_supports,
+		'transactional post type should enable editor notes'
 	);
 
 	fwrite( STDOUT, "OK: post type supports tests passed.\n" );

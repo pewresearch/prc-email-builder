@@ -64,10 +64,15 @@ class Settings {
 		);
 
 		if ( file_exists( PRC_EMAIL_BUILDER_DIR . '/build/settings/style-index.css' ) ) {
+			$style_deps = array( 'wp-components' );
+			if ( in_array( 'prc-components', $asset['dependencies'], true ) ) {
+				$style_deps[] = 'prc-components';
+			}
+
 			wp_enqueue_style(
 				$handle,
 				plugins_url( 'build/settings/style-index.css', PRC_EMAIL_BUILDER_FILE ),
-				[ 'wp-components' ],
+				$style_deps,
 				$asset['version']
 			);
 		}
@@ -109,6 +114,10 @@ class Settings {
 
 		Mailchimp::save_settings( $body );
 
+		if ( isset( $body['automation_default_send_window'] ) && is_array( $body['automation_default_send_window'] ) ) {
+			Automation_Window::save_site_default( $body['automation_default_send_window'] );
+		}
+
 		return rest_ensure_response( [ 'settings' => $this->get_response_settings() ] );
 	}
 
@@ -142,6 +151,7 @@ class Settings {
 			'connected'           => $mailchimp->is_connected(),
 			'api_key_via_constant' => $api_key_via_constant,
 			'mandrill_configured' => $mandrill_configured,
+			'automation_default_send_window' => Automation_Window::get_site_default(),
 		] );
 	}
 }
