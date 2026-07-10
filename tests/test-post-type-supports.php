@@ -77,6 +77,13 @@ namespace PRC\Platform\Email_Builder {
 		'campaign post type should support prc-schema-seo'
 	);
 
+	$campaign_taxonomies = $registered_post_types[ Post_Type::CAMPAIGN_POST_TYPE ]['taxonomies'] ?? [];
+	assert_contains(
+		$campaign_taxonomies,
+		'_post_visibility',
+		'campaign post type should register _post_visibility so Hide on Publications Archive persists'
+	);
+
 	assert_not_contains(
 		$transactional_supports,
 		'prc-publication-listing',

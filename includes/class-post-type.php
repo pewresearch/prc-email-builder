@@ -328,7 +328,12 @@ class Post_Type {
 					'with_front' => false,
 				],
 				'capability_type'   => 'post',
-				'taxonomies'        => [ self::TAXONOMY, 'category' ],
+				// `_post_visibility` must be listed here: the campaign CPT registers
+				// at init/20, after prc-publication-listing binds that taxonomy to
+				// get_post_types_by_support( 'prc-publication-listing' ) at init/10.
+				// Without this, Hide on Publications Archive toggles look saved in
+				// the editor but are dropped by REST on reload.
+				'taxonomies'        => [ self::TAXONOMY, 'category', '_post_visibility' ],
 			]
 		);
 
