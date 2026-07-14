@@ -5,6 +5,7 @@ Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platfor
 ## What it does
 
 - Registers two custom post types — `prc_email_campaign` (Mailchimp campaigns) and `prc_email_txn` (Mandrill bulk + dynamic system emails) — plus a `prc_newsletter_list` taxonomy for organizing email products (The Briefing, Notifications, etc.)
+- Binds the `_post_visibility` taxonomy to `prc_email_campaign` so **Hide on Publications Archive** persists through the block editor REST API (the campaign CPT registers after `prc-publication-listing` wires visibility support to participating post types)
 - Provides editor panels for subject line, preview text, and newsletter list assignment (see [Editor sidebars](#editor-sidebars))
 - Converts block content to email-safe HTML via the deterministic `Email_Block_Converter` pipeline
 - Creates a Mailchimp campaign draft automatically on publish
