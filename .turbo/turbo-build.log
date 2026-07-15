@@ -33,7 +33,7 @@ built modules 433 KiB (javascript) 6.46 KiB (css/mini-extract) [built]
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/pattern-selector/style.scss 924 bytes [built] [code generated]
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/engagement/style.scss 1.52 KiB [built] [code generated]
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/preview/style.scss 4.04 KiB [built] [code generated]
-webpack 5.106.2 compiled successfully in 4258 ms
+webpack 5.106.2 compiled successfully in 11086 ms
 assets by chunk 6.05 KiB (name: index)
   asset index.js 5.9 KiB [emitted] [minimized] (name: index)
   asset index.asset.php 160 bytes [emitted] (name: index)
@@ -46,7 +46,7 @@ runtime modules 2.51 KiB 3 modules
 built modules 7.66 KiB (javascript) 0 bytes (css/mini-extract) [built]
   ./src/settings/index.tsx + 8 modules 7.66 KiB [not cacheable] [built] [code generated]
   css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/settings/style.scss 0 bytes [built] [code generated]
-webpack 5.106.2 compiled successfully in 924 ms
+webpack 5.106.2 compiled successfully in 1404 ms
 assets by chunk 943 KiB (name: index)
   assets by path *.css 3.38 KiB
     asset index-rtl.css 1.69 KiB [emitted] (name: index)
@@ -112,4 +112,4 @@ WARNING in webpack performance recommendations:
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
 For more info visit https://webpack.js.org/guides/code-splitting/
 
-webpack 5.106.2 compiled with 6 warnings in 12709 ms
+webpack 5.106.2 compiled with 6 warnings in 24984 ms
