@@ -19,6 +19,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 trait Newsletter_AI_Ability_Helpers {
 
 	/**
+	 * Run a callback on the requested target site.
+	 *
+	 * @param array|null $input    Ability input.
+	 * @param callable   $callback Callback to run after site validation/switching.
+	 * @return mixed
+	 */
+	private function with_site( $input, callable $callback ) {
+		return \PRC\Platform\AI\Utils\with_site(
+			\PRC\Platform\AI\Utils\resolve_site_id( is_array( $input ) ? $input : null ),
+			'prc-email-builder/prc-email-builder.php',
+			$callback
+		);
+	}
+
+	/**
+	 * Append standard site targeting instructions.
+	 *
+	 * @param string $instructions Base instructions.
+	 * @return string
+	 */
+	private function with_site_instructions( string $instructions ): string {
+		return trim( $instructions ) . ' Optionally pass site_id to run against a specific multisite blog; defaults to the content site (20). If this plugin is inactive on the target site, the ability returns plugin_inactive_on_site.';
+	}
+
+	/**
 	 * Fetch site content guidelines for SEO-style metadata generation.
 	 */
 	private function get_content_guidelines( int $post_id ): string {

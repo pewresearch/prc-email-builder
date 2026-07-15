@@ -100,6 +100,7 @@ class Generate_Links_Newsletter_Ability {
 							'maximum'     => self::MAX_LOOKBACK_DAYS,
 							'description' => 'Number of days to look back for source content (default 7).',
 						),
+						'site_id'         => \PRC\Platform\AI\Utils\site_id_input_schema_property(),
 					),
 					'additionalProperties' => false,
 				),
@@ -117,13 +118,25 @@ class Generate_Links_Newsletter_Ability {
 						),
 					),
 				),
-				'execute_callback'    => array( $this, 'generate_links_newsletter' ),
-				'permission_callback' => function (): bool {
-					return current_user_can( 'edit_posts' );
+				'execute_callback'    => function ( $input ) {
+					return $this->with_site(
+						$input,
+						function () use ( $input ) {
+							return $this->generate_links_newsletter( $input );
+						}
+					);
+				},
+				'permission_callback' => function ( $input = null ) {
+					return $this->with_site(
+						$input,
+						function () {
+							return current_user_can( 'edit_posts' );
+						}
+					);
 				},
 				'meta'                => array(
 					'annotations'    => array(
-						'instructions' => 'Generates a weekly links newsletter from published Pew Research Center content in the last 7–30 days (default 7). Optionally scope by researchTeamId and lookbackDays.',
+						'instructions' => $this->with_site_instructions( 'Generates a weekly links newsletter from published Pew Research Center content in the last 7–30 days (default 7). Optionally scope by researchTeamId and lookbackDays.' ),
 						'readonly'     => false,
 						'destructive'  => false,
 						'idempotent'   => false,

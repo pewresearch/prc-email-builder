@@ -83,6 +83,7 @@ Do not use markdown fences or extra prose. Example:
 							'type'        => 'string',
 							'description' => 'Optional extra context for generation.',
 						),
+						'site_id'        => \PRC\Platform\AI\Utils\site_id_input_schema_property(),
 					),
 					'required'             => array( 'postId' ),
 					'additionalProperties' => false,
@@ -101,13 +102,25 @@ Do not use markdown fences or extra prose. Example:
 						),
 					),
 				),
-				'execute_callback'    => array( $this, 'suggest_preview_text' ),
-				'permission_callback' => function (): bool {
-					return current_user_can( 'edit_posts' );
+				'execute_callback'    => function ( $input ) {
+					return $this->with_site(
+						$input,
+						function () use ( $input ) {
+							return $this->suggest_preview_text( $input );
+						}
+					);
+				},
+				'permission_callback' => function ( $input = null ) {
+					return $this->with_site(
+						$input,
+						function () {
+							return current_user_can( 'edit_posts' );
+						}
+					);
 				},
 				'meta'                => array(
 					'annotations'    => array(
-						'instructions' => 'Generates three distinct email preview text options that complement the subject line.',
+						'instructions' => $this->with_site_instructions( 'Generates three distinct email preview text options that complement the subject line.' ),
 						'readonly'     => true,
 						'destructive'  => false,
 						'idempotent'   => false,
