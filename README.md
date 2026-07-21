@@ -1,6 +1,6 @@
 # PRC Email Builder
 
-Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platform. Replaces Newsletter Glue Pro.
+Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platform.
 
 ## What it does
 
@@ -16,6 +16,12 @@ Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platfor
 - **Engagement reporting** for Mailchimp campaigns — daily Action Scheduler sync plus on-demand refresh; sidebar **Engagement** panel on campaign posts shows opens, clicks, bounces, unsubscribes, and click-by-URL breakdown
 - **Scheduled automations** for dynamic system emails — configure follow-up (drip) steps that send X calendar days after the initial email in a fixed daily send window (see [Scheduled automations](#scheduled-automations))
 - **System email audience tooling** — durable per-recipient send log plus WP-CLI builders for Mandrill activity exports and log-derived bulk audiences (see [System email audiences](#system-email-audiences))
+
+## Newsletter Glue (retired)
+
+The vendored **Newsletter Glue Pro** plugin and the automated NGL → `prc_email_*` migration engine (Action Scheduler jobs, WP-CLI importers, and editor hooks that assumed NGL was installed) were removed from the monorepo. New sites should author campaigns and transactional emails only through this plugin.
+
+**Archival migrated posts** still carry `_migrated_from_ngl_id` post meta. `PRC\Platform\Email_Builder\Migration::is_migrated( $post_id )` is the single guard used across send, Mailchimp sync, engagement reporting, and editor sidebar enqueue — those posts are treated as read-only archives (no Mailchimp draft creation, no Engagement panel). Historical release notes in `docs/release-notes/1.7/` describe the original migration; they are not a runbook for new environments.
 
 ## Editor sidebars
 

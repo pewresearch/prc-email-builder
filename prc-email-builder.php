@@ -53,8 +53,6 @@ if ( ! defined( 'PRC_PLATFORM' ) ) {
 function activate() {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-loader.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-post-type.php';
-	require_once plugin_dir_path( __FILE__ ) . 'includes/migration/class-migration.php';
-	require_once plugin_dir_path( __FILE__ ) . 'includes/migration/class-migration-scheduler.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/system-email/class-system-email-recipients-table.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-enrollment.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-scheduler.php';
@@ -62,17 +60,7 @@ function activate() {
 	Plugin_Activator::activate();
 }
 
-/**
- * The code that runs during plugin deactivation.
- * This action is documented in includes/class-plugin-deactivator.php
- */
-function deactivate() {
-	require_once plugin_dir_path( __FILE__ ) . 'includes/class-plugin-deactivator.php';
-	Plugin_Deactivator::deactivate();
-}
-
 register_activation_hook( __FILE__, '\PRC\Platform\Email_Builder\activate' );
-register_deactivation_hook( __FILE__, '\PRC\Platform\Email_Builder\deactivate' );
 
 /**
  * Helper utilities

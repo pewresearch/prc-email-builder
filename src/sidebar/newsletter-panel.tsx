@@ -121,7 +121,6 @@ function ContentPanel() {
 				</Text>
 
 				<Button
-					__next40pxDefaultSize
 					style={{ width: '100%', justifyContent: 'center' }}
 					variant="secondary"
 					onClick={refresh}
@@ -133,7 +132,6 @@ function ContentPanel() {
 
 				{status === 'complete' && (
 					<Button
-						__next40pxDefaultSize
 						style={{
 							width: '100%',
 							justifyContent: 'center',

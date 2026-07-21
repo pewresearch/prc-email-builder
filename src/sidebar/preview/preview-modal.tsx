@@ -1,5 +1,5 @@
 /**
- * Email preview modal — redesigned to match the Newsletter Glue-style layout.
+ * Email preview modal.
  *
  * Layout zones (top → bottom):
  *  1. InboxBar        — compact horizontal FROM / SUBJECT / PREVIEW bar
@@ -279,7 +279,6 @@ function TestSendFooter({ postId }: { postId: number }) {
 					placeholder="you@example.com"
 				/>
 				<Button
-					__next40pxDefaultSize
 					variant="primary"
 					onClick={handleSend}
 					isBusy={sending}

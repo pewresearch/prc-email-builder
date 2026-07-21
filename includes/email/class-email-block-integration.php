@@ -813,10 +813,18 @@ class Email_Block_Integration {
 			return '';
 		}
 
+		$attrs   = $block['attrs'] ?? array();
+		$layout  = is_array( $attrs['layout'] ?? null ) ? $attrs['layout'] : array();
+		$justify = sanitize_key( (string) ( $layout['justifyContent'] ?? '' ) );
+		if ( ! in_array( $justify, array( 'left', 'center', 'right' ), true ) ) {
+			$text_align = sanitize_key( (string) ( $attrs['textAlign'] ?? '' ) );
+			$justify    = in_array( $text_align, array( 'left', 'center', 'right' ), true ) ? $text_align : 'left';
+		}
+
 		return $this->render_horizontal_row(
 			array( $anchor ),
 			array(
-				'justify' => 'left',
+				'justify' => $justify,
 				'valign'  => 'center',
 				'gap_px'  => 0,
 			)
@@ -826,16 +834,27 @@ class Email_Block_Integration {
 	/**
 	 * Styled button anchor only (no wrapper table).
 	 *
+	 * Prefers attrs.url; falls back to the first <a href> in innerHTML when
+	 * the block JSON omits url (common after import / partial saves).
+	 *
 	 * @param array $block Parsed core/button block.
 	 * @return string
 	 */
 	private function render_button_anchor( array $block ): string {
 		$attrs = $block['attrs'] ?? array();
 		$url   = (string) ( $attrs['url'] ?? '' );
-		$text  = trim( wp_strip_all_tags( $block['innerHTML'] ?? '' ) );
+		$inner = $block['innerHTML'] ?? '';
+		$text  = trim( wp_strip_all_tags( $inner ) );
 
 		if ( '' === $text ) {
 			return '';
+		}
+
+		if ( '' === $url && '' !== trim( $inner ) && class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			$processor = new \WP_HTML_Tag_Processor( $inner );
+			if ( $processor->next_tag( 'A' ) ) {
+				$url = (string) ( $processor->get_attribute( 'href' ) ?? '' );
+			}
 		}
 
 		$class_name = (string) ( $attrs['className'] ?? '' );
@@ -963,7 +982,7 @@ class Email_Block_Integration {
 			}
 			$cells .= sprintf(
 				'<td align="%s" width="%d%%" valign="%s" style="%s">%s</td>',
-				esc_attr( 'center' === $justify ? 'center' : 'left' ),
+				esc_attr( in_array( $justify, array( 'center', 'right' ), true ) ? $justify : 'left' ),
 				$width_pct,
 				esc_attr( $valign ),
 				esc_attr( $pad ),

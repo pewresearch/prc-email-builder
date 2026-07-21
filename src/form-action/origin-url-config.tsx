@@ -24,7 +24,6 @@ export default function OriginUrlConfigComponent({
 
 	return (
 		<TextControl
-			__next40pxDefaultSize
 			__nextHasNoMarginBottom
 			label={__('Origin URL', 'prc-email-builder')}
 			help={__(

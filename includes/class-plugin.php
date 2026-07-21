@@ -118,9 +118,8 @@ class Plugin {
 		require_once $includes . 'email/class-email-block-converter.php';
 		require_once $includes . 'email/class-email-block-integration.php';
 
-		// NGL migration.
+		// Migrated-from-NGL marker helper (guards only; migration engine retired).
 		require_once $includes . 'migration/class-migration.php';
-		require_once $includes . 'migration/class-migration-scheduler.php';
 
 		// Mailchimp analytics reports.
 		require_once $includes . 'reports/interface-report-provider.php';
@@ -130,7 +129,6 @@ class Plugin {
 		require_once $includes . 'reports/class-report-sync.php';
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			require_once $includes . 'cli/class-cli-migrate.php';
 			require_once $includes . 'cli/class-cli-audience.php';
 			require_once $includes . 'cli/class-cli-resend.php';
 			require_once $includes . 'cli/class-cli-automations.php';
@@ -172,7 +170,6 @@ class Plugin {
 		new Preview( $this->loader );
 		new Email_Block_Integration( $this->loader );
 
-		Migration_Scheduler::init();
 		Campaign_Status_Sync::init();
 		Automation_Scheduler::init();
 		\PRC\Platform\Email_Builder\Reports\Report_Sync::init();
@@ -180,7 +177,6 @@ class Plugin {
 		$this->loader->add_action( 'plugins_loaded', $this, 'register_wp_ai_features', 11 );
 
 		if ( defined( 'WP_CLI' ) && \WP_CLI ) {
-			\WP_CLI::add_command( 'prc email migrate', CLI_Migrate::class );
 			\WP_CLI::add_command( 'prc email migrate-system-keys', CLI_System_Key_Migrate::class );
 			\WP_CLI::add_command( 'prc email audience', CLI_Audience::class );
 			\WP_CLI::add_command( 'prc email resend', CLI_Resend::class );

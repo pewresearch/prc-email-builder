@@ -321,7 +321,6 @@ function SendPanel({ postId }: SendPanelProps) {
 					</Text>
 					{preparing ? (
 						<Button
-							__next40pxDefaultSize
 							variant="primary"
 							disabled
 							style={{ width: '100%', justifyContent: 'center' }}
@@ -335,7 +334,6 @@ function SendPanel({ postId }: SendPanelProps) {
 					) : draftReady ? (
 						<>
 							<Button
-								__next40pxDefaultSize
 								variant="primary"
 								href={mailchimpUrl}
 								target="_blank"
@@ -351,7 +349,6 @@ function SendPanel({ postId }: SendPanelProps) {
 								)}
 							</Button>
 							<Button
-								__next40pxDefaultSize
 								variant="secondary"
 								onClick={handleUpdateMailchimpDraft}
 								disabled={!draftEditable || !htmlReady}
@@ -500,7 +497,6 @@ function SendPanel({ postId }: SendPanelProps) {
 					</Text>
 				)}
 				<Button
-					__next40pxDefaultSize
 					variant="primary"
 					onClick={() => setIsConfirmOpen(true)}
 					disabled={!canSend}

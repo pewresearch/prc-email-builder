@@ -73,7 +73,6 @@ export function SendWindowControl({
 					/>
 					<HStack spacing={2} alignment="left">
 						<NumberControl
-							__next40pxDefaultSize
 							label={__('Hour (0–23)', TEXT_DOMAIN)}
 							min={0}
 							max={23}
@@ -86,7 +85,6 @@ export function SendWindowControl({
 							}
 						/>
 						<NumberControl
-							__next40pxDefaultSize
 							label={__('Minute (0–59)', TEXT_DOMAIN)}
 							min={0}
 							max={59}

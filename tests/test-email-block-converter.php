@@ -753,6 +753,63 @@ namespace Tests\Newsletter\Email {
 	assert_contains( 'Click me', $html, 'button: preserves text' );
 	assert_contains( 'https://example.com', $html, 'button: href preserved' );
 
+	// Button: href only in innerHTML (attrs.url omitted — PRC-630).
+	$btn_href_only = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array(
+			'backgroundColor' => 'ui-link-color',
+			'textColor'       => 'ui-white',
+		),
+		'innerHTML'    => '<div class="wp-block-button"><a class="wp-block-button__link" href="https://example.com/follow-us">Get weekly insights</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_href_only, $post );
+	assert_contains( 'Get weekly insights', $html, 'button href-only: preserves text' );
+	assert_contains( 'https://example.com/follow-us', $html, 'button href-only: reads href from innerHTML' );
+	assert_contains( '<a href=', $html, 'button href-only: renders anchor' );
+	assert_not_contains( '<span style=', $html, 'button href-only: not a non-clickable span' );
+
+	// Button: attrs.url wins over a conflicting HTML href.
+	$btn_attrs_win = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array( 'url' => 'https://attrs.example.com/cta' ),
+		'innerHTML'    => '<div class="wp-block-button"><a class="wp-block-button__link" href="https://html.example.com/cta">CTA</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_attrs_win, $post );
+	assert_contains( 'https://attrs.example.com/cta', $html, 'button attrs precedence: uses attrs.url' );
+	assert_not_contains( 'https://html.example.com/cta', $html, 'button attrs precedence: ignores HTML href when attrs.url set' );
+
+	// Button: no url and no href → styled span, no empty href.
+	$btn_no_url = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array(),
+		'innerHTML'    => '<div class="wp-block-button"><a class="wp-block-button__link">No link</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_no_url, $post );
+	assert_contains( 'No link', $html, 'button empty url: preserves text' );
+	assert_contains( '<span style=', $html, 'button empty url: renders span' );
+	assert_not_contains( 'href=""', $html, 'button empty url: no empty href' );
+	assert_not_contains( '<a href=', $html, 'button empty url: no anchor' );
+
+	// Bare button: layout.justifyContent center.
+	$btn_center = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array(
+			'url'    => 'https://example.com',
+			'layout' => array( 'justifyContent' => 'center' ),
+		),
+		'innerHTML'    => '<div class="wp-block-button"><a class="wp-block-button__link" href="https://example.com">Centered</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_center, $post );
+	assert_contains( 'align="center"', $html, 'button center: wrapper cell align=center' );
+
 	// -----------------------------------------------------------------------
 	// Suite: Html_To_Email_Converter fallback
 	// -----------------------------------------------------------------------

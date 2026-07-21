@@ -114,7 +114,6 @@ function StepCard({
 					)}
 
 					<NumberControl
-						__next40pxDefaultSize
 						label={__('Delay (calendar days)', TEXT_DOMAIN)}
 						min={0}
 						max={365}
@@ -212,7 +211,6 @@ export function AutomationsSettings() {
 			))}
 
 			<Button
-				__next40pxDefaultSize
 				variant="secondary"
 				style={{ width: '100%', justifyContent: 'center' }}
 				onClick={addStep}
