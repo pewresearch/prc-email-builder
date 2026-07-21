@@ -868,9 +868,20 @@ class Email_Block_Integration {
 			$fill_color = $parsed['light'] ?: $fill_color;
 		}
 
-		$text_color = '#ffffff';
+		$text_color          = '#ffffff';
+		$has_explicit_text   = false;
 		if ( ! empty( $attrs['textColor'] ) ) {
-			$text_color = Email_Preset_Resolver::color_hex( (string) $attrs['textColor'] ) ?: $text_color;
+			$resolved = Email_Preset_Resolver::color_hex( (string) $attrs['textColor'] );
+			if ( '' !== $resolved ) {
+				$text_color        = $resolved;
+				$has_explicit_text = true;
+			}
+		} elseif ( ! empty( $attrs['style']['color']['text'] ) ) {
+			$parsed = Email_Preset_Resolver::parse_light_dark( (string) $attrs['style']['color']['text'] );
+			if ( '' !== $parsed['light'] ) {
+				$text_color        = $parsed['light'];
+				$has_explicit_text = true;
+			}
 		}
 
 		$radius = '3px';
@@ -879,10 +890,11 @@ class Email_Block_Integration {
 		}
 
 		if ( $is_outline ) {
-			$anchor_style = sprintf(
+			$outline_color = $has_explicit_text ? $text_color : $fill_color;
+			$anchor_style  = sprintf(
 				'display:inline-block;padding:10px 22px;background-color:transparent;color:%s;border:2px solid %s;font-family:%s;font-size:16px;font-weight:bold;text-decoration:none;border-radius:%s;',
-				esc_attr( $fill_color ),
-				esc_attr( $fill_color ),
+				esc_attr( $outline_color ),
+				esc_attr( $outline_color ),
 				esc_attr( Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS ),
 				esc_attr( $radius )
 			);

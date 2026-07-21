@@ -43,15 +43,14 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
   table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
   img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
   a { text-decoration: none; }
-  /* Stop Outlook desktop / iOS Mail from re-coloring our links */
-  a, a:link, a:visited { color: inherit !important; text-decoration: underline; }
+  /* Stop iOS Mail / Gmail from re-coloring auto-detected links */
   a[x-apple-data-detectors],
   .x-gmail-data-detectors,
   .x-gmail-data-detectors *,
   .aBn { color: inherit !important; text-decoration: inherit !important; }
   /* Footer links — keep gray on all clients */
   .footer-link, .footer-link:link, .footer-link:visited { color: #999999 !important; text-decoration: underline !important; }
-  /* Body content links — blue (beats generic a { color: inherit } above) */
+  /* Body content links — blue */
   .body-link, .body-link:link, .body-link:visited { color: #2b6dad !important; text-decoration: underline !important; }
 </style>
 </head>

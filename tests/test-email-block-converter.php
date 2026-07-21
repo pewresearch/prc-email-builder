@@ -768,7 +768,48 @@ namespace Tests\Newsletter\Email {
 	assert_contains( 'Get weekly insights', $html, 'button href-only: preserves text' );
 	assert_contains( 'https://example.com/follow-us', $html, 'button href-only: reads href from innerHTML' );
 	assert_contains( '<a href=', $html, 'button href-only: renders anchor' );
+	assert_contains( 'color:#ffffff', $html, 'button href-only: textColor slug resolves to white' );
 	assert_not_contains( '<span style=', $html, 'button href-only: not a non-clickable span' );
+
+	// Button: custom text color via style.color.text (no textColor slug).
+	$btn_style_text = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array(
+			'url'   => 'https://example.com/cta',
+			'style' => array(
+				'color' => array(
+					'background' => '#2b6dad',
+					'text'       => '#ffffff',
+				),
+			),
+		),
+		'innerHTML'    => '<div class="wp-block-button"><a class="wp-block-button__link" href="https://example.com/cta">Subscribe</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_style_text, $post );
+	assert_contains( 'color:#ffffff', $html, 'button style.color.text: white text color' );
+	assert_contains( 'background-color:#2b6dad', $html, 'button style.color.background: fill color' );
+	assert_contains( 'Subscribe', $html, 'button style.color.text: preserves label' );
+
+	// Button: outline uses explicit text color for border + text.
+	$btn_outline_text = array(
+		'blockName'    => 'core/button',
+		'attrs'        => array(
+			'url'       => 'https://example.com/outline',
+			'className' => 'is-style-outline',
+			'style'     => array(
+				'color' => array( 'text' => '#990000' ),
+			),
+		),
+		'innerHTML'    => '<div class="wp-block-button is-style-outline"><a class="wp-block-button__link" href="https://example.com/outline">Outline</a></div>',
+		'innerContent' => array(),
+		'innerBlocks'  => array(),
+	);
+	$html = call_user_func( Email_Block_Registry::get( 'core/button' ), $btn_outline_text, $post );
+	assert_contains( 'color:#990000', $html, 'button outline: uses style.color.text' );
+	assert_contains( 'border:2px solid #990000', $html, 'button outline: border matches text color' );
+	assert_contains( 'background-color:transparent', $html, 'button outline: transparent fill' );
 
 	// Button: attrs.url wins over a conflicting HTML href.
 	$btn_attrs_win = array(
