@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace PRC\Platform\Email_Builder\Reports;
 
 use PRC\Platform\Email_Builder\Migration;
+use PRC\Platform\Email_Builder\Option_Lock;
 use PRC\Platform\Email_Builder\Post_Type;
 use WP_Error;
 
@@ -148,7 +149,7 @@ class Report_Sync {
 			return new WP_Error( 'report_not_eligible', 'Campaign is not eligible for report sync.' );
 		}
 
-		$lock_token = self::acquire_lock( $post_id );
+		$lock_token = self::lock()->acquire( $post_id );
 		if ( '' === $lock_token ) {
 			return new WP_Error(
 				'report_sync_in_progress',
@@ -196,7 +197,7 @@ class Report_Sync {
 			Report_Store::save_report( $post_id, $report );
 			return true;
 		} finally {
-			self::release_lock( $post_id, $lock_token );
+			self::lock()->release( $post_id, $lock_token );
 		}
 	}
 
@@ -317,100 +318,10 @@ class Report_Sync {
 		return ( time() - $anchor ) <= $window_seconds;
 	}
 
-	private static function lock_option_name( int $post_id ): string {
-		return self::LOCK_OPTION_PREFIX . $post_id;
-	}
-
-	private static function read_lock_value( int $post_id ): string {
-		global $wpdb;
-		$option_name = self::lock_option_name( $post_id );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$value = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
-				$option_name
-			)
-		);
-		return null === $value ? '' : (string) $value;
-	}
-
-	private static function lock_expiry( string $lock_value ): int {
-		if ( '' === $lock_value ) {
-			return 0;
-		}
-		$parts  = explode( '|', $lock_value );
-		$expiry = end( $parts );
-		return is_numeric( $expiry ) ? (int) $expiry : 0;
-	}
-
-	private static function acquire_lock( int $post_id ): string {
-		global $wpdb;
-
-		$token       = uniqid( 'report_', true );
-		$new_value   = $token . '|' . ( time() + self::LOCK_TTL );
-		$option_name = self::lock_option_name( $post_id );
-		$existing    = self::read_lock_value( $post_id );
-
-		if ( '' === $existing ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$inserted = $wpdb->insert(
-				$wpdb->options,
-				[
-					'option_name'  => $option_name,
-					'option_value' => $new_value,
-					'autoload'     => 'no',
-				]
-			);
-			if ( $inserted ) {
-				wp_cache_delete( $option_name, 'options' );
-				return $token;
-			}
-			$existing = self::read_lock_value( $post_id );
-		}
-
-		if ( self::lock_expiry( $existing ) >= time() ) {
-			return '';
-		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$reclaimed = $wpdb->update(
-			$wpdb->options,
-			[ 'option_value' => $new_value ],
-			[
-				'option_name'  => $option_name,
-				'option_value' => $existing,
-			]
-		);
-
-		if ( $reclaimed ) {
-			wp_cache_delete( $option_name, 'options' );
-			return $token;
-		}
-
-		return '';
-	}
-
-	private static function release_lock( int $post_id, string $token ): void {
-		global $wpdb;
-
-		if ( '' === $token ) {
-			return;
-		}
-
-		$current = self::read_lock_value( $post_id );
-		if ( ! str_starts_with( $current, $token . '|' ) ) {
-			return;
-		}
-
-		$option_name = self::lock_option_name( $post_id );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->delete(
-			$wpdb->options,
-			[
-				'option_name'  => $option_name,
-				'option_value' => $current,
-			]
-		);
-		wp_cache_delete( $option_name, 'options' );
+	/**
+	 * Per-campaign report sync lock (separate prefix/TTL from Mandrill sends).
+	 */
+	private static function lock(): Option_Lock {
+		return new Option_Lock( self::LOCK_OPTION_PREFIX, self::LOCK_TTL, 'report_' );
 	}
 }

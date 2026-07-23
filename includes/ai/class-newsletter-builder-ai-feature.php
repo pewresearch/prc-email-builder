@@ -83,16 +83,16 @@ class Email_Builder_AI_Feature extends Abstract_Feature {
 	}
 
 	/**
-	 * Expose the links newsletter ability to the Email Library admin app.
+	 * Expose the links newsletter ability to the Campaigns DataViews admin app.
 	 *
 	 * @hook admin_enqueue_scripts
 	 */
 	public function localize_library_ai_ability_names( string $hook_suffix ): void {
-		if ( Post_Type::CAMPAIGN_POST_TYPE . '_page_' . Library::ADMIN_PAGE_SLUG !== $hook_suffix ) {
+		if ( Post_Type::CAMPAIGN_POST_TYPE . '_page_' . Email_Lists::CAMPAIGNS_PAGE_SLUG !== $hook_suffix ) {
 			return;
 		}
 
-		$handle = 'prc-email-builder-library';
+		$handle = Email_Lists::SCRIPT_HANDLE;
 		if ( ! wp_script_is( $handle, 'enqueued' ) ) {
 			return;
 		}
@@ -101,7 +101,7 @@ class Email_Builder_AI_Feature extends Abstract_Feature {
 			$handle,
 			'prcEmailBuilderLibraryAI',
 			array(
-				'enabled'                  => true,
+				'enabled'                    => true,
 				'linksNewsletterAbilityName' => Generate_Links_Newsletter_Ability::$ability_name,
 			)
 		);

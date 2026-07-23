@@ -7,12 +7,9 @@
 		"build:settings": "wp-scripts build --config webpack.settings.config.js",
 		"build:library": "wp-scripts build --config webpack.library.config.js",
 		"start:settings": "wp-scripts start --config webpack.settings.config.js",
-		"start:library": "wp-scripts start --config webpack.library.config.js",
-		"test": "wp-scripts test-playwright"
+		"start:library": "wp-scripts start --config webpack.library.config.js"
 	},
 	"devDependencies": {
-		"@playwright/test": "^1.51.1",
-		"@wordpress/e2e-test-utils-playwright": "^1.21.0",
 		"@wordpress/scripts": "^31.4.0"
 	},
 	"dependencies": {

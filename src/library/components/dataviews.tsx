@@ -3,25 +3,9 @@ import { useCallback, useMemo, useState } from '@wordpress/element';
 import { Notice } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import actions from '../actions';
-import fields from '../fields';
+import { getDefaultVisibleFields, getFieldsForScope } from '../fields';
 import useEmails from '../hooks/use-emails';
-
-const DEFAULT_VIEW = {
-	type: 'table',
-	page: 1,
-	perPage: 20,
-	sort: {
-		field: 'date',
-		direction: 'desc',
-	},
-	search: '',
-	filters: [],
-	titleField: 'title',
-	fields: ['type', 'newsletterLists', 'sendStatus', 'status', 'date'],
-	layout: {
-		primaryField: 'title',
-	},
-};
+import type { EmailListScope } from '../types';
 
 const DEFAULT_LAYOUTS = {
 	table: {
@@ -31,15 +15,37 @@ const DEFAULT_LAYOUTS = {
 	},
 };
 
+function createDefaultView(scope: EmailListScope) {
+	return {
+		type: 'table',
+		page: 1,
+		perPage: 20,
+		sort: {
+			field: 'date',
+			direction: 'desc',
+		},
+		search: '',
+		filters: [],
+		titleField: 'title',
+		fields: getDefaultVisibleFields(scope),
+		layout: {
+			primaryField: 'title',
+		},
+	};
+}
+
 interface DataViewsProps {
+	scope: EmailListScope;
 	refreshToken?: number;
 }
 
-export default function DataViews({ refreshToken = 0 }: DataViewsProps) {
-	const [view, setView] = useState(DEFAULT_VIEW);
+export default function DataViews({ scope, refreshToken = 0 }: DataViewsProps) {
+	const [view, setView] = useState(() => createDefaultView(scope));
+	const fields = useMemo(() => getFieldsForScope(scope), [scope]);
 	const { emails, paginationInfo, isLoading, error, refresh } = useEmails(
 		view,
-		refreshToken
+		refreshToken,
+		scope
 	);
 
 	const actionsWithRefresh = useMemo(

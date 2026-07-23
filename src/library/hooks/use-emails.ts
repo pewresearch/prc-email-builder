@@ -1,6 +1,7 @@
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
 import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
+import type { EmailListScope } from '../types';
 
 export interface EmailLibraryRow {
 	id: number;
@@ -40,11 +41,12 @@ interface DataViewsView {
 	}>;
 }
 
-function viewToQueryArgs(view: DataViewsView) {
+function viewToQueryArgs(view: DataViewsView, scope: EmailListScope) {
 	const args: Record<string, string | number> = {
 		per_page: view.perPage || 20,
 		page: view.page || 1,
 		status: 'publish,draft,private',
+		post_type: scope,
 	};
 
 	if (view.search) {
@@ -76,18 +78,6 @@ function viewToQueryArgs(view: DataViewsView) {
 				return;
 			}
 
-			if (filter.field === 'type') {
-				const typeValues = values.filter(Boolean);
-				if (
-					typeValues.length >= 2 ||
-					(typeValues.includes('campaign') &&
-						typeValues.includes('txn'))
-				) {
-					args.post_type = 'all';
-				} else if (typeValues.length === 1) {
-					args.post_type = typeValues[0];
-				}
-			}
 			if (filter.field === 'newsletterLists') {
 				args.newsletter_list = joined;
 			}
@@ -96,11 +86,16 @@ function viewToQueryArgs(view: DataViewsView) {
 				const mandrillValues: string[] = [];
 
 				values.filter(Boolean).forEach((value) => {
-					const [typePrefix, ...rest] = String(value).split(':');
-					const statusValue = rest.join(':');
-					if (!statusValue) {
+					const raw = String(value);
+					const separatorIndex = raw.indexOf(':');
+					if (
+						separatorIndex < 0 ||
+						separatorIndex === raw.length - 1
+					) {
 						return;
 					}
+					const typePrefix = raw.slice(0, separatorIndex);
+					const statusValue = raw.slice(separatorIndex + 1);
 					if (typePrefix === 'campaign') {
 						mailchimpValues.push(statusValue);
 					}
@@ -125,7 +120,11 @@ function viewToQueryArgs(view: DataViewsView) {
 	return args;
 }
 
-export const useEmails = (view: DataViewsView, externalRefreshToken = 0) => {
+export const useEmails = (
+	view: DataViewsView,
+	externalRefreshToken = 0,
+	scope: EmailListScope = 'campaign'
+) => {
 	const [emails, setEmails] = useState<EmailLibraryRow[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -149,7 +148,7 @@ export const useEmails = (view: DataViewsView, externalRefreshToken = 0) => {
 		setIsLoading(true);
 		setError(null);
 
-		const queryArgs = viewToQueryArgs(view);
+		const queryArgs = viewToQueryArgs(view, scope);
 		const path = addQueryArgs('/prc-email-builder/v1/library', queryArgs);
 
 		apiFetch({ path, signal: controller.signal, parse: false })
@@ -179,7 +178,7 @@ export const useEmails = (view: DataViewsView, externalRefreshToken = 0) => {
 			});
 
 		return () => controller.abort();
-	}, [view, refreshToken, externalRefreshToken]);
+	}, [view, refreshToken, externalRefreshToken, scope]);
 
 	return { emails, paginationInfo, isLoading, error, refresh };
 };

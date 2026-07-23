@@ -134,20 +134,26 @@ export function useNewsletterMeta() {
 	const selectedListTermId = assignedListTermIds[0] ?? 0;
 	const hasListTerm = selectedListTermId > 0;
 	const selectedListTerm = lists.find(
-		(list) => list.id === selectedListTermId
+		(list) => Number(list.id) === selectedListTermId
 	);
-	const listAudienceId =
-		selectedListTerm?.meta?.prc_newsletter_list_audience_id ?? '';
-	const listSegmentId =
-		selectedListTerm?.meta?.prc_newsletter_list_segment_id ?? '';
+	const listAudienceId = String(
+		selectedListTerm?.meta?.prc_newsletter_list_audience_id ?? ''
+	);
+	const listSegmentId = String(
+		selectedListTerm?.meta?.prc_newsletter_list_segment_id ?? ''
+	);
 
 	const subject: string = meta?.prc_email_subject ?? '';
 	const previewText: string = meta?.prc_email_preview_text ?? '';
 	const rawDeliveryMode: string = meta?.prc_email_delivery_mode ?? '';
 	const deliveryMode: TransactionalDeliveryMode =
 		rawDeliveryMode === 'mandrill' ? 'mandrill' : 'dynamic';
-	const audienceId: string = meta?.prc_email_mailchimp_audience_id ?? '';
-	const segmentId: string = meta?.prc_email_mailchimp_segment_id ?? '';
+	const audienceId: string = String(
+		meta?.prc_email_mailchimp_audience_id ?? ''
+	);
+	const segmentId: string = String(
+		meta?.prc_email_mailchimp_segment_id ?? ''
+	);
 	const campaignId: string = meta?.prc_email_mailchimp_campaign_id ?? '';
 	const campaignAdminUrl: string =
 		meta?.prc_email_mailchimp_campaign_admin_url ?? '';
@@ -202,21 +208,21 @@ export function useNewsletterMeta() {
 				return;
 			}
 
-			const term = lists.find((list) => list.id === termId);
-			const nextAudienceId =
-				term?.meta?.prc_newsletter_list_audience_id ?? '';
-			const nextSegmentId =
-				term?.meta?.prc_newsletter_list_segment_id ?? '';
+			const term = lists.find((list) => Number(list.id) === termId);
+			const nextAudienceId = String(
+				term?.meta?.prc_newsletter_list_audience_id ?? ''
+			);
+			const nextSegmentId = String(
+				term?.meta?.prc_newsletter_list_segment_id ?? ''
+			);
 
-			editPost({
-				[NEWSLETTER_LIST_TAXONOMY]: [termId],
-				meta: {
-					prc_email_mailchimp_audience_id: nextAudienceId,
-					prc_email_mailchimp_segment_id: nextSegmentId,
-				},
+			editPost({ [NEWSLETTER_LIST_TAXONOMY]: [termId] });
+			persistMeta({
+				prc_email_mailchimp_audience_id: nextAudienceId,
+				prc_email_mailchimp_segment_id: nextSegmentId,
 			});
 		},
-		[editPost, lists]
+		[editPost, lists, persistMeta]
 	);
 
 	// Align campaign Mailchimp meta with the assigned list term (load + term updates).
@@ -227,11 +233,9 @@ export function useNewsletterMeta() {
 		if (audienceId === listAudienceId && segmentId === listSegmentId) {
 			return;
 		}
-		editPost({
-			meta: {
-				prc_email_mailchimp_audience_id: listAudienceId,
-				prc_email_mailchimp_segment_id: listSegmentId,
-			},
+		persistMeta({
+			prc_email_mailchimp_audience_id: listAudienceId,
+			prc_email_mailchimp_segment_id: listSegmentId,
 		});
 	}, [
 		hasListTerm,
@@ -241,7 +245,7 @@ export function useNewsletterMeta() {
 		listSegmentId,
 		audienceId,
 		segmentId,
-		editPost,
+		persistMeta,
 	]);
 
 	const effectiveAudienceId =

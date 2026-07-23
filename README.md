@@ -313,12 +313,12 @@ npm run start:settings -w @prc/email-builder
 
 # Run E2E tests (VIP dev-env required)
 npm run vip:start
-npm test -- tests/prc-email-builder/
+npm test -- tests/prc-email-builder/e2e/
 ```
 
 ## Tests
 
-Playwright E2E specs live in the repo-root `tests/prc-email-builder/` directory
+Playwright E2E specs live in the repo-root `tests/prc-email-builder/e2e/` directory
 (centralized Playwright config — no per-plugin `playwright.config.js`):
 
 | File                              | Coverage                                                                          |

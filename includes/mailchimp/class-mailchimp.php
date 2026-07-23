@@ -24,11 +24,35 @@ use WP_Error;
  * option. The REST API never exposes credentials.
  */
 class Mailchimp {
-	const SETTINGS_KEY            = 'prc_email_builder_settings';
-	const API_KEY_CONSTANT        = 'PRC_PLATFORM_MAILCHIMP_KEY';
-	const AUDIENCES_TRANSIENT       = 'prc_email_mailchimp_audiences';
-	const SEGMENTS_TRANSIENT_PREFIX = 'prc_email_mailchimp_segments_saved_';
+	const SETTINGS_KEY                = 'prc_email_builder_settings';
+	const API_KEY_CONSTANT            = 'PRC_PLATFORM_MAILCHIMP_KEY';
+	const AUDIENCES_TRANSIENT         = 'prc_email_mailchimp_audiences';
+	const SEGMENTS_TRANSIENT_PREFIX   = 'prc_email_mailchimp_segments_saved_';
 	const LIST_TOTAL_TRANSIENT_PREFIX = 'prc_email_mailchimp_list_total_';
+	/** Per audience+segment orphan count fallback (when segment missing from saved list). */
+	const SEGMENT_COUNT_TRANSIENT_PREFIX = 'prc_email_mailchimp_segment_count_';
+	/** Durable list of audience IDs that have been cached (invalidation aid). */
+	const CACHED_AUDIENCE_IDS_OPTION = 'prc_email_mailchimp_cached_audience_ids';
+	/** Registry of orphan segment-count transient keys (invalidation aid). */
+	const SEGMENT_COUNT_KEYS_OPTION = 'prc_email_mailchimp_segment_count_keys';
+	/**
+	 * Options-table lock serializing durable registry read-modify-writes.
+	 *
+	 * Without this, concurrent get_option/update_option merges can drop
+	 * audience IDs or segment-count keys; on VIP, invalidate then misses
+	 * object-cache transients the SQL prefix wipe cannot see.
+	 */
+	const REGISTRY_LOCK_OPTION_PREFIX = 'prc_email_mailchimp_registry_lock_';
+	const REGISTRY_LOCK_TTL           = 30;
+	const REGISTRY_LOCK_RESOURCE_ID   = 1;
+	/**
+	 * Monotonic fence for Mailchimp metadata cache writes.
+	 *
+	 * Bumped under the registry lock at the start of invalidation. Cache-miss
+	 * writers snapshot this before the API call and refuse to set_transient /
+	 * update registries if the generation moved (credentials/settings changed).
+	 */
+	const CACHE_GENERATION_OPTION = 'prc_email_mailchimp_cache_generation';
 
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
@@ -61,7 +85,8 @@ class Mailchimp {
 			return $cached;
 		}
 
-		$client = $this->get_client();
+		$generation = self::cache_generation();
+		$client     = $this->get_client();
 		if ( is_wp_error( $client ) ) {
 			return $client;
 		}
@@ -78,7 +103,16 @@ class Mailchimp {
 		}
 		asort( $audiences );
 
-		set_transient( self::AUDIENCES_TRANSIENT, $audiences, HOUR_IN_SECONDS );
+		// Merge into the registry; do not replace — IDs registered via
+		// remember_cached_audience_id() (segments / list-total) must survive.
+		self::commit_mailchimp_cache_write(
+			$generation,
+			static function ( array &$rollback_keys ) use ( $audiences ): void {
+				set_transient( self::AUDIENCES_TRANSIENT, $audiences, HOUR_IN_SECONDS );
+				$rollback_keys[] = self::AUDIENCES_TRANSIENT;
+				self::merge_cached_audience_ids_under_lock( array_keys( $audiences ) );
+			}
+		);
 
 		return $audiences;
 	}
@@ -104,7 +138,8 @@ class Mailchimp {
 			return self::filter_saved_segments( $cached );
 		}
 
-		$client = $this->get_client();
+		$generation = self::cache_generation();
+		$client     = $this->get_client();
 		if ( is_wp_error( $client ) ) {
 			return $client;
 		}
@@ -137,7 +172,14 @@ class Mailchimp {
 		}
 		usort( $segments, fn( $a, $b ) => strcasecmp( $a['name'], $b['name'] ) );
 
-		set_transient( $cache_key, $segments, HOUR_IN_SECONDS );
+		self::commit_mailchimp_cache_write(
+			$generation,
+			static function ( array &$rollback_keys ) use ( $cache_key, $segments, $audience_id ): void {
+				set_transient( $cache_key, $segments, HOUR_IN_SECONDS );
+				$rollback_keys[] = $cache_key;
+				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+			}
+		);
 
 		return self::filter_saved_segments( $segments );
 	}
@@ -175,7 +217,8 @@ class Mailchimp {
 			return (int) $cached;
 		}
 
-		$client = $this->get_client();
+		$generation = self::cache_generation();
+		$client     = $this->get_client();
 		if ( is_wp_error( $client ) ) {
 			return $client;
 		}
@@ -187,7 +230,14 @@ class Mailchimp {
 		}
 
 		$count = (int) ( $response->stats->member_count ?? 0 );
-		set_transient( $cache_key, $count, HOUR_IN_SECONDS );
+		self::commit_mailchimp_cache_write(
+			$generation,
+			static function ( array &$rollback_keys ) use ( $cache_key, $count, $audience_id ): void {
+				set_transient( $cache_key, $count, HOUR_IN_SECONDS );
+				$rollback_keys[] = $cache_key;
+				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+			}
+		);
 
 		return $count;
 	}
@@ -217,7 +267,16 @@ class Mailchimp {
 				}
 			}
 
-			$client = $this->get_client();
+			// Orphan / non-saved / stale-list miss: cache the live getSegment()
+			// count so repeated admin reads do not re-hit Mailchimp every time.
+			$count_key = self::SEGMENT_COUNT_TRANSIENT_PREFIX . md5( $audience_id . ':' . $segment_id );
+			$cached    = get_transient( $count_key );
+			if ( false !== $cached && is_numeric( $cached ) ) {
+				return (int) $cached;
+			}
+
+			$generation = self::cache_generation();
+			$client     = $this->get_client();
 			if ( is_wp_error( $client ) ) {
 				return $client;
 			}
@@ -232,7 +291,16 @@ class Mailchimp {
 				return $this->to_wp_error( $e, 'mailchimp_segment_count_error' );
 			}
 
-			return (int) ( $response->member_count ?? 0 );
+			$count = (int) ( $response->member_count ?? 0 );
+			self::commit_mailchimp_cache_write(
+				$generation,
+				static function ( array &$rollback_keys ) use ( $count_key, $count ): void {
+					set_transient( $count_key, $count, HOUR_IN_SECONDS );
+					$rollback_keys[] = $count_key;
+					self::remember_segment_count_key_under_lock( $count_key );
+				}
+			);
+			return $count;
 		}
 
 		return $this->get_list_total_count( $audience_id );
@@ -248,10 +316,11 @@ class Mailchimp {
 	 * @return array{ campaign_id: string, admin_url: string }|WP_Error
 	 */
 	public function create_campaign_draft( int $post_id, string $html ): array|WP_Error {
-		$audience_id  = get_post_meta( $post_id, 'prc_email_mailchimp_audience_id', true );
+		$targeting    = Newsletter_List::sync_mailchimp_targeting_meta( $post_id );
+		$audience_id  = $targeting['audience_id'];
+		$segment_id   = (int) $targeting['segment_id'];
 		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
 		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
-		$segment_id   = (int) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true );
 		$from         = self::resolve_from_for_post( $post_id );
 
 		if ( empty( $audience_id ) ) {
@@ -263,10 +332,7 @@ class Mailchimp {
 			return $client;
 		}
 
-		$recipients = [ 'list_id' => $audience_id ];
-		if ( $segment_id > 0 ) {
-			$recipients['segment_opts'] = [ 'saved_segment_id' => $segment_id ];
-		}
+		$recipients = self::build_recipients( $audience_id, $segment_id );
 
 		try {
 			$campaign = $client->campaigns->create( [
@@ -340,21 +406,14 @@ class Mailchimp {
 			);
 		}
 
-		$audience_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_audience_id', true );
-		if ( '' === $audience_id || $audience_id !== self::campaign_list_id( $campaign ) ) {
+		$targeting   = Newsletter_List::sync_mailchimp_targeting_meta( $post_id );
+		$audience_id = $targeting['audience_id'];
+		$segment_id  = (int) $targeting['segment_id'];
+		if ( '' === $audience_id ) {
 			return new WP_Error(
-				'campaign_mismatch',
-				'Stored Mailchimp campaign does not match this newsletter audience.',
-				[ 'status' => 409 ]
-			);
-		}
-
-		$segment_id = (int) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true );
-		if ( $segment_id !== self::campaign_saved_segment_id( $campaign ) ) {
-			return new WP_Error(
-				'campaign_mismatch',
-				'Stored Mailchimp campaign does not match this newsletter segment.',
-				[ 'status' => 409 ]
+				'missing_audience',
+				'No Mailchimp audience selected for this newsletter.',
+				[ 'status' => 400 ]
 			);
 		}
 
@@ -383,7 +442,8 @@ class Mailchimp {
 			$client->campaigns->update(
 				$campaign_id,
 				[
-					'settings' => [
+					'recipients' => self::build_recipients( $audience_id, $segment_id, true ),
+					'settings'   => [
 						'title'        => get_the_title( $post_id ),
 						'subject_line' => $subject,
 						'preview_text' => $preview_text,
@@ -691,6 +751,309 @@ class Mailchimp {
 			'mandrill_tags'       => $tags ?: [ 'prc-newsletter' ],
 		];
 		update_option( self::SETTINGS_KEY, $sanitized, false );
+		self::invalidate_mailchimp_caches();
+	}
+
+	/**
+	 * Drop Mailchimp metadata transients after credentials/settings change.
+	 *
+	 * Uses delete_transient() so object-cache-backed installs (VIP) clear
+	 * correctly. Audience IDs and orphan segment-count keys are remembered
+	 * when those caches are written so invalidation stays targeted.
+	 *
+	 * Holds the registry lock for the full clear and bumps the cache
+	 * generation fence first so in-flight API fetches cannot re-seed object
+	 * cache after this returns. Never force-clears a fresh lock — that would
+	 * steal from an in-progress commit that already passed the generation
+	 * check and let it reseed after invalidation.
+	 */
+	public static function invalidate_mailchimp_caches(): void {
+		for ( $attempt = 0; $attempt < 3; ++$attempt ) {
+			$result = self::with_registry_lock(
+				static function (): true {
+					self::clear_mailchimp_caches_under_lock();
+					return true;
+				}
+			);
+			if ( true === $result ) {
+				return;
+			}
+		}
+
+		// Could not obtain the registry lock (live holder kept winning the
+		// wait window). Bump the fence so in-flight commits re-check and roll
+		// back, then try one final clear. Do not Option_Lock::clear() a fresh
+		// lock — that breaks mutual exclusion with the holder.
+		update_option( self::CACHE_GENERATION_OPTION, self::cache_generation() + 1, false );
+		self::with_registry_lock(
+			static function (): true {
+				self::clear_mailchimp_caches_under_lock();
+				return true;
+			}
+		);
+	}
+
+	/**
+	 * Bump the generation fence and delete Mailchimp metadata caches.
+	 *
+	 * Caller must hold the registry lock.
+	 */
+	private static function clear_mailchimp_caches_under_lock(): void {
+		self::bump_cache_generation_under_lock();
+
+		$audiences = get_transient( self::AUDIENCES_TRANSIENT );
+		delete_transient( self::AUDIENCES_TRANSIENT );
+
+		// Always union audiences keys with the durable registry. The registry
+		// is a superset (segment/list-total IDs may be absent from audiences),
+		// so preferring a warm audiences transient alone would skip those IDs.
+		$audience_ids = [];
+		if ( is_array( $audiences ) ) {
+			$audience_ids = array_keys( $audiences );
+		}
+		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, [] );
+		if ( is_array( $stored ) ) {
+			$audience_ids = array_unique( array_merge( $audience_ids, $stored ) );
+		}
+
+		foreach ( $audience_ids as $audience_id ) {
+			$audience_id = (string) $audience_id;
+			if ( '' === $audience_id ) {
+				continue;
+			}
+			delete_transient( self::SEGMENTS_TRANSIENT_PREFIX . md5( $audience_id ) );
+			delete_transient( self::LIST_TOTAL_TRANSIENT_PREFIX . md5( $audience_id ) );
+		}
+		delete_option( self::CACHED_AUDIENCE_IDS_OPTION );
+
+		$segment_count_keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, [] );
+		if ( is_array( $segment_count_keys ) ) {
+			foreach ( array_keys( $segment_count_keys ) as $key ) {
+				delete_transient( (string) $key );
+			}
+		}
+		delete_option( self::SEGMENT_COUNT_KEYS_OPTION );
+
+		// Belt-and-suspenders for installs that persist transients in options.
+		self::delete_mailchimp_transients_by_prefix(
+			[
+				self::SEGMENTS_TRANSIENT_PREFIX,
+				self::LIST_TOTAL_TRANSIENT_PREFIX,
+				self::SEGMENT_COUNT_TRANSIENT_PREFIX,
+			]
+		);
+	}
+
+	/**
+	 * Current Mailchimp metadata cache generation (invalidation fence).
+	 */
+	private static function cache_generation(): int {
+		return (int) get_option( self::CACHE_GENERATION_OPTION, 0 );
+	}
+
+	/**
+	 * Bump the cache generation. Caller must hold the registry lock.
+	 */
+	private static function bump_cache_generation_under_lock(): void {
+		update_option( self::CACHE_GENERATION_OPTION, self::cache_generation() + 1, false );
+	}
+
+	/**
+	 * Persist a Mailchimp metadata cache write if still on the same generation.
+	 *
+	 * Acquires the registry lock, compares $generation to the durable fence,
+	 * runs set_transient + registry updates, then re-checks the fence. If the
+	 * generation moved (invalidation won, or a last-resort fence bump), any
+	 * transients the writer recorded in $rollback_keys are deleted before
+	 * returning false. Callers still return fresh API data either way.
+	 *
+	 * @param int      $generation Generation snapshot from before the API call.
+	 * @param callable $writer     `function ( array &$rollback_keys ): void`.
+	 *                             Must push each set_transient key onto
+	 *                             $rollback_keys before updating registries.
+	 */
+	private static function commit_mailchimp_cache_write( int $generation, callable $writer ): bool {
+		$result = self::with_registry_lock(
+			static function () use ( $generation, $writer ) {
+				if ( self::cache_generation() !== $generation ) {
+					return false;
+				}
+				$rollback_keys = [];
+				$writer( $rollback_keys );
+				if ( self::cache_generation() !== $generation ) {
+					foreach ( $rollback_keys as $key ) {
+						delete_transient( (string) $key );
+					}
+					return false;
+				}
+				return true;
+			}
+		);
+		return true === $result;
+	}
+
+	/**
+	 * Remember an audience ID that has per-audience Mailchimp caches.
+	 *
+	 * @param string $audience_id Mailchimp list (audience) ID.
+	 */
+	private static function remember_cached_audience_id( string $audience_id ): void {
+		if ( '' === $audience_id ) {
+			return;
+		}
+		self::with_registry_lock(
+			static function () use ( $audience_id ): void {
+				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+			}
+		);
+	}
+
+	/**
+	 * Union audience IDs into the durable invalidation registry.
+	 *
+	 * @param array<int|string, mixed> $audience_ids Audience IDs to remember.
+	 */
+	private static function merge_cached_audience_ids( array $audience_ids ): void {
+		self::with_registry_lock(
+			static function () use ( $audience_ids ): void {
+				self::merge_cached_audience_ids_under_lock( $audience_ids );
+			}
+		);
+	}
+
+	/**
+	 * Union audience IDs into the registry. Caller must hold the registry lock.
+	 *
+	 * @param array<int|string, mixed> $audience_ids Audience IDs to remember.
+	 */
+	private static function merge_cached_audience_ids_under_lock( array $audience_ids ): void {
+		$incoming = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'strval', $audience_ids ),
+					static fn( string $id ): bool => '' !== $id
+				)
+			)
+		);
+		if ( [] === $incoming ) {
+			return;
+		}
+
+		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, [] );
+		if ( ! is_array( $stored ) ) {
+			$stored = [];
+		}
+		$merged = array_values(
+			array_unique(
+				array_filter(
+					array_merge(
+						array_map( 'strval', $stored ),
+						$incoming
+					),
+					static fn( string $id ): bool => '' !== $id
+				)
+			)
+		);
+		update_option( self::CACHED_AUDIENCE_IDS_OPTION, $merged, false );
+	}
+
+	/**
+	 * Remember an orphan segment-count transient key for later invalidation.
+	 *
+	 * @param string $key Transient key.
+	 */
+	private static function remember_segment_count_key( string $key ): void {
+		if ( '' === $key ) {
+			return;
+		}
+		self::with_registry_lock(
+			static function () use ( $key ): void {
+				self::remember_segment_count_key_under_lock( $key );
+			}
+		);
+	}
+
+	/**
+	 * Remember an orphan segment-count key. Caller must hold the registry lock.
+	 *
+	 * @param string $key Transient key.
+	 */
+	private static function remember_segment_count_key_under_lock( string $key ): void {
+		if ( '' === $key ) {
+			return;
+		}
+		$keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, [] );
+		if ( ! is_array( $keys ) ) {
+			$keys = [];
+		}
+		if ( isset( $keys[ $key ] ) ) {
+			return;
+		}
+		$keys[ $key ] = 1;
+		update_option( self::SEGMENT_COUNT_KEYS_OPTION, $keys, false );
+	}
+
+	/**
+	 * Serialize durable registry + cache-write mutations via Option_Lock.
+	 *
+	 * Spins until the lock is acquired or the wait exceeds the lock TTL so a
+	 * crashed holder can be reclaimed. Never runs $callback unlocked — that
+	 * reintroduces the lost-registry race this lock exists to prevent.
+	 *
+	 * @template T
+	 * @param callable(): T $callback Critical section.
+	 * @return T|null Callback result, or null when the lock could not be acquired.
+	 */
+	private static function with_registry_lock( callable $callback ) {
+		$lock  = new Option_Lock( self::REGISTRY_LOCK_OPTION_PREFIX, self::REGISTRY_LOCK_TTL, 'mc_reg_' );
+		$token = '';
+		// Wait longer than REGISTRY_LOCK_TTL so an abandoned lock can expire
+		// and be reclaimed (50ms * 700 ≈ 35s > 30s TTL).
+		for ( $attempt = 0; $attempt < 700; ++$attempt ) {
+			$token = $lock->acquire( self::REGISTRY_LOCK_RESOURCE_ID );
+			if ( '' !== $token ) {
+				break;
+			}
+			usleep( 50000 );
+		}
+
+		if ( '' === $token ) {
+			return null;
+		}
+
+		try {
+			return $callback();
+		} finally {
+			$lock->release( self::REGISTRY_LOCK_RESOURCE_ID, $token );
+		}
+	}
+
+	/**
+	 * Delete options-table transient rows matching known Mailchimp cache prefixes.
+	 *
+	 * Admin/settings path only — not used on steady-state reads. Complements
+	 * delete_transient() when transients are stored in the options table.
+	 *
+	 * @param array<int, string> $prefixes Transient key prefixes (without _transient_).
+	 */
+	private static function delete_mailchimp_transients_by_prefix( array $prefixes ): void {
+		global $wpdb;
+
+		foreach ( $prefixes as $prefix ) {
+			if ( '' === $prefix || ! str_starts_with( $prefix, 'prc_email_mailchimp_' ) ) {
+				continue;
+			}
+			$like         = $wpdb->esc_like( '_transient_' . $prefix ) . '%';
+			$timeout_like = $wpdb->esc_like( '_transient_timeout_' . $prefix ) . '%';
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+					$like,
+					$timeout_like
+				)
+			);
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -780,45 +1143,28 @@ class Mailchimp {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Mailchimp list ID from a campaign payload.
+	 * Build Mailchimp recipients payload for an audience, optionally scoped to a segment.
 	 *
-	 * @param array<string, mixed> $campaign Campaign object from the API.
-	 */
-	private static function campaign_list_id( array $campaign ): string {
-		$recipients = $campaign['recipients'] ?? null;
-		if ( is_array( $recipients ) ) {
-			return (string) ( $recipients['list_id'] ?? '' );
-		}
-		if ( is_object( $recipients ) && isset( $recipients->list_id ) ) {
-			return (string) $recipients->list_id;
-		}
-
-		return '';
-	}
-
-	/**
-	 * Saved segment ID from a campaign payload (0 when whole-audience).
+	 * On create, omit segment_opts when targeting the entire audience. On update,
+	 * include an empty segment_opts object so PATCH clears a previously saved
+	 * segment — omitting segment_opts leaves the prior saved_segment_id in place.
 	 *
-	 * @param array<string, mixed> $campaign Campaign object from the API.
+	 * @param string $audience_id         Mailchimp audience (list) ID.
+	 * @param int    $segment_id          Saved segment ID; 0 = entire audience.
+	 * @param bool   $clear_empty_segment When true and $segment_id is 0, send
+	 *                                    empty segment_opts to clear a prior segment on PATCH.
+	 * @return array{list_id: string, segment_opts?: array{saved_segment_id: int}|\stdClass}
 	 */
-	private static function campaign_saved_segment_id( array $campaign ): int {
-		$recipients = $campaign['recipients'] ?? null;
-		if ( is_array( $recipients ) ) {
-			$segment_opts = $recipients['segment_opts'] ?? null;
-		} elseif ( is_object( $recipients ) && isset( $recipients->segment_opts ) ) {
-			$segment_opts = $recipients->segment_opts;
-		} else {
-			return 0;
+	private static function build_recipients( string $audience_id, int $segment_id, bool $clear_empty_segment = false ): array {
+		$recipients = [ 'list_id' => $audience_id ];
+		if ( $segment_id > 0 ) {
+			$recipients['segment_opts'] = [ 'saved_segment_id' => $segment_id ];
+		} elseif ( $clear_empty_segment ) {
+			// Empty JSON object (not [] / omission) so PATCH clears saved segments.
+			$recipients['segment_opts'] = (object) [];
 		}
 
-		if ( is_array( $segment_opts ) ) {
-			return (int) ( $segment_opts['saved_segment_id'] ?? 0 );
-		}
-		if ( is_object( $segment_opts ) && isset( $segment_opts->saved_segment_id ) ) {
-			return (int) $segment_opts->saved_segment_id;
-		}
-
-		return 0;
+		return $recipients;
 	}
 
 	private function get_api_key(): string {

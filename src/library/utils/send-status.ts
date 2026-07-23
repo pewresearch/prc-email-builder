@@ -82,10 +82,16 @@ declare global {
 	interface Window {
 		prcEmailLibrary?: {
 			sendStatuses?: Array<{ value: string; label: string }>;
+			postTypeScope?: 'campaign' | 'txn';
 		};
 	}
 }
 
-export function getSendStatusFilterElements() {
-	return window?.prcEmailLibrary?.sendStatuses || [];
+export function getSendStatusFilterElements(scope?: 'campaign' | 'txn') {
+	const elements = window?.prcEmailLibrary?.sendStatuses || [];
+	if (!scope) {
+		return elements;
+	}
+	const prefix = `${scope}:`;
+	return elements.filter((element) => element.value.startsWith(prefix));
 }

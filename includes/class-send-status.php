@@ -141,27 +141,32 @@ class Send_Status {
 	}
 
 	/**
-	 * Merged send-status filter options for the Email Library DataViews UI.
+	 * Send-status filter options for the Email DataViews UI.
 	 *
 	 * Values are prefixed with email type: campaign:save, txn:sent, etc.
 	 *
+	 * @param string|null $scope `campaign`, `txn`, or null for both.
 	 * @return array<int, array{value: string, label: string}>
 	 */
-	public static function library_filter_options(): array {
+	public static function library_filter_options( ?string $scope = null ): array {
 		$options = [];
 
-		foreach ( self::mailchimp_options() as $option ) {
-			$options[] = [
-				'value' => 'campaign:' . $option['value'],
-				'label' => $option['label'],
-			];
+		if ( null === $scope || 'campaign' === $scope ) {
+			foreach ( self::mailchimp_options() as $option ) {
+				$options[] = [
+					'value' => 'campaign:' . $option['value'],
+					'label' => $option['label'],
+				];
+			}
 		}
 
-		foreach ( self::mandrill_options() as $option ) {
-			$options[] = [
-				'value' => 'txn:' . $option['value'],
-				'label' => $option['label'],
-			];
+		if ( null === $scope || 'txn' === $scope ) {
+			foreach ( self::mandrill_options() as $option ) {
+				$options[] = [
+					'value' => 'txn:' . $option['value'],
+					'label' => $option['label'],
+				];
+			}
 		}
 
 		return $options;

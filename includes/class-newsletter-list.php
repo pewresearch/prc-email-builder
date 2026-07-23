@@ -342,6 +342,57 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Resolve Mailchimp audience/segment for a campaign post.
+	 *
+	 * When a newsletter list term is assigned, targeting comes from term meta.
+	 * Otherwise the campaign's own Mailchimp post meta is used.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{audience_id: string, segment_id: string, term_id: int}
+	 */
+	public static function resolve_mailchimp_targeting( int $post_id ): array {
+		$term_ids = wp_get_object_terms(
+			$post_id,
+			Post_Type::TAXONOMY,
+			[
+				'fields' => 'ids',
+			]
+		);
+
+		if ( ! is_wp_error( $term_ids ) && ! empty( $term_ids ) ) {
+			$term_ids = array_values( array_map( 'intval', $term_ids ) );
+			$term_id  = (int) $term_ids[0];
+
+			return [
+				'audience_id' => (string) get_term_meta( $term_id, 'prc_newsletter_list_audience_id', true ),
+				'segment_id'  => (string) get_term_meta( $term_id, 'prc_newsletter_list_segment_id', true ),
+				'term_id'     => $term_id,
+			];
+		}
+
+		return [
+			'audience_id' => (string) get_post_meta( $post_id, 'prc_email_mailchimp_audience_id', true ),
+			'segment_id'  => (string) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true ),
+			'term_id'     => 0,
+		];
+	}
+
+	/**
+	 * Persist resolved Mailchimp audience/segment onto the campaign post.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{audience_id: string, segment_id: string, term_id: int}
+	 */
+	public static function sync_mailchimp_targeting_meta( int $post_id ): array {
+		$targeting = self::resolve_mailchimp_targeting( $post_id );
+
+		update_post_meta( $post_id, 'prc_email_mailchimp_audience_id', $targeting['audience_id'] );
+		update_post_meta( $post_id, 'prc_email_mailchimp_segment_id', $targeting['segment_id'] );
+
+		return $targeting;
+	}
+
+	/**
 	 * When a campaign has a newsletter list term, overwrite audience/segment post meta
 	 * and enforce a single assigned term. No list term → leave meta as the user set it.
 	 *
@@ -373,10 +424,6 @@ class Newsletter_List {
 			wp_set_object_terms( $post->ID, [ $term_id ], Post_Type::TAXONOMY, false );
 		}
 
-		$audience_id = (string) get_term_meta( $term_id, 'prc_newsletter_list_audience_id', true );
-		$segment_id  = (string) get_term_meta( $term_id, 'prc_newsletter_list_segment_id', true );
-
-		update_post_meta( $post->ID, 'prc_email_mailchimp_audience_id', $audience_id );
-		update_post_meta( $post->ID, 'prc_email_mailchimp_segment_id', $segment_id );
+		self::sync_mailchimp_targeting_meta( $post->ID );
 	}
 }

@@ -59,7 +59,11 @@ class Mandrill_Sender {
 	/** Action Scheduler group for Mandrill send jobs. */
 	const ACTION_GROUP = 'prc-email-builder';
 
+	/** Options-table CAS lock for per-post Mandrill sends. */
+	private Option_Lock $send_lock;
+
 	public function __construct( ?Loader $loader = null ) {
+		$this->send_lock = new Option_Lock( self::LOCK_OPTION_PREFIX, self::LOCK_TTL );
 		if ( $loader ) {
 			$loader->add_action( self::SEND_HOOK, $this, 'run_scheduled_send', 10, 1 );
 		}
@@ -452,11 +456,7 @@ class Mandrill_Sender {
 	 * @param int $post_id Newsletter post ID.
 	 */
 	public function clear_lock( int $post_id ): void {
-		global $wpdb;
-		$option_name = $this->lock_option_name( $post_id );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->delete( $wpdb->options, [ 'option_name' => $option_name ] );
-		wp_cache_delete( $option_name, 'options' );
+		$this->send_lock->clear( $post_id );
 		delete_post_meta( $post_id, self::LOCK_META );
 	}
 
@@ -467,133 +467,21 @@ class Mandrill_Sender {
 	 * @return bool
 	 */
 	public function is_locked( int $post_id ): bool {
-		return $this->lock_expiry( $this->read_lock_value( $post_id ) ) >= time();
+		return $this->send_lock->is_held( $post_id );
 	}
 
 	// -------------------------------------------------------------------------
-	// Atomic lock primitives
+	// Atomic lock primitives (thin delegates over Option_Lock)
 	// -------------------------------------------------------------------------
-
-	/**
-	 * Option name holding the atomic send lock for a post.
-	 *
-	 * @param int $post_id Newsletter post ID.
-	 * @return string
-	 */
-	private function lock_option_name( int $post_id ): string {
-		return self::LOCK_OPTION_PREFIX . $post_id;
-	}
-
-	/**
-	 * Option row that currently holds the send lock for a post.
-	 *
-	 * @param int $post_id Newsletter post ID.
-	 * @return string Option name to read/update.
-	 */
-	private function resolve_lock_option_name( int $post_id ): string {
-		return $this->lock_option_name( $post_id );
-	}
-
-	/**
-	 * Read the raw lock value ("<token>|<expiry>") straight from the DB.
-	 *
-	 * Reads via $wpdb (not get_option) so the lock state is never served from a
-	 * stale object cache while we are reasoning about ownership/freshness.
-	 *
-	 * @param int $post_id Newsletter post ID.
-	 * @return string Empty string when no lock row exists.
-	 */
-	private function read_lock_value( int $post_id ): string {
-		global $wpdb;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$value = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
-				$this->resolve_lock_option_name( $post_id )
-			)
-		);
-		return null === $value ? '' : (string) $value;
-	}
-
-	/**
-	 * Parse the expiry timestamp out of a "<token>|<expiry>" lock value.
-	 *
-	 * @param string $lock_value Stored lock value.
-	 * @return int Expiry timestamp, or 0 when unparseable/absent.
-	 */
-	private function lock_expiry( string $lock_value ): int {
-		if ( '' === $lock_value ) {
-			return 0;
-		}
-		$parts  = explode( '|', $lock_value );
-		$expiry = end( $parts );
-		return is_numeric( $expiry ) ? (int) $expiry : 0;
-	}
 
 	/**
 	 * Atomically acquire the send lock for a post.
-	 *
-	 * Uses an INSERT (which fails on the UNIQUE option_name index) for the
-	 * first acquisition and a compare-and-swap UPDATE to reclaim an expired
-	 * lock. Either way only one concurrent worker can win, so the caller that
-	 * receives a non-empty token is the sole owner.
 	 *
 	 * @param int $post_id Newsletter post ID.
 	 * @return string Owner token on success, or '' when a fresh lock is held.
 	 */
 	private function acquire_lock( int $post_id ): string {
-		global $wpdb;
-
-		$token     = uniqid( '', true );
-		$new_value = $token . '|' . ( time() + self::LOCK_TTL );
-
-		$existing    = $this->read_lock_value( $post_id );
-		$option_name = '' === $existing
-			? $this->lock_option_name( $post_id )
-			: $this->resolve_lock_option_name( $post_id );
-
-		// No lock row yet -> atomic INSERT; the UNIQUE index rejects a loser.
-		if ( '' === $existing ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$inserted = $wpdb->insert(
-				$wpdb->options,
-				[
-					'option_name'  => $option_name,
-					'option_value' => $new_value,
-					'autoload'     => 'no',
-				]
-			);
-			if ( $inserted ) {
-				wp_cache_delete( $option_name, 'options' );
-				return $token;
-			}
-			// Lost the insert race; re-read what the winner stored.
-			$existing = $this->read_lock_value( $post_id );
-		}
-
-		// A fresh lock is held by someone else — cannot acquire.
-		if ( $this->lock_expiry( $existing ) >= time() ) {
-			return '';
-		}
-
-		// Stale lock -> reclaim via compare-and-swap. Only the worker whose
-		// UPDATE matches the exact prior value wins; the rest get 0 rows.
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$reclaimed = $wpdb->update(
-			$wpdb->options,
-			[ 'option_value' => $new_value ],
-			[
-				'option_name'  => $option_name,
-				'option_value' => $existing,
-			]
-		);
-
-		if ( $reclaimed ) {
-			wp_cache_delete( $option_name, 'options' );
-			return $token;
-		}
-
-		return '';
+		return $this->send_lock->acquire( $post_id );
 	}
 
 	/**
@@ -604,10 +492,7 @@ class Mandrill_Sender {
 	 * @return bool
 	 */
 	private function owns_lock( int $post_id, string $token ): bool {
-		if ( '' === $token ) {
-			return false;
-		}
-		return str_starts_with( $this->read_lock_value( $post_id ), $token . '|' );
+		return $this->send_lock->owns( $post_id, $token );
 	}
 
 	/**
@@ -618,34 +503,7 @@ class Mandrill_Sender {
 	 * @return bool True if we still hold the lock after the refresh.
 	 */
 	private function refresh_lock( int $post_id, string $token ): bool {
-		global $wpdb;
-
-		if ( '' === $token ) {
-			return false;
-		}
-
-		$current = $this->read_lock_value( $post_id );
-		if ( ! str_starts_with( $current, $token . '|' ) ) {
-			return false; // Lost ownership; do not resurrect the lock.
-		}
-
-		$option_name = $this->resolve_lock_option_name( $post_id );
-		$new_value   = $token . '|' . ( time() + self::LOCK_TTL );
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update(
-			$wpdb->options,
-			[ 'option_value' => $new_value ],
-			[
-				'option_name'  => $option_name,
-				'option_value' => $current,
-			]
-		);
-		wp_cache_delete( $option_name, 'options' );
-
-		// Re-verify rather than trust the affected-row count, which is 0 when
-		// the expiry happens to be identical within the same second.
-		return $this->owns_lock( $post_id, $token );
+		return $this->send_lock->refresh( $post_id, $token );
 	}
 
 	/**
@@ -655,27 +513,7 @@ class Mandrill_Sender {
 	 * @param string $token   Owner token returned by acquire_lock().
 	 */
 	private function release_lock( int $post_id, string $token ): void {
-		global $wpdb;
-
-		if ( '' === $token ) {
-			return;
-		}
-
-		$current = $this->read_lock_value( $post_id );
-		if ( ! str_starts_with( $current, $token . '|' ) ) {
-			return; // Another worker reclaimed it; leave their lock intact.
-		}
-
-		$option_name = $this->resolve_lock_option_name( $post_id );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->delete(
-			$wpdb->options,
-			[
-				'option_name'  => $option_name,
-				'option_value' => $current,
-			]
-		);
-		wp_cache_delete( $option_name, 'options' );
+		$this->send_lock->release( $post_id, $token );
 	}
 
 	// -------------------------------------------------------------------------

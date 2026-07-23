@@ -82,8 +82,11 @@ class Plugin {
 		require_once $includes . 'class-patterns.php';
 		require_once $includes . 'class-settings.php';
 		require_once $includes . 'class-send-status.php';
-		require_once $includes . 'class-library.php';
+		require_once $includes . 'class-email-lists.php';
 		require_once $includes . 'class-preview.php';
+
+		// Shared options-table CAS lock (Mandrill send + report sync).
+		require_once $includes . 'class-option-lock.php';
 
 		// Mailchimp integration.
 		require_once $includes . 'mailchimp/class-mailchimp.php';
@@ -166,7 +169,7 @@ class Plugin {
 		new Automation_Config( $this->loader );
 		new System_Email_Send_Log( $this->loader );
 		new Settings( $this->loader );
-		new Library( $this->loader );
+		new Email_Lists( $this->loader );
 		new Preview( $this->loader );
 		new Email_Block_Integration( $this->loader );
 

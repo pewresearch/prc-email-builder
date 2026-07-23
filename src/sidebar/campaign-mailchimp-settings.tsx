@@ -104,11 +104,26 @@ function SegmentPicker({
 		})),
 	];
 
+	const normalizedSegmentId = String(segmentId ?? '');
+	if (
+		normalizedSegmentId &&
+		!options.some((option) => option.value === normalizedSegmentId)
+	) {
+		options.push({
+			value: normalizedSegmentId,
+			label: sprintf(
+				/* translators: %s: Mailchimp saved segment ID */
+				__('Saved segment (%s)', 'prc-email-builder'),
+				normalizedSegmentId
+			),
+		});
+	}
+
 	return (
 		<SelectControl
 			__nextHasNoMarginBottom
 			label={__('Segment (optional)', 'prc-email-builder')}
-			value={segmentId}
+			value={normalizedSegmentId}
 			options={options}
 			onChange={setSegmentId}
 			disabled={disabled}
@@ -146,7 +161,7 @@ export function CampaignListControl() {
 	];
 
 	const selectedList = newsletterLists.find(
-		(list) => list.id === selectedListTermId
+		(list) => Number(list.id) === selectedListTermId
 	);
 	const globalFromName = config.defaults?.from_name ?? '';
 	const globalFromEmail = config.defaults?.from_email ?? '';
