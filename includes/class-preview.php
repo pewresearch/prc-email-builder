@@ -25,6 +25,7 @@ class Preview {
 
 	const API_KEY_CONSTANT = 'PRC_PLATFORM_MANDRILL_KEY';
 	const API_URL          = 'https://mandrillapp.com/api/1.0/';
+	const MAX_TEST_RECIPIENTS = 10;
 
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'rest_api_init', $this, 'register_routes' );
@@ -61,11 +62,19 @@ class Preview {
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
 					],
+					'emails'  => [
+						'required'          => false,
+						'type'              => 'array',
+						'items'             => [
+							'type' => 'string',
+						],
+						'sanitize_callback' => [ $this, 'sanitize_emails_param' ],
+						'validate_callback' => [ $this, 'validate_emails_param' ],
+					],
 					'email'   => [
-						'required'          => true,
+						'required'          => false,
 						'type'              => 'string',
-						'sanitize_callback' => 'sanitize_email',
-						'validate_callback' => fn( $v ) => is_email( $v ),
+						'sanitize_callback' => 'sanitize_text_field',
 					],
 				],
 			]
@@ -124,12 +133,16 @@ class Preview {
 	/**
 	 * POST /test-send
 	 *
-	 * Sends the email HTML to a single address via Mandrill messages/send.
+	 * Sends the email HTML to one or more addresses via Mandrill messages/send.
 	 * The subject is prefixed with "[TEST]" so it's easy to spot in an inbox.
 	 */
 	public function send_test( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$post_id = $request->get_param( 'post_id' );
-		$email   = $request->get_param( 'email' );
+		$emails  = $this->resolve_test_emails( $request );
+
+		if ( is_wp_error( $emails ) ) {
+			return $emails;
+		}
 
 		if ( Migration::is_migrated( $post_id ) ) {
 			return new WP_Error(
@@ -146,13 +159,151 @@ class Preview {
 		}
 
 		$subject = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
-		$sent    = $this->dispatch_test_email( $email, '[TEST] ' . $subject, $html );
+		$result  = $this->dispatch_test_email( $emails, '[TEST] ' . $subject, $html );
 
-		if ( is_wp_error( $sent ) ) {
-			return $sent;
+		if ( is_wp_error( $result ) ) {
+			return $result;
 		}
 
-		return rest_ensure_response( [ 'success' => true ] );
+		$failed = $result['failed'];
+		if ( empty( $result['sent'] ) && ! empty( $failed ) ) {
+			$first_reason = (string) reset( $failed );
+			return new WP_Error(
+				'mandrill_send_rejected',
+				sprintf( 'Mandrill rejected the email: %s.', $first_reason ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		return rest_ensure_response(
+			[
+				'success' => true,
+				'sent'    => $result['sent'],
+				'failed'  => (object) $failed,
+			]
+		);
+	}
+
+	/**
+	 * Normalize REST email args into a deduped, validated recipient list.
+	 *
+	 * Accepts either `emails` (preferred) or legacy single/comma-separated `email`.
+	 *
+	 * @return array<int, string>|WP_Error
+	 */
+	private function resolve_test_emails( WP_REST_Request $request ): array|WP_Error {
+		$emails_param = $request->get_param( 'emails' );
+		$email_param  = $request->get_param( 'email' );
+
+		$raw = [];
+		if ( is_array( $emails_param ) ) {
+			$raw = $emails_param;
+		} elseif ( is_string( $email_param ) && '' !== trim( $email_param ) ) {
+			$raw = preg_split( '/\s*,\s*/', trim( $email_param ), -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+		}
+
+		$parsed = $this->parse_and_validate_emails( $raw );
+		if ( is_wp_error( $parsed ) ) {
+			return $parsed;
+		}
+
+		if ( empty( $parsed ) ) {
+			return new WP_Error(
+				'rest_invalid_param',
+				'At least one valid email address is required.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		return $parsed;
+	}
+
+	/**
+	 * Sanitize an `emails` REST array param.
+	 *
+	 * Trims string entries but preserves invalid / non-string values so
+	 * `validate_emails_param` can reject the request (REST runs sanitize
+	 * before validate).
+	 *
+	 * @param mixed $value Raw request value.
+	 * @return array<int, mixed>
+	 */
+	public function sanitize_emails_param( $value ): array {
+		if ( ! is_array( $value ) ) {
+			return [];
+		}
+
+		$sanitized = [];
+		foreach ( $value as $email ) {
+			$sanitized[] = is_string( $email ) ? trim( $email ) : $email;
+		}
+		return $sanitized;
+	}
+
+	/**
+	 * Validate an `emails` REST array param.
+	 *
+	 * @param mixed $value Sanitized request value.
+	 */
+	public function validate_emails_param( $value ): bool|WP_Error {
+		if ( null === $value ) {
+			return true;
+		}
+		if ( ! is_array( $value ) ) {
+			return new WP_Error(
+				'rest_invalid_param',
+				'emails must be an array of email addresses.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$parsed = $this->parse_and_validate_emails( $value );
+		return is_wp_error( $parsed ) ? $parsed : true;
+	}
+
+	/**
+	 * Parse, validate, dedupe, and cap a list of email addresses.
+	 *
+	 * @param array<int, mixed> $raw Raw email values.
+	 * @return array<int, string>|WP_Error
+	 */
+	private function parse_and_validate_emails( array $raw ): array|WP_Error {
+		$emails = [];
+
+		foreach ( $raw as $value ) {
+			if ( ! is_string( $value ) ) {
+				return new WP_Error(
+					'rest_invalid_param',
+					'Each recipient must be a valid email address.',
+					[ 'status' => 400 ]
+				);
+			}
+
+			$email = sanitize_email( $value );
+			if ( ! is_email( $email ) ) {
+				return new WP_Error(
+					'rest_invalid_param',
+					sprintf( 'Invalid email address: %s.', $value ),
+					[ 'status' => 400 ]
+				);
+			}
+
+			$emails[ strtolower( $email ) ] = $email;
+		}
+
+		$emails = array_values( $emails );
+		if ( count( $emails ) > self::MAX_TEST_RECIPIENTS ) {
+			return new WP_Error(
+				'rest_invalid_param',
+				sprintf(
+					'A maximum of %d test recipients is allowed.',
+					self::MAX_TEST_RECIPIENTS
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		return $emails;
 	}
 
 	/**
@@ -160,8 +311,11 @@ class Preview {
 	 *
 	 * Bypasses wp_mail() / wpMandrill so the payload is not wrapped in a
 	 * default Mandrill template.
+	 *
+	 * @param array<int, string> $to_emails Recipient addresses.
+	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
 	 */
-	private function dispatch_test_email( string $to_email, string $subject, string $html ): true|WP_Error {
+	private function dispatch_test_email( array $to_emails, string $subject, string $html ): array|WP_Error {
 		$api_key = $this->get_api_key();
 		if ( '' === $api_key ) {
 			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', [ 'status' => 500 ] );
@@ -180,12 +334,20 @@ class Preview {
 
 		$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : [ 'prc-newsletter' ];
 
+		$to = array_map(
+			static fn( string $email ): array => [
+				'email' => $email,
+				'type'  => 'to',
+			],
+			$to_emails
+		);
+
 		$message = [
 			'html'                => $html,
 			'subject'             => $subject,
 			'from_email'          => $from_email,
 			'from_name'           => (string) ( $settings['from_name'] ?? '' ),
-			'to'                  => [ [ 'email' => $to_email, 'type' => 'to' ] ],
+			'to'                  => $to,
 			'headers'             => [ 'Reply-To' => $reply_to ],
 			'track_opens'         => (bool) ( $settings['track_opens'] ?? true ),
 			'track_clicks'        => (bool) ( $settings['track_clicks'] ?? true ),
@@ -228,29 +390,53 @@ class Preview {
 			return new WP_Error( 'mandrill_api_error', (string) $detail, [ 'status' => 500 ] );
 		}
 
-		return $this->parse_send_response( $response );
+		return $this->parse_batch_send_response( $response, $to_emails );
 	}
 
 	/**
-	 * Evaluate a Mandrill messages/send response for a single recipient.
+	 * Partition a Mandrill messages/send response into per-recipient outcomes.
+	 *
+	 * @param array              $response  wp_remote_post() response array.
+	 * @param array<int, string> $to_emails Recipients the call was made for.
+	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
 	 */
-	private function parse_send_response( array $response ): true|WP_Error {
+	private function parse_batch_send_response( array $response, array $to_emails ): array|WP_Error {
 		$results = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $results ) || ! isset( $results[0]['status'] ) ) {
 			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', [ 'status' => 500 ] );
 		}
 
-		$status = (string) $results[0]['status'];
-		if ( in_array( $status, [ 'sent', 'queued', 'scheduled' ], true ) ) {
-			return true;
+		$statuses = [];
+		foreach ( $results as $result ) {
+			if ( ! is_array( $result ) || ! isset( $result['email'], $result['status'] ) ) {
+				continue;
+			}
+			$statuses[ strtolower( (string) $result['email'] ) ] = [
+				'status' => (string) $result['status'],
+				'reason' => (string) ( $result['reject_reason'] ?? $result['status'] ),
+			];
 		}
 
-		$reason = (string) ( $results[0]['reject_reason'] ?? $status );
-		return new WP_Error(
-			'mandrill_send_rejected',
-			sprintf( 'Mandrill rejected the email: %s.', $reason ),
-			[ 'status' => 500 ]
-		);
+		$sent   = [];
+		$failed = [];
+
+		foreach ( $to_emails as $to_email ) {
+			$entry = $statuses[ strtolower( $to_email ) ] ?? null;
+			if ( null === $entry ) {
+				$failed[ $to_email ] = 'no recipient status returned';
+				continue;
+			}
+			if ( in_array( $entry['status'], [ 'sent', 'queued', 'scheduled' ], true ) ) {
+				$sent[] = $to_email;
+			} else {
+				$failed[ $to_email ] = $entry['reason'];
+			}
+		}
+
+		return [
+			'sent'   => $sent,
+			'failed' => $failed,
+		];
 	}
 
 	private function get_api_key(): string {

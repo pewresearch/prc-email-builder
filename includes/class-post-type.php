@@ -92,6 +92,7 @@ class Post_Type {
 		$loader->add_filter( 'allowed_block_types_all', $this, 'restrict_newsletter_blocks', 10, 2 );
 		$loader->add_filter( 'prc_platform_post_publish_pipeline_post_types', $this, 'add_email_post_types_to_publish_pipeline' );
 		$loader->add_filter( 'prc_taxonomy_formats_post_types', $this, 'opt_campaign_into_formats_taxonomy' );
+		$loader->add_filter( 'prc_platform_pub_listing_default_visibility', $this, 'default_campaign_visibility' );
 		$loader->add_action( 'prc_platform_on_incremental_save', $this, 'enforce_campaign_newsletter_format', 10, 1 );
 	}
 
@@ -133,6 +134,27 @@ class Post_Type {
 		}
 
 		return $post_types;
+	}
+
+	/**
+	 * Hide campaign emails from the publications archive by default.
+	 *
+	 * Editors can uncheck "Hide on Publications Archive" to opt a campaign
+	 * into /publications; publication-listing only applies defaults when
+	 * `_post_visibility` is empty on first post init.
+	 *
+	 * @hook prc_platform_pub_listing_default_visibility
+	 *
+	 * @param mixed $defaults Map of post_type => term slug[].
+	 * @return mixed
+	 */
+	public function default_campaign_visibility( $defaults ) {
+		if ( ! is_array( $defaults ) ) {
+			return $defaults;
+		}
+
+		$defaults[ self::CAMPAIGN_POST_TYPE ] = [ 'hidden-on-index' ];
+		return $defaults;
 	}
 
 	/**

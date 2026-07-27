@@ -2,7 +2,7 @@ import apiFetch from '@wordpress/api-fetch';
 import {
 	Button,
 	__experimentalText as Text,
-	VStack,
+	__experimentalVStack as VStack,
 } from '@wordpress/components';
 import { useDispatch } from '@wordpress/data';
 import { store as noticesStore } from '@wordpress/notices';

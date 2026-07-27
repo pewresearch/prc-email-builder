@@ -280,16 +280,35 @@
 .prc-email-preview__test-row {
 	display: flex;
 	gap: 8px;
-	align-items: flex-end;
+	// Top-align so the button lines up with the token input, not the help text below it.
+	align-items: flex-start;
 
-	// Let the text input grow to fill available space.
-	.components-base-control {
+	// Let the token field grow to fill available space.
+	.components-base-control,
+	.components-form-token-field {
 		flex: 1;
 		margin-bottom: 0;
+		min-width: 0;
 	}
 
-	// Prevent the button from shrinking.
+	// Visible label is `.prc-email-preview__test-label`; keep the control label for a11y.
+	.components-form-token-field__label {
+		border: 0;
+		clip: rect(1px, 1px, 1px, 1px);
+		clip-path: inset(50%);
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		padding: 0;
+		position: absolute;
+		width: 1px;
+		word-wrap: normal !important;
+	}
+
+	// Match the token input height (~36px) so the control reads as one row.
 	.components-button {
 		flex-shrink: 0;
+		height: 36px;
+		min-height: 36px;
 	}
 }

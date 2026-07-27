@@ -15,7 +15,7 @@ import {
 	Button,
 	Notice,
 	Spinner,
-	TextControl,
+	FormTokenField,
 	__experimentalText as Text,
 	__experimentalHStack as HStack,
 	__experimentalToggleGroupControl as ToggleGroupControl,
@@ -228,30 +228,99 @@ function PreviewFrame({
 
 // ─── TestSendFooter ───────────────────────────────────────────────────────────
 
+const MAX_TEST_RECIPIENTS = 10;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmailToken(token: string): string {
+	return token.trim().toLowerCase();
+}
+
+function isValidEmailToken(token: string): boolean {
+	return EMAIL_PATTERN.test(normalizeEmailToken(token));
+}
+
 function TestSendFooter({ postId }: { postId: number }) {
-	const [email, setEmail] = useState('');
+	const [emails, setEmails] = useState<string[]>([]);
 	const [sending, setSending] = useState(false);
 	const [result, setResult] = useState<'idle' | 'success' | 'error'>('idle');
 	const [resultMessage, setResultMessage] = useState('');
 
+	const handleTokensChange = useCallback((tokens: string[]) => {
+		const next: string[] = [];
+		const seen = new Set<string>();
+
+		for (const token of tokens) {
+			const normalized = normalizeEmailToken(token);
+			if (!normalized || seen.has(normalized)) {
+				continue;
+			}
+			seen.add(normalized);
+			next.push(normalized);
+			if (next.length >= MAX_TEST_RECIPIENTS) {
+				break;
+			}
+		}
+
+		setEmails(next);
+	}, []);
+
 	const handleSend = useCallback(async () => {
-		if (!email) return;
+		const recipients = emails.filter(isValidEmailToken);
+		if (!recipients.length) return;
 		setSending(true);
 		setResult('idle');
 		try {
-			await apiFetch({
+			const response = (await apiFetch({
 				path: `/${config.restNamespace}/test-send`,
 				method: 'POST',
-				data: { post_id: postId, email },
-			});
-			setResult('success');
-			setResultMessage(
-				sprintf(
-					/* translators: %s: email address */
-					__('Test email sent to %s.', 'prc-email-builder'),
-					email
-				)
-			);
+				data: { post_id: postId, emails: recipients },
+			})) as {
+				success?: boolean;
+				sent?: string[];
+				failed?: Record<string, string>;
+			};
+
+			const sent = Array.isArray(response?.sent)
+				? response.sent
+				: recipients;
+			const failed = response?.failed ?? {};
+			const failedAddresses = Object.keys(failed);
+
+			if (failedAddresses.length === 0) {
+				setResult('success');
+				setResultMessage(
+					sprintf(
+						/* translators: %s: comma-separated email addresses */
+						__('Test email sent to %s.', 'prc-email-builder'),
+						sent.join(', ')
+					)
+				);
+			} else if (sent.length > 0) {
+				setResult('success');
+				setResultMessage(
+					sprintf(
+						/* translators: 1: sent addresses, 2: failed addresses */
+						__(
+							'Test email sent to %1$s. Failed for %2$s.',
+							'prc-email-builder'
+						),
+						sent.join(', '),
+						failedAddresses.join(', ')
+					)
+				);
+			} else {
+				setResult('error');
+				setResultMessage(
+					sprintf(
+						/* translators: %s: failed addresses */
+						__(
+							'Failed to send test email to %s.',
+							'prc-email-builder'
+						),
+						failedAddresses.join(', ')
+					)
+				);
+			}
 		} catch (err: any) {
 			setResult('error');
 			setResultMessage(
@@ -261,7 +330,9 @@ function TestSendFooter({ postId }: { postId: number }) {
 		} finally {
 			setSending(false);
 		}
-	}, [email, postId]);
+	}, [emails, postId]);
+
+	const hasValidRecipient = emails.some(isValidEmailToken);
 
 	return (
 		<div className="prc-email-preview__test-footer">
@@ -269,20 +340,23 @@ function TestSendFooter({ postId }: { postId: number }) {
 				{__('SEND TEST EMAIL TO', 'prc-email-builder')}
 			</span>
 			<div className="prc-email-preview__test-row">
-				<TextControl
+				<FormTokenField
 					__nextHasNoMarginBottom
-					hideLabelFromVision
 					label={__('Send test email to:', 'prc-email-builder')}
-					type="email"
-					value={email}
-					onChange={setEmail}
-					placeholder="you@example.com"
+					value={emails}
+					onChange={handleTokensChange}
+					placeholder={__(
+						'you@example.com, teammate@example.com',
+						'prc-email-builder'
+					)}
+					tokenizeOnBlur
+					maxLength={MAX_TEST_RECIPIENTS}
 				/>
 				<Button
 					variant="primary"
 					onClick={handleSend}
 					isBusy={sending}
-					disabled={sending || !email}
+					disabled={sending || !hasValidRecipient}
 				>
 					{'▶ '}
 					{__('Send test', 'prc-email-builder')}
