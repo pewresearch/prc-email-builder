@@ -509,10 +509,11 @@ class Post_Type {
 
 	/** Term meta on prc_newsletter_list (Mailchimp list + segment + default From). */
 	const TERM_META_KEYS = [
-		'prc_newsletter_list_audience_id' => 'Mailchimp audience (list) ID for this newsletter list.',
-		'prc_newsletter_list_segment_id'  => 'Mailchimp saved-segment ID; empty = entire audience.',
-		'prc_newsletter_list_from_name'   => 'Default From name for campaigns using this list.',
-		'prc_newsletter_list_from_email'  => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
+		'prc_newsletter_list_audience_id'      => 'Mailchimp audience (list) ID for this newsletter list.',
+		'prc_newsletter_list_segment_id'       => 'Mailchimp saved-segment ID; empty = entire audience.',
+		'prc_newsletter_list_from_name'        => 'Default From name for campaigns using this list.',
+		'prc_newsletter_list_from_email'       => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
+		'prc_newsletter_list_campaign_pattern' => 'Default campaign pattern name used when creating a draft from this list.',
 	];
 
 	public function register_meta(): void {
@@ -531,7 +532,11 @@ class Post_Type {
 	 */
 	private function register_term_meta(): void {
 		$sanitizers = [
-			'prc_newsletter_list_from_email' => 'sanitize_email',
+			'prc_newsletter_list_from_email'       => 'sanitize_email',
+			'prc_newsletter_list_campaign_pattern' => [
+				Newsletter_List::class,
+				'sanitize_campaign_pattern',
+			],
 		];
 
 		foreach ( self::TERM_META_KEYS as $key => $description ) {

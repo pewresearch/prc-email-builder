@@ -242,15 +242,25 @@ class Email_Lists {
 			$handle,
 			'prcEmailLibrary',
 			[
-				'nonce'           => wp_create_nonce( 'wp_rest' ),
-				'restUrl'         => esc_url_raw( rest_url() ),
-				'postEditUrl'     => esc_url_raw( admin_url( 'post.php' ) ),
-				'postTypeScope'   => $scope,
-				'pageTitle'       => $page_title,
-				'pageDescription' => $page_description,
-				'newsletterLists' => $this->get_newsletter_list_terms(),
-				'sendStatuses'    => Send_Status::library_filter_options( $scope ),
-				'researchTeams'   => $this->get_research_team_options(),
+				'nonce'                       => wp_create_nonce( 'wp_rest' ),
+				'restUrl'                     => esc_url_raw( rest_url() ),
+				'postEditUrl'                 => esc_url_raw( admin_url( 'post.php' ) ),
+				'campaignNewUrl'              => esc_url_raw(
+					admin_url( 'post-new.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE )
+				),
+				'transactionalNewUrl'         => esc_url_raw(
+					admin_url( 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE )
+				),
+				'postTypeScope'               => $scope,
+				'pageTitle'                   => $page_title,
+				'pageDescription'             => $page_description,
+				'newsletterLists'             => $this->get_newsletter_list_terms(),
+				'sendStatuses'                => Send_Status::library_filter_options( $scope ),
+				'researchTeams'               => $this->get_research_team_options(),
+				'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
+				'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
+				'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
+				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
 			]
 		);
 	}
@@ -281,9 +291,9 @@ class Email_Lists {
 	}
 
 	/**
-	 * Newsletter list taxonomy terms for filter dropdowns.
+	 * Newsletter list taxonomy terms for filter dropdowns and campaign create.
 	 *
-	 * @return array<int, array{slug: string, label: string}>
+	 * @return array<int, array{termId: int, slug: string, label: string, campaignPattern: string}>
 	 */
 	private function get_newsletter_list_terms(): array {
 		$terms = get_terms(
@@ -298,10 +308,22 @@ class Email_Lists {
 		}
 
 		$formatted = array_map(
-			static fn( \WP_Term $term ) => [
-				'slug'  => $term->slug,
-				'label' => $term->name,
-			],
+			static function ( \WP_Term $term ) {
+				$pattern = Newsletter_List::sanitize_campaign_pattern(
+					(string) get_term_meta(
+						$term->term_id,
+						Newsletter_List::CAMPAIGN_PATTERN_META_KEY,
+						true
+					)
+				);
+
+				return [
+					'termId'          => (int) $term->term_id,
+					'slug'            => $term->slug,
+					'label'           => $term->name,
+					'campaignPattern' => $pattern,
+				];
+			},
 			$terms
 		);
 

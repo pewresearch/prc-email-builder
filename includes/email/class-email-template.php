@@ -41,8 +41,9 @@ class Email_Template {
 			return $content;
 		}
 
-		$body_template    = $template['path'];
-		$view_online_url  = Email_Merge_Tags::get_view_online_url( $post_id );
+		$body_template   = $template['path'];
+		$view_online_url = Email_Merge_Tags::get_view_online_url( $post_id );
+		$accent_color    = Newsletter_List::resolve_accent_color( $post_id );
 
 		ob_start();
 		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable

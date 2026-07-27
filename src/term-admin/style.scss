@@ -1,0 +1,34 @@
+/*
+ * DataViews grid styles for the campaign pattern picker modal. Editor screens
+ * get these from core editor styles; term.php does not, so bundle them here
+ * (mirrors src/library/style.scss).
+ */
+@import "@wordpress/dataviews/build-style/style.css";
+
+.prc-newsletter-list-campaign-pattern {
+	max-width: 640px;
+}
+
+.prc-newsletter-list-campaign-pattern__status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.prc-newsletter-list-campaign-pattern__selected {
+	margin: 0 0 12px;
+}
+
+.prc-newsletter-list-campaign-pattern__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/*
+ * Pattern picker modal layout styles come from
+ * src/sidebar/pattern-selector/style.scss, bundled into this entry via the
+ * pattern-selector module import.
+ */

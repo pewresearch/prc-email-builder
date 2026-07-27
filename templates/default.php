@@ -4,10 +4,11 @@
  * Description:   Default Pew Research Center newsletter template.
  *
  * Variables available when this file is included by newsletter-email-shell.php:
- *   string $content      Table-based HTML fragment from the content transformer.
- *   string $subject      Newsletter subject line.
+ *   string $content         Table-based HTML fragment from the content transformer.
+ *   string $subject         Newsletter subject line.
  *   string $preview_text    Preview / preheader text.
- *   string $view_online_url  Website permalink for "View in browser" (campaign posts).
+ *   string $view_online_url Website permalink for "View in browser" (campaign posts).
+ *   string $accent_color    Optional hex accent from the campaign's newsletter list term.
  */
 
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;
@@ -30,6 +31,13 @@ $card_attr  = '' !== $card_class ? ' class="' . esc_attr( $card_class ) . '"' : 
 	<!-- Inner 600px card -->
 	<table width="600" cellpadding="0" cellspacing="0" border="0" role="presentation"<?php echo $card_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 		style="background-color:<?php echo esc_attr( $card_light ); ?>;max-width:600px;width:100%;">
+
+		<?php if ( ! empty( $accent_color ) ) : ?>
+		<!-- ── Accent bar (newsletter list vertical color) ─────────────── -->
+		<tr>
+			<td style="background-color:<?php echo esc_attr( $accent_color ); ?>;height:6px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>
+		</tr>
+		<?php endif; ?>
 
 		<!-- ── Header ──────────────────────────────────────────────────── -->
 		<tr>

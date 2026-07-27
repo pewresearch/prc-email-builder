@@ -3,11 +3,12 @@
  * Newsletter HTML email shell.
  *
  * Variables set by Email_Template::wrap() before include:
- *   string $content        Table-based HTML fragment.
+ *   string $content         Table-based HTML fragment.
  *   string $subject         Newsletter subject.
  *   string $preview_text    Preheader text.
  *   string $body_template   Path to body template PHP file.
  *   string $view_online_url Website permalink for "View in browser" (campaign posts).
+ *   string $accent_color    Optional hex accent from the campaign's newsletter list term.
  */
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;
 use PRC\Platform\Email_Builder\Email_Preset_Resolver;

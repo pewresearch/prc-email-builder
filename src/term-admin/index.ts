@@ -3,6 +3,10 @@
  */
 
 import apiFetch from '@wordpress/api-fetch';
+import { registerCoreBlocks } from '@wordpress/block-library';
+import { getBlockType } from '@wordpress/blocks';
+import { mountCampaignPatternControl } from './campaign-pattern-control';
+import './style.scss';
 
 interface Segment {
 	id: number;
@@ -257,7 +261,47 @@ async function loadSegments(
 	}
 }
 
+function initAccentColorPicker(): void {
+	const input = document.getElementById(
+		'prc_newsletter_list_accent_color'
+	) as HTMLInputElement | null;
+	// wp-color-picker is enqueued as a jQuery plugin on this admin screen.
+	const jq = (
+		window as unknown as {
+			jQuery?: (el: HTMLElement) => {
+				wpColorPicker: (opts?: {
+					defaultColor?: boolean | string;
+					clear?: () => void;
+				}) => void;
+			};
+		}
+	).jQuery;
+
+	if (!input || typeof jq !== 'function') {
+		return;
+	}
+
+	jq(input).wpColorPicker({
+		defaultColor: false,
+		clear() {
+			input.value = '';
+		},
+	});
+}
+
 function init(): void {
+	// term.php has no block editor, so nothing registers block types in JS.
+	// The campaign pattern picker's BlockPreview needs core blocks registered
+	// (registerCoreBlocks also sets the missing-block fallback handler so
+	// non-core blocks in pattern content degrade gracefully instead of being
+	// dropped by parse()).
+	if (!getBlockType('core/paragraph')) {
+		registerCoreBlocks();
+	}
+
+	initAccentColorPicker();
+	mountCampaignPatternControl();
+
 	const audienceSelect = getAudienceSelect();
 	const segmentSelect = getSegmentSelect();
 

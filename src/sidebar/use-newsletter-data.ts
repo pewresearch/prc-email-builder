@@ -44,6 +44,7 @@ export interface NewsletterListTerm {
 		prc_newsletter_list_segment_id?: string;
 		prc_newsletter_list_from_name?: string;
 		prc_newsletter_list_from_email?: string;
+		prc_newsletter_list_campaign_pattern?: string;
 	};
 }
 

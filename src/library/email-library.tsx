@@ -1,22 +1,14 @@
 import { __ } from '@wordpress/i18n';
-import { useState } from '@wordpress/element';
 import {
-	Button,
 	Card,
 	CardBody,
 	CardHeader,
 	Flex,
 	FlexBlock,
-	FlexItem,
 } from '@wordpress/components';
 import DataViews from './components/dataviews';
-import GenerateLinksNewsletterModal from './components/generate-links-newsletter-modal';
 import type { EmailListScope } from './types';
 import './style.scss';
-
-declare const prcEmailBuilderLibraryAI: {
-	enabled: boolean;
-};
 
 declare const prcEmailLibrary: {
 	postTypeScope?: EmailListScope;
@@ -29,8 +21,6 @@ function getScope(): EmailListScope {
 }
 
 export default function EmailLibrary() {
-	const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-	const [refreshToken, setRefreshToken] = useState(0);
 	const scope = getScope();
 	const pageTitle =
 		prcEmailLibrary?.pageTitle ||
@@ -42,10 +32,6 @@ export default function EmailLibrary() {
 		(scope === 'txn'
 			? __('Browse and manage transactional emails.', 'prc-email-builder')
 			: __('Browse and manage email campaigns.', 'prc-email-builder'));
-	const aiEnabled =
-		scope === 'campaign' &&
-		typeof prcEmailBuilderLibraryAI !== 'undefined' &&
-		prcEmailBuilderLibraryAI.enabled;
 
 	return (
 		<Card>
@@ -57,31 +43,11 @@ export default function EmailLibrary() {
 							{pageDescription}
 						</p>
 					</FlexBlock>
-					{aiEnabled ? (
-						<FlexItem>
-							<Button
-								variant="primary"
-								onClick={() => setIsGenerateModalOpen(true)}
-							>
-								{__(
-									'Generate Links Newsletter',
-									'prc-email-builder'
-								)}
-							</Button>
-						</FlexItem>
-					) : null}
 				</Flex>
 			</CardHeader>
 			<CardBody>
-				<DataViews scope={scope} refreshToken={refreshToken} />
+				<DataViews scope={scope} />
 			</CardBody>
-			{scope === 'campaign' ? (
-				<GenerateLinksNewsletterModal
-					isOpen={isGenerateModalOpen}
-					onClose={() => setIsGenerateModalOpen(false)}
-					onDraftCreated={() => setRefreshToken((value) => value + 1)}
-				/>
-			) : null}
 		</Card>
 	);
 }

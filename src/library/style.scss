@@ -34,3 +34,19 @@
 .prc-email-send-status--neutral {
 	color: #757575;
 }
+
+.prc-email-library-create-campaign {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.prc-email-library-create-campaign.is-busy {
+	min-height: 36px;
+}
+
+.prc-email-library-stats-modal {
+	.components-modal__content {
+		min-width: min(420px, 100%);
+	}
+}

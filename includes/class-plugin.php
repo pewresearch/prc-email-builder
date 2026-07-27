@@ -202,11 +202,13 @@ class Plugin {
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-suggest-preview-text-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-generate-links-newsletter-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-newsletter-builder-ai-feature.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-generate-links-newsletter-ai-feature.php';
 
 		add_action(
 			'wpai_register_features',
 			static function ( $registry ) {
 				$registry->register_feature( new Email_Builder_AI_Feature() );
+				$registry->register_feature( new Generate_Links_Newsletter_AI_Feature() );
 			}
 		);
 	}

@@ -63,11 +63,13 @@ const PATTERN_VIEW = {
 	},
 };
 
-type EmailEditorKind = 'campaign' | 'transactional';
+export type EmailEditorKind = 'campaign' | 'transactional';
 
-interface PatternPickerItem extends EmailPatternItem {
+export interface PatternPickerItem extends EmailPatternItem {
 	blocks: ReturnType<typeof parse> | null;
 }
+
+export { dismissPatternSelector };
 
 function getEmailEditorKind(
 	postType: string | undefined
@@ -81,11 +83,25 @@ function getEmailEditorKind(
 	return null;
 }
 
-function getPatternCategorySlug(kind: EmailEditorKind): string {
-	if (kind === 'campaign') {
-		return config.campaignPatternCategorySlug ?? 'email-campaign';
+export function getPatternCategorySlug(
+	kind: EmailEditorKind,
+	overrides?: {
+		campaignPatternCategorySlug?: string;
+		transactionalPatternCategorySlug?: string;
 	}
-	return config.transactionalPatternCategorySlug ?? 'email-transactional';
+): string {
+	if (kind === 'campaign') {
+		return (
+			overrides?.campaignPatternCategorySlug ??
+			config.campaignPatternCategorySlug ??
+			'email-campaign'
+		);
+	}
+	return (
+		overrides?.transactionalPatternCategorySlug ??
+		config.transactionalPatternCategorySlug ??
+		'email-transactional'
+	);
 }
 
 function getSiteEditorPatternCategoryUrl(categorySlug: string): string {
@@ -155,6 +171,8 @@ function PatternPicker({
 	patternCategorySlug,
 	onSelect,
 	onDismiss,
+	dismissLabel,
+	includeBlank = true,
 }: {
 	patterns: EmailPatternItem[];
 	isLoading: boolean;
@@ -163,6 +181,8 @@ function PatternPicker({
 	patternCategorySlug: string;
 	onSelect: (item: PatternPickerItem) => void;
 	onDismiss: () => void;
+	dismissLabel: string;
+	includeBlank?: boolean;
 }) {
 	const [view, setView] = useState(PATTERN_VIEW);
 
@@ -189,13 +209,13 @@ function PatternPicker({
 
 	const allItems = useMemo(
 		() => [
-			blankItem,
+			...(includeBlank ? [blankItem] : []),
 			...patterns.map((pattern) => ({
 				...pattern,
 				blocks: null,
 			})),
 		],
-		[blankItem, patterns]
+		[blankItem, includeBlank, patterns]
 	);
 
 	const fields = useMemo(
@@ -291,10 +311,91 @@ function PatternPicker({
 
 			<div className="prc-email-pattern-selector__actions">
 				<Button variant="tertiary" onClick={onDismiss}>
-					{__('Skip for now', 'prc-email-builder')}
+					{dismissLabel}
 				</Button>
 			</div>
 		</div>
+	);
+}
+
+export interface EmailPatternPickerModalProps {
+	isOpen: boolean;
+	editorKind: EmailEditorKind;
+	patternCategorySlug: string;
+	onSelect: (item: PatternPickerItem) => void;
+	onClose: () => void;
+	dismissLabel?: string;
+	isBusy?: boolean;
+	busyLabel?: string;
+	error?: string | null;
+	shouldCloseOnClickOutside?: boolean;
+	shouldCloseOnEsc?: boolean;
+	includeBlank?: boolean;
+}
+
+// Controlled pattern picker modal reusable from the editor and Email Library.
+export function EmailPatternPickerModal({
+	isOpen,
+	editorKind,
+	patternCategorySlug,
+	onSelect,
+	onClose,
+	dismissLabel = __('Skip for now', 'prc-email-builder'),
+	isBusy = false,
+	busyLabel = __('Creating draft…', 'prc-email-builder'),
+	error: externalError = null,
+	shouldCloseOnClickOutside = false,
+	shouldCloseOnEsc = false,
+	includeBlank = true,
+}: EmailPatternPickerModalProps) {
+	const { patterns, isLoading, error } = useEmailPatterns(
+		patternCategorySlug,
+		isOpen
+	);
+
+	if (!isOpen) {
+		return null;
+	}
+
+	const handleRequestClose = () => {
+		if (isBusy) {
+			return;
+		}
+		onClose();
+	};
+
+	return (
+		<Modal
+			className="prc-email-pattern-selector__modal"
+			title={__('Choose an email pattern', 'prc-email-builder')}
+			onRequestClose={handleRequestClose}
+			shouldCloseOnClickOutside={shouldCloseOnClickOutside}
+			shouldCloseOnEsc={shouldCloseOnEsc}
+		>
+			{externalError && (
+				<Notice status="error" isDismissible={false}>
+					{externalError}
+				</Notice>
+			)}
+			{isBusy ? (
+				<div className="prc-email-pattern-selector__loading">
+					<Spinner />
+					<p>{busyLabel}</p>
+				</div>
+			) : (
+				<PatternPicker
+					patterns={patterns}
+					isLoading={isLoading}
+					error={error}
+					editorKind={editorKind}
+					patternCategorySlug={patternCategorySlug}
+					onSelect={onSelect}
+					onDismiss={onClose}
+					dismissLabel={dismissLabel}
+					includeBlank={includeBlank}
+				/>
+			)}
+		</Modal>
 	);
 }
 
@@ -333,20 +434,13 @@ export function EmailPatternSelectorModal() {
 		isBlankEmailContent(blocks) &&
 		!isPatternSelectorDismissed(postId);
 
-	const shouldLoadPatterns =
+	const shouldShowModal =
 		isOpen &&
 		!!editorKind &&
 		isBlankAndDismissible &&
+		!hasAppliedSelection &&
 		(editorKind === 'transactional' ||
 			(editorKind === 'campaign' && !campaignId));
-
-	const { patterns, isLoading, error } = useEmailPatterns(
-		patternCategorySlug,
-		shouldLoadPatterns
-	);
-
-	const shouldShowModal =
-		shouldLoadPatterns && isOpen && !hasAppliedSelection;
 
 	const closeModal = useCallback(() => {
 		if (postId) {
@@ -371,28 +465,18 @@ export function EmailPatternSelectorModal() {
 		[closeModal, resetBlocks]
 	);
 
-	if (!shouldShowModal || !editorKind) {
+	if (!editorKind) {
 		return null;
 	}
 
 	return (
-		<Modal
-			className="prc-email-pattern-selector__modal"
-			title={__('Choose an email pattern', 'prc-email-builder')}
-			onRequestClose={closeModal}
-			shouldCloseOnClickOutside={false}
-			shouldCloseOnEsc={false}
-		>
-			<PatternPicker
-				patterns={patterns}
-				isLoading={isLoading}
-				error={error}
-				editorKind={editorKind}
-				patternCategorySlug={patternCategorySlug}
-				onSelect={handleSelect}
-				onDismiss={closeModal}
-			/>
-		</Modal>
+		<EmailPatternPickerModal
+			isOpen={shouldShowModal}
+			editorKind={editorKind}
+			patternCategorySlug={patternCategorySlug}
+			onSelect={handleSelect}
+			onClose={closeModal}
+		/>
 	);
 }
 

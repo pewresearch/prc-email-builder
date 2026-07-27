@@ -1,4 +1,6 @@
 import { __ } from '@wordpress/i18n';
+import { Button } from '@wordpress/components';
+import { chartBar } from '@wordpress/icons';
 import SendStatusBadge from '../components/send-status-badge';
 import type { EmailLibraryRow } from '../hooks/use-emails';
 import type { EmailListScope } from '../types';
@@ -20,7 +22,12 @@ function formatEngagementRate(rate: number | null | undefined): string {
 declare global {
 	interface Window {
 		prcEmailLibrary?: {
-			newsletterLists?: Array<{ slug: string; label: string }>;
+			newsletterLists?: Array<{
+				termId?: number;
+				slug: string;
+				label: string;
+				campaignPattern?: string;
+			}>;
 			postTypeScope?: EmailListScope;
 		};
 	}
@@ -47,12 +54,21 @@ export function getDefaultVisibleFields(scope: EmailListScope): string[] {
 		'sendStatus',
 		'openRate',
 		'clickRate',
+		'stats',
 		'status',
 		'date',
 	];
 }
 
-export function getFieldsForScope(scope: EmailListScope) {
+export interface GetFieldsOptions {
+	onOpenStats?: (item: EmailLibraryRow) => void;
+}
+
+export function getFieldsForScope(
+	scope: EmailListScope,
+	options: GetFieldsOptions = {}
+) {
+	const { onOpenStats } = options;
 	const fields = [
 		{
 			id: 'title',
@@ -123,6 +139,34 @@ export function getFieldsForScope(scope: EmailListScope) {
 			enableSorting: true,
 		},
 		{
+			id: 'stats',
+			label: __('Stats', 'prc-email-builder'),
+			getValue: ({ item }: { item: EmailLibraryRow }) =>
+				item?.mailchimp_status === 'sent'
+					? __('Available', 'prc-email-builder')
+					: __('Unavailable', 'prc-email-builder'),
+			render: ({ item }: { item: EmailLibraryRow }) => {
+				const isSent = item?.mailchimp_status === 'sent';
+				return (
+					<Button
+						icon={chartBar}
+						label={__('View stats', 'prc-email-builder')}
+						size="compact"
+						disabled={!isSent}
+						onClick={(event) => {
+							event.stopPropagation();
+							if (!isSent || !onOpenStats) {
+								return;
+							}
+							onOpenStats(item);
+						}}
+					/>
+				);
+			},
+			enableSorting: false,
+			enableHiding: true,
+		},
+		{
 			id: 'subject',
 			type: 'text',
 			label: __('Subject', 'prc-email-builder'),
@@ -177,7 +221,8 @@ export function getFieldsForScope(scope: EmailListScope) {
 			(field) =>
 				field.id !== 'newsletterLists' &&
 				field.id !== 'openRate' &&
-				field.id !== 'clickRate'
+				field.id !== 'clickRate' &&
+				field.id !== 'stats'
 		);
 	}
 

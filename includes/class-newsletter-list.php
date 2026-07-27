@@ -17,6 +17,12 @@ class Newsletter_List {
 	const NONCE_FIELD  = 'prc_newsletter_list_term_meta_nonce';
 	const SCRIPT_HANDLE = 'prc-email-builder-term-admin';
 
+	/** Term meta: hex accent color for the campaign email shell top bar. */
+	const ACCENT_COLOR_META_KEY = 'prc_newsletter_list_accent_color';
+
+	/** Term meta: default campaign pattern name (EmailPatternItem.name). */
+	const CAMPAIGN_PATTERN_META_KEY = 'prc_newsletter_list_campaign_pattern';
+
 	public function __construct( Loader $loader ) {
 		$taxonomy = Post_Type::TAXONOMY;
 
@@ -44,6 +50,10 @@ class Newsletter_List {
 		echo '<div class="form-field">';
 		$this->render_from_fields();
 		echo '</div>';
+		echo '<div class="form-field">';
+		echo '<label for="prc_newsletter_list_accent_color">' . esc_html__( 'Accent color', 'prc-email-builder' ) . '</label>';
+		$this->render_accent_color_field();
+		echo '</div>';
 		echo '<div class="form-field prc-newsletter-list-mailchimp-wrap">';
 		$this->render_mailchimp_fields();
 		echo '</div>';
@@ -57,15 +67,31 @@ class Newsletter_List {
 	public function render_edit_form_fields( \WP_Term $term ): void {
 		wp_nonce_field( self::NONCE_ACTION, self::NONCE_FIELD );
 
-		$from_name   = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_name', true );
-		$from_email  = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_email', true );
-		$audience_id = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_audience_id', true );
-		$segment_id  = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
+		$from_name        = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_name', true );
+		$from_email       = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_from_email', true );
+		$accent_color     = (string) get_term_meta( $term->term_id, self::ACCENT_COLOR_META_KEY, true );
+		$audience_id      = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_audience_id', true );
+		$segment_id       = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
+		$campaign_pattern = (string) get_term_meta( $term->term_id, self::CAMPAIGN_PATTERN_META_KEY, true );
 
 		echo '<tr class="form-field">';
 		echo '<th scope="row"><label>' . esc_html__( 'Default From', 'prc-email-builder' ) . '</label></th>';
 		echo '<td>';
 		$this->render_from_fields( $from_name, $from_email );
+		echo '</td>';
+		echo '</tr>';
+
+		echo '<tr class="form-field">';
+		echo '<th scope="row"><label for="prc_newsletter_list_accent_color">' . esc_html__( 'Accent color', 'prc-email-builder' ) . '</label></th>';
+		echo '<td>';
+		$this->render_accent_color_field( $accent_color );
+		echo '</td>';
+		echo '</tr>';
+
+		echo '<tr class="form-field">';
+		echo '<th scope="row"><label>' . esc_html__( 'Campaign pattern', 'prc-email-builder' ) . '</label></th>';
+		echo '<td>';
+		$this->render_campaign_pattern_field( $campaign_pattern );
 		echo '</td>';
 		echo '</tr>';
 
@@ -75,6 +101,73 @@ class Newsletter_List {
 		$this->render_mailchimp_fields( $audience_id, $segment_id );
 		echo '</td>';
 		echo '</tr>';
+	}
+
+	/**
+	 * Mount point + hidden input for the campaign pattern association control.
+	 *
+	 * @param string $campaign_pattern Saved pattern name (edit form).
+	 */
+	private function render_campaign_pattern_field( string $campaign_pattern = '' ): void {
+		$sanitized = self::sanitize_campaign_pattern( $campaign_pattern );
+
+		printf(
+			'<input type="hidden" name="%1$s" id="%1$s" value="%2$s" />',
+			esc_attr( self::CAMPAIGN_PATTERN_META_KEY ),
+			esc_attr( $sanitized )
+		);
+		echo '<div id="prc-newsletter-list-campaign-pattern-root"></div>';
+		echo '<p class="description">' . esc_html__(
+			'Optional. When set, Create new on the Campaigns list creates a draft using this pattern with the list and its Mailchimp segment preselected.',
+			'prc-email-builder'
+		) . '</p>';
+	}
+
+	/**
+	 * Sanitize a campaign pattern name; invalid values become empty string.
+	 *
+	 * @param string $pattern Raw pattern name.
+	 */
+	public static function sanitize_campaign_pattern( string $pattern ): string {
+		$sanitized = sanitize_text_field( $pattern );
+		if ( '' === $sanitized || '__blank__' === $sanitized ) {
+			return '';
+		}
+
+		// Registered pattern slugs (namespace/name) or Site Editor wp-block-{id}.
+		if ( preg_match( '/^(?:[a-z0-9_-]+\/[a-z0-9_-]+|wp-block-\d+)$/i', $sanitized ) ) {
+			return $sanitized;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Accent color input + description for the campaign email shell top bar.
+	 *
+	 * @param string $accent_color Saved hex color (edit form).
+	 */
+	private function render_accent_color_field( string $accent_color = '' ): void {
+		$sanitized = self::sanitize_accent_color( $accent_color );
+
+		printf(
+			'<input type="text" name="prc_newsletter_list_accent_color" id="prc_newsletter_list_accent_color" value="%1$s" class="prc-newsletter-list-accent-color" data-default-color="" />',
+			esc_attr( $sanitized )
+		);
+		echo '<p class="description">' . esc_html__(
+			'Optional. When set, campaign emails using this list show a colored top bar in the email shell.',
+			'prc-email-builder'
+		) . '</p>';
+	}
+
+	/**
+	 * Sanitize a hex accent color; invalid values become empty string.
+	 *
+	 * @param string $color Raw color value.
+	 */
+	public static function sanitize_accent_color( string $color ): string {
+		$sanitized = sanitize_hex_color( $color );
+		return is_string( $sanitized ) ? $sanitized : '';
 	}
 
 	/**
@@ -292,10 +385,22 @@ class Newsletter_List {
 			$from_email = '';
 		}
 
+		$accent_color_raw = isset( $_POST['prc_newsletter_list_accent_color'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_text_field( wp_unslash( (string) $_POST['prc_newsletter_list_accent_color'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: '';
+		$accent_color     = self::sanitize_accent_color( $accent_color_raw );
+
+		$campaign_pattern_raw = isset( $_POST[ self::CAMPAIGN_PATTERN_META_KEY ] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_text_field( wp_unslash( (string) $_POST[ self::CAMPAIGN_PATTERN_META_KEY ] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: '';
+		$campaign_pattern     = self::sanitize_campaign_pattern( $campaign_pattern_raw );
+
 		update_term_meta( $term_id, 'prc_newsletter_list_audience_id', $audience_id );
 		update_term_meta( $term_id, 'prc_newsletter_list_segment_id', $segment_id );
 		update_term_meta( $term_id, 'prc_newsletter_list_from_name', $from_name );
 		update_term_meta( $term_id, 'prc_newsletter_list_from_email', $from_email );
+		update_term_meta( $term_id, self::ACCENT_COLOR_META_KEY, $accent_color );
+		update_term_meta( $term_id, self::CAMPAIGN_PATTERN_META_KEY, $campaign_pattern );
 	}
 
 	/**
@@ -316,29 +421,74 @@ class Newsletter_List {
 			return;
 		}
 
+		wp_enqueue_style( 'wp-color-picker' );
+		wp_enqueue_script( 'wp-color-picker' );
+
+		$is_edit_screen = 'term.php' === $hook_suffix;
+		if ( $is_edit_screen ) {
+			// BlockPreview in the campaign pattern picker needs editor styles.
+			wp_enqueue_style( 'wp-components' );
+			wp_enqueue_style( 'wp-block-editor' );
+			wp_enqueue_style( 'wp-block-library' );
+		}
+
 		$asset_file = PRC_EMAIL_BUILDER_DIR . '/build/term-admin/index.asset.php';
 		if ( ! file_exists( $asset_file ) ) {
 			return;
 		}
 
 		$asset = require $asset_file;
+		$deps  = is_array( $asset['dependencies'] ?? null ) ? $asset['dependencies'] : [];
+		if ( ! in_array( 'wp-color-picker', $deps, true ) ) {
+			$deps[] = 'wp-color-picker';
+		}
 
 		wp_enqueue_script(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'build/term-admin/index.js', PRC_EMAIL_BUILDER_FILE ),
-			$asset['dependencies'],
+			$deps,
 			$asset['version'],
 			true
 		);
+
+		if (
+			$is_edit_screen &&
+			file_exists( PRC_EMAIL_BUILDER_DIR . '/build/term-admin/style-index.css' )
+		) {
+			wp_enqueue_style(
+				self::SCRIPT_HANDLE,
+				plugins_url( 'build/term-admin/style-index.css', PRC_EMAIL_BUILDER_FILE ),
+				[ 'wp-components', 'wp-block-editor', 'wp-block-library' ],
+				$asset['version']
+			);
+		}
 
 		wp_localize_script(
 			self::SCRIPT_HANDLE,
 			'prcEmailBuilderTermAdmin',
 			[
-				'restNamespace' => REST_API::NAMESPACE,
-				'nonce'         => wp_create_nonce( 'wp_rest' ),
+				'restNamespace'               => REST_API::NAMESPACE,
+				'nonce'                       => wp_create_nonce( 'wp_rest' ),
+				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
+				'campaignPatternMetaKey'      => self::CAMPAIGN_PATTERN_META_KEY,
 			]
 		);
+	}
+
+	/**
+	 * Resolve the accent color for a campaign from its first newsletter list term.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return string Sanitized hex color, or '' when unset / no list term.
+	 */
+	public static function resolve_accent_color( int $post_id ): string {
+		$targeting = self::resolve_mailchimp_targeting( $post_id );
+		if ( $targeting['term_id'] <= 0 ) {
+			return '';
+		}
+
+		$color = (string) get_term_meta( $targeting['term_id'], self::ACCENT_COLOR_META_KEY, true );
+		return self::sanitize_accent_color( $color );
 	}
 
 	/**

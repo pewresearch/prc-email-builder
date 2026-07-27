@@ -55,6 +55,8 @@ export function useCampaignReport(postId: number | undefined) {
 		}
 		setIsLoading(true);
 		setError(null);
+		// Drop prior campaign data so consumers never mix title/metrics across ids.
+		setData(null);
 		try {
 			const response = await apiFetch<ReportEnvelope>({
 				path: `/prc-email-builder/v1/campaigns/${postId}/report`,
