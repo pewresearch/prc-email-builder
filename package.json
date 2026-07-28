@@ -3,7 +3,7 @@
 	"version": "1.3.0",
 	"description": "PRC Email Builder provides email authoring and delivery functionality for PRC Platform.",
 	"scripts": {
-		"build": "wp-scripts build && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js",
+		"build": "wp-scripts build --webpack-copy-php && wp-scripts build-blocks-manifest && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js",
 		"build:settings": "wp-scripts build --config webpack.settings.config.js",
 		"build:library": "wp-scripts build --config webpack.library.config.js",
 		"start:settings": "wp-scripts start --config webpack.settings.config.js",

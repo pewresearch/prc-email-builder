@@ -236,7 +236,7 @@ class Email_Block_Integration {
 			'<p style="%s"%s>%s</p>',
 			esc_attr( $merged['style'] ),
 			$this->class_attr( $merged['class'] ),
-			$this->rewrite_links( $inner )
+			$this->rewrite_links( $inner, $attrs )
 		);
 	}
 
@@ -276,7 +276,7 @@ class Email_Block_Integration {
 			'<%1$s style="%2$s"%4$s>%3$s</%1$s>',
 			$tag,
 			esc_attr( $merged['style'] ),
-			$this->rewrite_links( $inner ),
+			$this->rewrite_links( $inner, $attrs ),
 			$this->class_attr( $merged['class'] )
 		);
 	}
@@ -370,13 +370,14 @@ class Email_Block_Integration {
 			if ( '' === trim( wp_strip_all_tags( $item_inner ) ) ) {
 				continue;
 			}
-			$item_attrs = $item_block['attrs'] ?? array();
+			$item_attrs  = $item_block['attrs'] ?? array();
 			$item_merged = Email_Style_Resolver::merge_block_style( $item_style, $item_attrs );
+			$link_attrs  = array_replace_recursive( $attrs, $item_attrs );
 			$items[]     = sprintf(
 				'<li style="%s"%s>%s</li>',
 				esc_attr( $item_merged['style'] ),
 				$this->class_attr( $item_merged['class'] ),
-				$this->rewrite_links( $item_inner )
+				$this->rewrite_links( $item_inner, $link_attrs )
 			);
 		}
 
@@ -400,19 +401,20 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function list_item( array $block, \WP_Post $post ): string {
+		$attrs = $block['attrs'] ?? array();
 		$inner = $this->get_inner_html( $block );
 		if ( '' === trim( wp_strip_all_tags( $inner ) ) ) {
 			return '';
 		}
 		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;';
-		$merged = Email_Style_Resolver::merge_block_style( $base, $block['attrs'] ?? array() );
+		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs );
 
 		return sprintf(
 			'<li style="%s"%s>%s</li>',
 			esc_attr( $merged['style'] ),
 			$this->class_attr( $merged['class'] ),
-			$this->rewrite_links( $inner )
+			$this->rewrite_links( $inner, $attrs )
 		);
 	}
 
@@ -641,9 +643,10 @@ class Email_Block_Integration {
 
 		$content = implode( '<br />', $text_parts );
 
+		$attrs      = $block['attrs'] ?? array();
 		$quote_base = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#555555;font-style:italic;margin:0;';
-		$merged     = Email_Style_Resolver::merge_block_style( $quote_base, $block['attrs'] ?? array() );
+		$merged     = Email_Style_Resolver::merge_block_style( $quote_base, $attrs );
 
 		return sprintf(
 			'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
@@ -652,7 +655,7 @@ class Email_Block_Integration {
 			. '</td></tr></table>',
 			esc_attr( $merged['style'] ),
 			$this->class_attr( $merged['class'] ),
-			$this->rewrite_links( $content )
+			$this->rewrite_links( $content, $attrs )
 		);
 	}
 
@@ -720,6 +723,26 @@ class Email_Block_Integration {
 
 		$wrapper = $this->group_cell_style( $attrs );
 
+		// Constrained groups may declare a contentSize / wideSize — nest a
+		// fixed-width centered table so the width survives email clients.
+		$width_px = ( $is_row || $is_grid ) ? 0 : $this->resolve_group_width( $attrs );
+		if ( $width_px > 0 ) {
+			$inner_html = sprintf(
+				'<table width="%1$d" cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:%1$dpx;max-width:100%%;">'
+				. '<tr><td>%2$s</td></tr></table>',
+				$width_px,
+				$inner_html
+			);
+
+			return sprintf(
+				'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
+				. '<tr><td align="center" style="%s"%s>%s</td></tr></table>',
+				esc_attr( $wrapper['style'] ),
+				$this->class_attr( $wrapper['class'] ),
+				$inner_html
+			);
+		}
+
 		return sprintf(
 			'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
 			. '<tr><td style="%s"%s>%s</td></tr></table>',
@@ -727,6 +750,51 @@ class Email_Block_Integration {
 			$this->class_attr( $wrapper['class'] ),
 			$inner_html
 		);
+	}
+
+	/**
+	 * Resolve a constrained group's target content width in pixels.
+	 *
+	 * Reads `layout.contentSize`, falling back to `layout.wideSize` when the
+	 * block is wide-aligned. Returns 0 when unset or when the value meets /
+	 * exceeds {@see CONTENT_INNER_WIDTH} so the full-bleed table is preserved.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return int Width in px, or 0 for full-width behavior.
+	 */
+	private function resolve_group_width( array $attrs ): int {
+		$layout = $attrs['layout'] ?? array();
+		if ( ! is_array( $layout ) ) {
+			return 0;
+		}
+
+		$raw = $layout['contentSize'] ?? '';
+		if ( ( ! is_string( $raw ) && ! is_numeric( $raw ) ) || '' === trim( (string) $raw ) ) {
+			if ( 'wide' === ( $attrs['align'] ?? '' ) ) {
+				$raw = $layout['wideSize'] ?? '';
+			}
+		}
+
+		if ( ( ! is_string( $raw ) && ! is_numeric( $raw ) ) || '' === trim( (string) $raw ) ) {
+			return 0;
+		}
+
+		$raw = trim( (string) $raw );
+		if ( preg_match( '/^\d+(\.\d+)?$/', $raw ) ) {
+			$px = (int) round( (float) $raw );
+		} else {
+			$converted = Email_Preset_Resolver::rem_to_px( $raw );
+			if ( ! preg_match( '/^(\d+)/', $converted, $m ) ) {
+				return 0;
+			}
+			$px = (int) $m[1];
+		}
+
+		if ( $px <= 0 || $px >= self::CONTENT_INNER_WIDTH ) {
+			return 0;
+		}
+
+		return $px;
 	}
 
 	/**
@@ -1046,33 +1114,121 @@ class Email_Block_Integration {
 	}
 
 	/**
-	 * Add body-link class and inline blue colour to content anchors.
+	 * Apply newsletter body-link treatment to anchors in an HTML fragment.
 	 *
-	 * @param string $html HTML fragment.
+	 * Public so other plugins (e.g. block-library story-item) can reuse the
+	 * same `body-link` / colour treatment without instantiating this class.
+	 *
+	 * Honors `style.typography.textDecoration: none` (Gutenberg Decorations
+	 * control) by emitting `body-link-plain` instead of `body-link`, and
+	 * `style.elements.link.color.text` as a colour override. Custom colours
+	 * use `body-link-custom` so the shell's blue `!important` rule cannot
+	 * override the inline colour.
+	 *
+	 * @param string              $html  HTML fragment.
+	 * @param array<string,mixed> $attrs Block attrs (optional).
 	 * @return string
 	 */
-	private function rewrite_links( string $html ): string {
+	public static function rewrite_body_links( string $html, array $attrs = array() ): string {
 		if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
 			return $html;
+		}
+
+		$plain      = ( ( $attrs['style']['typography']['textDecoration'] ?? '' ) === 'none' );
+		$link_color = self::resolve_link_color( $attrs );
+		// body-link locks colour to blue via !important; skip it when custom.
+		if ( $plain ) {
+			$link_class = 'body-link-plain';
+		} elseif ( self::BODY_LINK_COLOR !== $link_color ) {
+			$link_class = 'body-link-custom';
+		} else {
+			$link_class = 'body-link';
 		}
 
 		$processor = new \WP_HTML_Tag_Processor( $html );
 		while ( $processor->next_tag( 'A' ) ) {
 			$existing_class = (string) ( $processor->get_attribute( 'class' ) ?? '' );
-			if ( ! str_contains( $existing_class, 'body-link' ) ) {
-				$new_class = trim( $existing_class . ' body-link' );
-				$processor->set_attribute( 'class', $new_class );
-			}
+			$class_tokens   = preg_split( '/\s+/', trim( $existing_class ) ) ?: array();
+			$class_tokens   = array_values(
+				array_filter(
+					$class_tokens,
+					static function ( string $token ): bool {
+						return '' !== $token
+							&& 'body-link' !== $token
+							&& 'body-link-plain' !== $token
+							&& 'body-link-custom' !== $token;
+					}
+				)
+			);
+			$class_tokens[] = $link_class;
+			$processor->set_attribute( 'class', implode( ' ', $class_tokens ) );
 
 			$existing_style = (string) ( $processor->get_attribute( 'style' ) ?? '' );
-			if ( ! str_contains( $existing_style, 'color' ) ) {
+			$has_color      = (bool) preg_match( '/(^|;)\s*color\s*:/i', $existing_style );
+
+			if ( $plain ) {
+				$style = '';
+				if ( ! $has_color ) {
+					$style .= 'color:' . $link_color . ';';
+				}
+				$style .= 'text-decoration:none;';
+				if ( '' !== $existing_style ) {
+					$stripped = (string) preg_replace( '/(^|;)\s*text-decoration\s*:[^;]*/i', '$1', $existing_style );
+					$stripped = trim( $stripped, "; \t\n\r\0\x0B" );
+					if ( '' !== $stripped ) {
+						$style .= ' ' . $stripped;
+					}
+				}
+				$processor->set_attribute( 'style', trim( $style ) );
+				continue;
+			}
+
+			if ( ! $has_color ) {
 				$processor->set_attribute(
 					'style',
-					trim( 'color:' . self::BODY_LINK_COLOR . ';text-decoration:underline;' . ( '' !== $existing_style ? ' ' . $existing_style : '' ) )
+					trim( 'color:' . $link_color . ';text-decoration:underline;' . ( '' !== $existing_style ? ' ' . $existing_style : '' ) )
 				);
 			}
 		}
 
 		return $processor->get_updated_html();
+	}
+
+	/**
+	 * Instance wrapper around {@see rewrite_body_links()}.
+	 *
+	 * @param string              $html  HTML fragment.
+	 * @param array<string,mixed> $attrs Block attrs (optional).
+	 * @return string
+	 */
+	private function rewrite_links( string $html, array $attrs = array() ): string {
+		return self::rewrite_body_links( $html, $attrs );
+	}
+
+	/**
+	 * Resolve the light-mode link colour from block attrs.
+	 *
+	 * Prefers `style.elements.link.color.text` (Color → Link control); falls
+	 * back to {@see BODY_LINK_COLOR}.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @return string
+	 */
+	private static function resolve_link_color( array $attrs ): string {
+		$raw = $attrs['style']['elements']['link']['color']['text'] ?? '';
+		if ( ! is_string( $raw ) || '' === trim( $raw ) ) {
+			return self::BODY_LINK_COLOR;
+		}
+
+		$raw = trim( $raw );
+		if ( preg_match( '/^var:preset\|color\|([a-z0-9\-]+)$/i', $raw, $m )
+			|| preg_match( '/^var\(--wp--preset--color--([a-z0-9\-]+)\)$/i', $raw, $m )
+		) {
+			$hex = Email_Preset_Resolver::color_hex( $m[1] );
+			return '' !== $hex ? $hex : self::BODY_LINK_COLOR;
+		}
+
+		$parsed = Email_Preset_Resolver::parse_light_dark( $raw );
+		return '' !== $parsed['light'] ? $parsed['light'] : self::BODY_LINK_COLOR;
 	}
 }

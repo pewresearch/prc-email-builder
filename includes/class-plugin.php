@@ -84,6 +84,9 @@ class Plugin {
 		require_once $includes . 'class-send-status.php';
 		require_once $includes . 'class-email-lists.php';
 		require_once $includes . 'class-preview.php';
+		require_once $includes . 'class-public-email-preview.php';
+		require_once $includes . 'class-campaign-email-preview.php';
+		require_once $includes . 'class-latest-campaign-query.php';
 
 		// Shared options-table CAS lock (Mandrill send + report sync).
 		require_once $includes . 'class-option-lock.php';
@@ -171,6 +174,9 @@ class Plugin {
 		new Settings( $this->loader );
 		new Email_Lists( $this->loader );
 		new Preview( $this->loader );
+		new Public_Email_Preview( $this->loader );
+		new Campaign_Email_Preview( $this->loader );
+		new Latest_Campaign_Query( $this->loader );
 		new Email_Block_Integration( $this->loader );
 
 		Campaign_Status_Sync::init();

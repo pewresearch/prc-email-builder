@@ -65,7 +65,7 @@ class Html_To_Email_Converter {
 			}
 
 			$existing = (string) ( $processor->get_attribute( 'style' ) ?? '' );
-			if ( ! str_contains( $existing, 'color' ) ) {
+			if ( ! preg_match( '/(^|;)\s*color\s*:/i', $existing ) ) {
 				$processor->set_attribute(
 					'style',
 					trim( 'color:' . self::LINK_COLOR . ';text-decoration:underline;' . ( '' !== $existing ? ' ' . $existing : '' ) )
