@@ -37,10 +37,11 @@ class Email_Style_Resolver {
 	 * Build full inline CSS from block attrs (typography + color/spacing/border).
 	 *
 	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML for class-based supports.
 	 * @return string
 	 */
-	public static function inline_css( array $attrs ): string {
-		$result = self::inline_css_with_classes( $attrs );
+	public static function inline_css( array $attrs, string $html = '' ): string {
+		$result = self::inline_css_with_classes( $attrs, $html );
 		return $result['css'];
 	}
 
@@ -48,11 +49,12 @@ class Email_Style_Resolver {
 	 * Build inline CSS and collect dark-mode class names for the element.
 	 *
 	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML for class-based supports.
 	 * @return array{css:string,classes:string[]}
 	 */
-	public static function inline_css_with_classes( array $attrs ): array {
+	public static function inline_css_with_classes( array $attrs, string $html = '' ): array {
 		$classes = array();
-		$parts   = self::build_style_declaration_parts( $attrs, $classes );
+		$parts   = self::build_style_declaration_parts( $attrs, $classes, $html );
 		$parts   = self::collapse_padding_parts( $parts );
 
 		if ( empty( $parts ) ) {
@@ -122,10 +124,11 @@ class Email_Style_Resolver {
 	 *
 	 * @param string              $base_style Existing inline CSS.
 	 * @param array<string,mixed> $attrs      Block attrs.
+	 * @param string              $html       Optional saved block HTML for class-based supports.
 	 * @return array{style:string,class:string}
 	 */
-	public static function merge_block_style( string $base_style, array $attrs ): array {
-		$resolved = self::inline_css_with_classes( $attrs );
+	public static function merge_block_style( string $base_style, array $attrs, string $html = '' ): array {
+		$resolved = self::inline_css_with_classes( $attrs, $html );
 		$style    = $base_style . $resolved['css'];
 		$class    = implode( ' ', $resolved['classes'] );
 		return array(
@@ -137,9 +140,10 @@ class Email_Style_Resolver {
 	/**
 	 * @param array<string,mixed> $attrs   Block attrs.
 	 * @param string[]            $classes Dark-mode classes (by reference).
+	 * @param string              $html    Optional saved block HTML for class-based supports.
 	 * @return array<string,string> property => light value
 	 */
-	private static function build_style_declaration_parts( array $attrs, array &$classes ): array {
+	private static function build_style_declaration_parts( array $attrs, array &$classes, string $html = '' ): array {
 		$normalized = self::normalize_attrs_for_style_engine( $attrs );
 		$parts      = array();
 
@@ -164,7 +168,7 @@ class Email_Style_Resolver {
 			}
 		}
 
-		$typo_parts = self::extract_typography_css_parts( $attrs );
+		$typo_parts = self::extract_typography_css_parts( $attrs, $html );
 		foreach ( $typo_parts as $property => $value ) {
 			if ( ! isset( $parts[ $property ] ) ) {
 				$parts[ $property ] = $value;
@@ -353,15 +357,81 @@ class Email_Style_Resolver {
 	}
 
 	/**
+	 * Resolve text alignment from block attrs and optional saved HTML.
+	 *
+	 * Gutenberg often serializes alignment as `has-text-align-*` classes rather
+	 * than Style Engine declarations. Order of precedence:
+	 * 1. style.typography.textAlign
+	 * 2. top-level attrs.textAlign
+	 * 3. has-text-align-* in attrs.className
+	 * 4. has-text-align-* in raw saved HTML (when attrs omit it)
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML.
+	 * @return string One of left|center|right|justify, or empty string.
+	 */
+	public static function text_align_from_attrs( array $attrs, string $html = '' ): string {
+		$allowed = array( 'left', 'center', 'right', 'justify' );
+
+		$style = $attrs['style'] ?? array();
+		if ( is_array( $style ) && isset( $style['typography'] ) && is_array( $style['typography'] ) ) {
+			$raw = $style['typography']['textAlign'] ?? '';
+			if ( is_string( $raw ) ) {
+				$align = sanitize_key( $raw );
+				if ( in_array( $align, $allowed, true ) ) {
+					return $align;
+				}
+			}
+		}
+
+		if ( ! empty( $attrs['textAlign'] ) && is_string( $attrs['textAlign'] ) ) {
+			$align = sanitize_key( $attrs['textAlign'] );
+			if ( in_array( $align, $allowed, true ) ) {
+				return $align;
+			}
+		}
+
+		if ( ! empty( $attrs['className'] ) && is_string( $attrs['className'] ) ) {
+			$align = self::text_align_from_class_string( $attrs['className'] );
+			if ( '' !== $align ) {
+				return $align;
+			}
+		}
+
+		if ( '' !== $html ) {
+			$align = self::text_align_from_class_string( $html );
+			if ( '' !== $align ) {
+				return $align;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Extract a whitelisted text-align value from a class string or HTML.
+	 *
+	 * @param string $haystack Class attribute or saved HTML.
+	 * @return string One of left|center|right|justify, or empty string.
+	 */
+	private static function text_align_from_class_string( string $haystack ): string {
+		if ( preg_match( '/\bhas-text-align-(left|center|right|justify)\b/', $haystack, $matches ) ) {
+			return $matches[1];
+		}
+		return '';
+	}
+
+	/**
 	 * Build a CSS `style=""` value string from block typography attributes.
 	 *
 	 * Returns an empty string when no typography overrides are present.
 	 *
 	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML for class-based supports.
 	 * @return string e.g. 'font-family:Georgia,...;font-size:16px;'
 	 */
-	public static function typography_inline_css( array $attrs ): string {
-		$pairs = self::extract_typography_css_parts( $attrs );
+	public static function typography_inline_css( array $attrs, string $html = '' ): string {
+		$pairs = self::extract_typography_css_parts( $attrs, $html );
 		if ( empty( $pairs ) ) {
 			return '';
 		}
@@ -377,10 +447,11 @@ class Email_Style_Resolver {
 	/**
 	 * Extract resolved CSS property → value pairs from block attrs.
 	 *
-	 * @param array<string,mixed> $attrs
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML for class-based supports.
 	 * @return array<string,string>
 	 */
-	public static function extract_typography_css_parts( array $attrs ): array {
+	public static function extract_typography_css_parts( array $attrs, string $html = '' ): array {
 		$out  = array();
 		$typo = array();
 
@@ -447,6 +518,11 @@ class Email_Style_Resolver {
 					$out['font-size'] = $size;
 				}
 			}
+		}
+
+		$align = self::text_align_from_attrs( $attrs, $html );
+		if ( '' !== $align ) {
+			$out['text-align'] = $align;
 		}
 
 		return $out;

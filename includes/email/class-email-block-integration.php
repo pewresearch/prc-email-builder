@@ -222,15 +222,16 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function paragraph( array $block, \WP_Post $post ): string {
-		$attrs = $block['attrs'] ?? array();
-		$inner = $this->get_inner_html( $block );
+		$attrs     = $block['attrs'] ?? array();
+		$raw_html  = (string) ( $block['innerHTML'] ?? '' );
+		$inner     = $this->get_inner_html( $block );
 		if ( '' === $inner ) {
 			return '';
 		}
 
-		$base  = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
+		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;';
-		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs );
+		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
 
 		return sprintf(
 			'<p style="%s"%s>%s</p>',
@@ -249,9 +250,10 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function heading( array $block, \WP_Post $post ): string {
-		$attrs = $block['attrs'] ?? array();
-		$level = isset( $attrs['level'] ) ? max( 1, min( 6, (int) $attrs['level'] ) ) : 2;
-		$inner = $this->get_inner_html( $block );
+		$attrs    = $block['attrs'] ?? array();
+		$level    = isset( $attrs['level'] ) ? max( 1, min( 6, (int) $attrs['level'] ) ) : 2;
+		$raw_html = (string) ( $block['innerHTML'] ?? '' );
+		$inner    = $this->get_inner_html( $block );
 		if ( '' === $inner ) {
 			return '';
 		}
@@ -265,10 +267,10 @@ class Email_Block_Integration {
 			6 => array( 'font-size:13px', 'line-height:18px', 'color:#333333', 'margin:10px 0 4px 0' ),
 		);
 
-		$level_parts   = $size_map[ $level ] ?? $size_map[2];
-		$base_style = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF . ';font-weight:bold;color:#000000;padding:0;'
+		$level_parts = $size_map[ $level ] ?? $size_map[2];
+		$base_style  = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF . ';font-weight:bold;color:#000000;padding:0;'
 			. implode( ';', $level_parts ) . ';';
-		$merged     = Email_Style_Resolver::merge_block_style( $base_style, $attrs );
+		$merged      = Email_Style_Resolver::merge_block_style( $base_style, $attrs, $raw_html );
 
 		$tag = 'h' . $level;
 
@@ -289,15 +291,17 @@ class Email_Block_Integration {
 	 * Render core/post-date as an email-safe styled line.
 	 *
 	 * Honors the block's `displayType` (date|modified), `format`, `isLink`, and
-	 * `textAlign` attributes, plus author color/typography/spacing overrides.
+	 * text alignment via {@see Email_Style_Resolver::merge_block_style()}, plus
+	 * author color/typography/spacing overrides.
 	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
 	public function post_date( array $block, \WP_Post $post ): string {
-		$attrs   = $block['attrs'] ?? array();
-		$display = ( ( $attrs['displayType'] ?? 'date' ) === 'modified' ) ? 'modified' : 'date';
-		$format  = ! empty( $attrs['format'] ) && is_string( $attrs['format'] )
+		$attrs    = $block['attrs'] ?? array();
+		$raw_html = (string) ( $block['innerHTML'] ?? '' );
+		$display  = ( ( $attrs['displayType'] ?? 'date' ) === 'modified' ) ? 'modified' : 'date';
+		$format   = ! empty( $attrs['format'] ) && is_string( $attrs['format'] )
 			? $attrs['format']
 			: (string) get_option( 'date_format' );
 
@@ -309,14 +313,9 @@ class Email_Block_Integration {
 			return '';
 		}
 
-		$align = '';
-		if ( ! empty( $attrs['textAlign'] ) && in_array( $attrs['textAlign'], array( 'left', 'center', 'right' ), true ) ) {
-			$align = 'text-align:' . $attrs['textAlign'] . ';';
-		}
-
-		$base = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS
-			. ';font-size:13px;line-height:18px;color:#666666;margin:0 0 16px 0;' . $align;
-		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs );
+		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS
+			. ';font-size:13px;line-height:18px;color:#666666;margin:0 0 16px 0;';
+		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
 
 		$content = esc_html( $date );
 		if ( ! empty( $attrs['isLink'] ) ) {
@@ -348,17 +347,18 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function list_block( array $block, \WP_Post $post ): string {
-		$attrs   = $block['attrs'] ?? array();
-		$ordered = ! empty( $attrs['ordered'] );
-		$inner   = $block['innerBlocks'] ?? array();
+		$attrs    = $block['attrs'] ?? array();
+		$raw_html = (string) ( $block['innerHTML'] ?? '' );
+		$ordered  = ! empty( $attrs['ordered'] );
+		$inner    = $block['innerBlocks'] ?? array();
 
 		if ( empty( $inner ) ) {
 			return '';
 		}
 
-		$list_base = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
+		$list_base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;padding-left:20px;';
-		$list_merged = Email_Style_Resolver::merge_block_style( $list_base, $attrs );
+		$list_merged = Email_Style_Resolver::merge_block_style( $list_base, $attrs, $raw_html );
 		$item_style  = 'margin:0 0 8px 0;';
 
 		$items = array();
@@ -366,12 +366,13 @@ class Email_Block_Integration {
 			if ( ( $item_block['blockName'] ?? '' ) !== 'core/list-item' ) {
 				continue;
 			}
+			$item_raw   = (string) ( $item_block['innerHTML'] ?? '' );
 			$item_inner = $this->get_inner_html( $item_block );
 			if ( '' === trim( wp_strip_all_tags( $item_inner ) ) ) {
 				continue;
 			}
 			$item_attrs  = $item_block['attrs'] ?? array();
-			$item_merged = Email_Style_Resolver::merge_block_style( $item_style, $item_attrs );
+			$item_merged = Email_Style_Resolver::merge_block_style( $item_style, $item_attrs, $item_raw );
 			$link_attrs  = array_replace_recursive( $attrs, $item_attrs );
 			$items[]     = sprintf(
 				'<li style="%s"%s>%s</li>',
@@ -401,14 +402,15 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function list_item( array $block, \WP_Post $post ): string {
-		$attrs = $block['attrs'] ?? array();
-		$inner = $this->get_inner_html( $block );
+		$attrs    = $block['attrs'] ?? array();
+		$raw_html = (string) ( $block['innerHTML'] ?? '' );
+		$inner    = $this->get_inner_html( $block );
 		if ( '' === trim( wp_strip_all_tags( $inner ) ) ) {
 			return '';
 		}
 		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;';
-		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs );
+		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
 
 		return sprintf(
 			'<li style="%s"%s>%s</li>',
@@ -644,9 +646,10 @@ class Email_Block_Integration {
 		$content = implode( '<br />', $text_parts );
 
 		$attrs      = $block['attrs'] ?? array();
+		$raw_html   = (string) ( $block['innerHTML'] ?? '' );
 		$quote_base = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#555555;font-style:italic;margin:0;';
-		$merged     = Email_Style_Resolver::merge_block_style( $quote_base, $attrs );
+		$merged     = Email_Style_Resolver::merge_block_style( $quote_base, $attrs, $raw_html );
 
 		return sprintf(
 			'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
@@ -686,6 +689,15 @@ class Email_Block_Integration {
 			return '';
 		}
 
+		// Constrained groups may declare a contentSize / wideSize — nest a
+		// fixed-width table so the width survives email clients. Place it with
+		// layout.justifyContent (Gutenberg constrained default: center).
+		$width_px = ( $is_row || $is_grid ) ? 0 : $this->resolve_group_width( $attrs );
+		$justify  = sanitize_key( (string) ( $layout['justifyContent'] ?? '' ) );
+		if ( ! in_array( $justify, array( 'left', 'center', 'right' ), true ) ) {
+			$justify = 'center';
+		}
+
 		if ( $is_row || $is_grid ) {
 			$cells = array();
 			foreach ( $inner as $child ) {
@@ -714,6 +726,12 @@ class Email_Block_Integration {
 				)
 			);
 		} else {
+			// Bare button/buttons lose per-child box centering inside the fixed
+			// contentSize table. Inject parent justify only for those children
+			// that have no local justify/textAlign — never as text-align.
+			if ( $width_px > 0 ) {
+				$inner = $this->apply_constrained_justify_to_buttons( $inner, $justify );
+			}
 			$inner_html = $converter->blocks_to_email_html( $inner, $post );
 		}
 
@@ -723,9 +741,6 @@ class Email_Block_Integration {
 
 		$wrapper = $this->group_cell_style( $attrs );
 
-		// Constrained groups may declare a contentSize / wideSize — nest a
-		// fixed-width centered table so the width survives email clients.
-		$width_px = ( $is_row || $is_grid ) ? 0 : $this->resolve_group_width( $attrs );
 		if ( $width_px > 0 ) {
 			$inner_html = sprintf(
 				'<table width="%1$d" cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:%1$dpx;max-width:100%%;">'
@@ -736,7 +751,8 @@ class Email_Block_Integration {
 
 			return sprintf(
 				'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
-				. '<tr><td align="center" style="%s"%s>%s</td></tr></table>',
+				. '<tr><td align="%s" style="%s"%s>%s</td></tr></table>',
+				esc_attr( $justify ),
 				esc_attr( $wrapper['style'] ),
 				$this->class_attr( $wrapper['class'] ),
 				$inner_html
@@ -750,6 +766,60 @@ class Email_Block_Integration {
 			$this->class_attr( $wrapper['class'] ),
 			$inner_html
 		);
+	}
+
+	/**
+	 * Copy button/buttons children so they inherit constrained-group justify.
+	 *
+	 * Gutenberg constrained + justifyContent places each child's block box.
+	 * After email nests contentSize into one fixed-width table, bare buttons
+	 * otherwise default left. This injects layout.justifyContent only when the
+	 * child has no local justify/textAlign (including style.typography.textAlign
+	 * and has-text-align-* — see Email_Style_Resolver::text_align_from_attrs).
+	 * Text blocks are never modified.
+	 *
+	 * @param array<int,array<string,mixed>> $inner   Child blocks.
+	 * @param string                         $justify left|center|right.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function apply_constrained_justify_to_buttons( array $inner, string $justify ): array {
+		if ( ! in_array( $justify, array( 'left', 'center', 'right' ), true ) ) {
+			return $inner;
+		}
+
+		$out = array();
+		foreach ( $inner as $child ) {
+			if ( ! is_array( $child ) ) {
+				continue;
+			}
+			$name = $child['blockName'] ?? '';
+			if ( 'core/button' !== $name && 'core/buttons' !== $name ) {
+				$out[] = $child;
+				continue;
+			}
+
+			$attrs  = is_array( $child['attrs'] ?? null ) ? $child['attrs'] : array();
+			$layout = is_array( $attrs['layout'] ?? null ) ? $attrs['layout'] : array();
+			$local_justify = sanitize_key( (string) ( $layout['justifyContent'] ?? '' ) );
+			$local_text    = Email_Style_Resolver::text_align_from_attrs(
+				$attrs,
+				is_string( $child['innerHTML'] ?? null ) ? $child['innerHTML'] : ''
+			);
+			$has_local     = in_array( $local_justify, array( 'left', 'center', 'right' ), true )
+				|| in_array( $local_text, array( 'left', 'center', 'right' ), true );
+
+			if ( $has_local ) {
+				$out[] = $child;
+				continue;
+			}
+
+			$layout['justifyContent'] = $justify;
+			$attrs['layout']          = $layout;
+			$child['attrs']           = $attrs;
+			$out[]                    = $child;
+		}
+
+		return $out;
 	}
 
 	/**
@@ -885,7 +955,10 @@ class Email_Block_Integration {
 		$layout  = is_array( $attrs['layout'] ?? null ) ? $attrs['layout'] : array();
 		$justify = sanitize_key( (string) ( $layout['justifyContent'] ?? '' ) );
 		if ( ! in_array( $justify, array( 'left', 'center', 'right' ), true ) ) {
-			$text_align = sanitize_key( (string) ( $attrs['textAlign'] ?? '' ) );
+			$text_align = Email_Style_Resolver::text_align_from_attrs(
+				$attrs,
+				is_string( $block['innerHTML'] ?? null ) ? $block['innerHTML'] : ''
+			);
 			$justify    = in_array( $text_align, array( 'left', 'center', 'right' ), true ) ? $text_align : 'left';
 		}
 
@@ -974,6 +1047,13 @@ class Email_Block_Integration {
 				esc_attr( Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS ),
 				esc_attr( $radius )
 			);
+		}
+
+		// Author typography overrides (fontSize / fontFamily / weight / etc.)
+		// append after defaults so last-wins in email clients.
+		$typo = Email_Style_Resolver::typography_inline_css( $attrs );
+		if ( '' !== $typo ) {
+			$anchor_style .= $typo;
 		}
 
 		if ( '' !== $url ) {
