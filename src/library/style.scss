@@ -11,6 +11,13 @@
 	position: absolute;
 }
 
+.prc-email-library {
+	&__classic-link {
+		font-size: 13px;
+		margin: 12px 0 24px;
+	}
+}
+
 #wp-parsely-site-id-error-notice {
 	display: none;
 }

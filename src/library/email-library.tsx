@@ -14,6 +14,7 @@ declare const prcEmailLibrary: {
 	postTypeScope?: EmailListScope;
 	pageTitle?: string;
 	pageDescription?: string;
+	classicUrl?: string;
 };
 
 function getScope(): EmailListScope {
@@ -22,6 +23,7 @@ function getScope(): EmailListScope {
 
 export default function EmailLibrary() {
 	const scope = getScope();
+	const classicUrl = prcEmailLibrary?.classicUrl;
 	const pageTitle =
 		prcEmailLibrary?.pageTitle ||
 		(scope === 'txn'
@@ -34,20 +36,32 @@ export default function EmailLibrary() {
 			: __('Browse and manage email campaigns.', 'prc-email-builder'));
 
 	return (
-		<Card>
-			<CardHeader>
-				<Flex align="center">
-					<FlexBlock>
-						<h1 style={{ margin: 0 }}>{pageTitle}</h1>
-						<p style={{ margin: '4px 0 0', color: '#757575' }}>
-							{pageDescription}
-						</p>
-					</FlexBlock>
-				</Flex>
-			</CardHeader>
-			<CardBody>
-				<DataViews scope={scope} />
-			</CardBody>
-		</Card>
+		<div className="prc-email-library">
+			<Card>
+				<CardHeader>
+					<Flex align="center">
+						<FlexBlock>
+							<h1 style={{ margin: 0 }}>{pageTitle}</h1>
+							<p style={{ margin: '4px 0 0', color: '#757575' }}>
+								{pageDescription}
+							</p>
+						</FlexBlock>
+					</Flex>
+				</CardHeader>
+				<CardBody>
+					<DataViews scope={scope} />
+				</CardBody>
+			</Card>
+			{classicUrl && (
+				<p className="prc-email-library__classic-link">
+					<a href={classicUrl}>
+						{__(
+							'Switch to the classic list table',
+							'prc-email-builder'
+						)}
+					</a>
+				</p>
+			)}
+		</div>
 	);
 }

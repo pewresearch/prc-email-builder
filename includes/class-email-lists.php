@@ -238,6 +238,10 @@ class Email_Lists {
 			? __( 'Browse and manage transactional emails.', 'prc-email-builder' )
 			: __( 'Browse and manage email campaigns.', 'prc-email-builder' );
 
+		$classic_post_type = 'txn' === $scope
+			? Post_Type::TRANSACTIONAL_POST_TYPE
+			: Post_Type::CAMPAIGN_POST_TYPE;
+
 		wp_localize_script(
 			$handle,
 			'prcEmailLibrary',
@@ -250,6 +254,9 @@ class Email_Lists {
 				),
 				'transactionalNewUrl'         => esc_url_raw(
 					admin_url( 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE )
+				),
+				'classicUrl'                  => esc_url_raw(
+					admin_url( 'edit.php?post_type=' . $classic_post_type . '&classic=1' )
 				),
 				'postTypeScope'               => $scope,
 				'pageTitle'                   => $page_title,

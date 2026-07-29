@@ -20,6 +20,7 @@ const MAILCHIMP_LABELS: Record<string, string> = {
 
 const MANDRILL_LABELS: Record<string, string> = {
 	__empty__: __('Not Sent', 'prc-email-builder'),
+	active: __('Active', 'prc-email-builder'),
 	sent: __('Sent', 'prc-email-builder'),
 	queued: __('Queued', 'prc-email-builder'),
 	sending: __('Sending', 'prc-email-builder'),
@@ -46,6 +47,7 @@ export function toneForMailchimp(status: string): SendStatusTone {
 export function toneForMandrill(status: string): SendStatusTone {
 	switch (status) {
 		case 'sent':
+		case 'active':
 			return 'success';
 		case 'failed':
 		case 'partial':
@@ -68,6 +70,23 @@ export function resolveSendStatus(item: EmailLibraryRow): ResolvedSendStatus {
 			tone: toneForMailchimp(raw),
 			raw,
 		};
+	}
+
+	if (item.delivery_mode === 'dynamic') {
+		if (!raw) {
+			return {
+				label: __('Waiting for first send', 'prc-email-builder'),
+				tone: 'warning',
+				raw,
+			};
+		}
+		if (raw === 'active') {
+			return {
+				label: __('Active', 'prc-email-builder'),
+				tone: 'success',
+				raw,
+			};
+		}
 	}
 
 	const key = normalizeKey(raw);

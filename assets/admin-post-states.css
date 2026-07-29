@@ -15,7 +15,8 @@
 
 /* Success (green) */
 .post-type-prc_email_campaign .post-state.prc_email_mc_sent::before,
-.post-type-prc_email_txn .post-state.prc_email_mandrill_sent::before {
+.post-type-prc_email_txn .post-state.prc_email_mandrill_sent::before,
+.post-type-prc_email_txn .post-state.prc_email_mandrill_active::before {
 	background: #1a8a1a;
 }
 

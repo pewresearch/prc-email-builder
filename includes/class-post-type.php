@@ -73,7 +73,7 @@ class Post_Type {
 		'prc_email_delivery_mode'         => 'Transactional sub-mode: "mandrill" (fixed recipient list) or "dynamic" (per-recipient template).',
 		'prc_email_audience_option_key'   => 'wp_options key holding the resolved [email,...] recipient list (mandrill sub-mode).',
 		'prc_email_mandrill_template'     => 'Mandrill template slug (optional).',
-		'prc_email_mandrill_send_status'  => 'Last Mandrill send result: "sent", "queued", "failed", or "" (not sent).',
+		'prc_email_mandrill_send_status'  => 'Last Mandrill send result: "sent", "queued", "failed", "active" (dynamic templates after first send), or "" (not sent / waiting).',
 		'prc_email_mandrill_send_summary' => 'JSON summary of last Mandrill send (batches, sent, queued, rejected, invalid, failed_batches, sent_at).',
 	];
 

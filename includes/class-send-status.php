@@ -21,16 +21,29 @@ class Send_Status {
 	/**
 	 * Resolve display label and tone for a campaign or transactional email.
 	 *
-	 * @param string $email_type `campaign` or `txn`.
-	 * @param string $raw_status Meta value; empty string treated as not sent.
+	 * @param string $email_type     `campaign` or `txn`.
+	 * @param string $raw_status     Meta value; empty string treated as not sent / waiting.
+	 * @param string $delivery_mode  Transactional sub-mode (`dynamic` or `mandrill`); ignored for campaigns.
 	 * @return array{label: string, tone: string, raw: string}
 	 */
-	public static function resolve( string $email_type, string $raw_status ): array {
+	public static function resolve( string $email_type, string $raw_status, string $delivery_mode = '' ): array {
 		$raw = sanitize_text_field( $raw_status );
 
 		if ( 'txn' === $email_type ) {
+			if ( '' === $raw ) {
+				$label = 'dynamic' === $delivery_mode
+					? __( 'Waiting for first send', 'prc-email-builder' )
+					: __( 'Not Sent', 'prc-email-builder' );
+
+				return [
+					'label' => $label,
+					'tone'  => self::tone_for_mandrill( $raw ),
+					'raw'   => $raw,
+				];
+			}
+
 			$lookup = self::normalize_lookup_key( $raw );
-			$label  = self::mandrill_labels()[ $lookup ] ?? ( '' === $raw ? self::mandrill_labels()['__empty__'] : $raw );
+			$label  = self::mandrill_labels()[ $lookup ] ?? $raw;
 
 			return [
 				'label' => $label,
@@ -65,7 +78,7 @@ class Send_Status {
 	 */
 	public static function tone_for_mandrill( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
-			'sent' => self::TONE_SUCCESS,
+			'sent', 'active' => self::TONE_SUCCESS,
 			'sending', 'queued', '' => self::TONE_WARNING,
 			'failed', 'partial' => self::TONE_ERROR,
 			default => self::TONE_WARNING,
@@ -115,7 +128,11 @@ class Send_Status {
 		return [
 			[
 				'value' => '__empty__',
-				'label' => __( 'Not Sent', 'prc-email-builder' ),
+				'label' => __( 'Not Sent / Waiting', 'prc-email-builder' ),
+			],
+			[
+				'value' => 'active',
+				'label' => __( 'Active', 'prc-email-builder' ),
 			],
 			[
 				'value' => 'sent',
