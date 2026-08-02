@@ -356,10 +356,31 @@ class Email_Block_Integration {
 			return '';
 		}
 
+		$unstyled = self::has_unstyled_list_style( $attrs, $raw_html );
+
+		if ( $unstyled ) {
+			$list_style_type = 'none';
+			$type_attr       = '';
+		} elseif ( $ordered ) {
+			$list_style_type = 'decimal';
+			$type_attr       = ' type="1"';
+		} else {
+			$list_style_type = 'disc';
+			$type_attr       = ' type="disc"';
+		}
+
+		// Email clients often reset native list markers; declare type inline.
 		$list_base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
-			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;padding-left:20px;';
+			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;padding-left:24px;'
+			. 'list-style-type:' . $list_style_type . ';list-style-position:outside;';
 		$list_merged = Email_Style_Resolver::merge_block_style( $list_base, $attrs, $raw_html );
-		$item_style  = 'margin:0 0 8px 0;';
+		$item_style  = 'margin:0 0 8px 0;list-style-type:' . $list_style_type . ';list-style-position:outside;';
+
+		// Ensure Unstyled List class reaches the email DOM for shell CSS.
+		$list_class = $list_merged['class'];
+		if ( $unstyled && ! str_contains( $list_class, 'is-style-list-style-type-none' ) ) {
+			$list_class = trim( $list_class . ' is-style-list-style-type-none' );
+		}
 
 		$items = array();
 		foreach ( $inner as $item_block ) {
@@ -389,12 +410,27 @@ class Email_Block_Integration {
 		$tag = $ordered ? 'ol' : 'ul';
 
 		return sprintf(
-			'<%1$s style="%2$s"%4$s>%3$s</%1$s>',
+			'<%1$s%5$s style="%2$s"%4$s>%3$s</%1$s>',
 			$tag,
 			esc_attr( $list_merged['style'] ),
 			implode( '', $items ),
-			$this->class_attr( $list_merged['class'] )
+			$this->class_attr( $list_class ),
+			$type_attr
 		);
+	}
+
+	/**
+	 * Whether the list uses PRC's Unstyled List block style.
+	 *
+	 * @param array<string,mixed> $attrs    Block attrs.
+	 * @param string              $raw_html Saved block HTML (may carry the style class).
+	 */
+	private static function has_unstyled_list_style( array $attrs, string $raw_html ): bool {
+		$class_name = is_string( $attrs['className'] ?? null ) ? $attrs['className'] : '';
+		if ( str_contains( $class_name, 'is-style-list-style-type-none' ) ) {
+			return true;
+		}
+		return (bool) preg_match( '/\bis-style-list-style-type-none\b/', $raw_html );
 	}
 
 	/**
@@ -409,7 +445,8 @@ class Email_Block_Integration {
 			return '';
 		}
 		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
-			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;';
+			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;'
+			. 'list-style-type:disc;list-style-position:outside;';
 		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
 
 		return sprintf(

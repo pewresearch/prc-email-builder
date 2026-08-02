@@ -16,6 +16,7 @@ use PRC\Platform\Email_Builder\Email_Preset_Resolver;
 
 $current_year = gmdate( 'Y' );
 $logo_url     = content_url( 'images/logos/primary.svg' );
+$mso_logo_url = content_url( 'images/logo.png' );
 
 $card_pair  = Email_Preset_Resolver::color_pair( 'ui-white' );
 $card_light = '' !== $card_pair['light'] ? $card_pair['light'] : '#ffffff';
@@ -43,12 +44,24 @@ $card_attr  = '' !== $card_class ? ' class="' . esc_attr( $card_class ) . '"' : 
 		<tr>
 			<td align="center" style="padding:24px 32px 20px;background-color:#ffffff;">
 				<a href="https://www.pewresearch.org" target="_blank" rel="noopener noreferrer" style="display:inline-block;border:0;">
+					<!--[if mso]>
+					<img
+						src="<?php echo esc_url( $mso_logo_url ); ?>"
+						alt="Pew Research Center"
+						width="180"
+						height="27"
+						style="display:block;border:0;width:180px;height:27px;"
+					/>
+					<![endif]-->
+					<!--[if !mso]><!-->
 					<img
 						src="<?php echo esc_url( $logo_url ); ?>"
 						alt="Pew Research Center"
 						width="180"
-						style="display:block;border:0;height:auto;"
+						height="27"
+						style="display:block;border:0;width:180px;height:27px;"
 					/>
+					<!--<![endif]-->
 				</a>
 			</td>
 		</tr>

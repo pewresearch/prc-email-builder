@@ -83,6 +83,18 @@ class Report_Store {
 	}
 
 	/**
+	 * Delete all report meta for a post. Idempotent.
+	 */
+	public static function clear( int $post_id ): void {
+		delete_post_meta( $post_id, self::META_REPORT );
+		delete_post_meta( $post_id, self::META_OPEN_RATE );
+		delete_post_meta( $post_id, self::META_CLICK_RATE );
+		delete_post_meta( $post_id, self::META_SEND_TIME );
+		delete_post_meta( $post_id, self::META_LAST_SYNCED );
+		delete_post_meta( $post_id, self::META_SYNC_STATE );
+	}
+
+	/**
 	 * @return array<string, mixed> REST-facing envelope for the editor panel.
 	 */
 	public static function envelope( int $post_id ): array {

@@ -59,6 +59,27 @@ interface UpdateDraftResponse {
 	status: string;
 }
 
+interface UnlinkCampaignResponse {
+	success: boolean;
+	post_id: number;
+	cleared: {
+		campaign_id: string;
+		had_report: boolean;
+	};
+	linkage: {
+		campaign_id: string;
+		admin_url: string;
+		status: string;
+	};
+}
+
+interface CreateDraftResponse {
+	success: boolean;
+	campaign_id: string;
+	admin_url: string;
+	status: string;
+}
+
 export function SendNewsletterSidebar() {
 	const postId: number = useSelect(
 		(select) => select(editorStore).getCurrentPostId(),
@@ -123,11 +144,13 @@ function SendPanel({ postId }: SendPanelProps) {
 
 	const { audiences: systemAudiences } = useSystemAudiences();
 	const { status: transformStatus } = useTransformStatus(postId);
+	const [unlinkedThisSession, setUnlinkedThisSession] = useState(false);
 	const shouldSyncMailchimpCampaign =
 		isCampaign &&
 		isPublished &&
 		transformStatus === 'complete' &&
-		!campaignId;
+		!campaignId &&
+		!unlinkedThisSession;
 	const { syncTimedOut } = useSyncMailchimpCampaignMeta(
 		postId,
 		shouldSyncMailchimpCampaign
@@ -142,8 +165,11 @@ function SendPanel({ postId }: SendPanelProps) {
 		useDispatch(noticesStore);
 
 	const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+	const [isUnlinkConfirmOpen, setIsUnlinkConfirmOpen] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 	const [isUpdatingDraft, setIsUpdatingDraft] = useState(false);
+	const [isUnlinking, setIsUnlinking] = useState(false);
+	const [isCreatingDraft, setIsCreatingDraft] = useState(false);
 
 	const selectedAudience = systemAudiences.find(
 		(a) => a.key === audienceOptionKey
@@ -268,6 +294,94 @@ function SendPanel({ postId }: SendPanelProps) {
 		createErrorNotice,
 	]);
 
+	const handleUnlinkMailchimpCampaign = useCallback(async () => {
+		if (!postId || isUnlinking) {
+			return;
+		}
+
+		setIsUnlinking(true);
+		setIsUnlinkConfirmOpen(false);
+
+		try {
+			await apiFetch<UnlinkCampaignResponse>({
+				path: `/${config.restNamespace}/campaigns/unlink`,
+				method: 'POST',
+				data: { post_id: postId },
+			});
+
+			editPost({
+				meta: {
+					prc_email_mailchimp_campaign_id: '',
+					prc_email_mailchimp_campaign_admin_url: '',
+					prc_email_mailchimp_campaign_status: '',
+				},
+			});
+			setUnlinkedThisSession(true);
+			createSuccessNotice(
+				__(
+					'Unlinked from Mailchimp. Audience and content settings were kept.',
+					'prc-email-builder'
+				),
+				{ type: 'snackbar' }
+			);
+		} catch (err: unknown) {
+			const message =
+				(err as { message?: string })?.message ??
+				__(
+					'Could not unlink Mailchimp campaign. Try again.',
+					'prc-email-builder'
+				);
+			createErrorNotice(message, { type: 'snackbar' });
+		} finally {
+			setIsUnlinking(false);
+		}
+	}, [postId, isUnlinking, editPost, createSuccessNotice, createErrorNotice]);
+
+	const handleCreateMailchimpDraft = useCallback(async () => {
+		if (!postId || isCreatingDraft) {
+			return;
+		}
+
+		setIsCreatingDraft(true);
+
+		try {
+			const response = await apiFetch<CreateDraftResponse>({
+				path: `/${config.restNamespace}/campaigns/create-draft`,
+				method: 'POST',
+				data: { post_id: postId },
+			});
+
+			editPost({
+				meta: {
+					prc_email_mailchimp_campaign_id: response.campaign_id,
+					prc_email_mailchimp_campaign_admin_url: response.admin_url,
+					prc_email_mailchimp_campaign_status: response.status,
+				},
+			});
+			setUnlinkedThisSession(false);
+			createSuccessNotice(
+				__('Mailchimp draft created.', 'prc-email-builder'),
+				{ type: 'snackbar' }
+			);
+		} catch (err: unknown) {
+			const message =
+				(err as { message?: string })?.message ??
+				__(
+					'Could not create Mailchimp draft. Try again.',
+					'prc-email-builder'
+				);
+			createErrorNotice(message, { type: 'snackbar' });
+		} finally {
+			setIsCreatingDraft(false);
+		}
+	}, [
+		postId,
+		isCreatingDraft,
+		editPost,
+		createSuccessNotice,
+		createErrorNotice,
+	]);
+
 	if (isTransactional && deliveryMode === 'dynamic') {
 		return (
 			<>
@@ -297,14 +411,22 @@ function SendPanel({ postId }: SendPanelProps) {
 
 	if (isCampaign) {
 		const draftReady = Boolean(campaignId);
+		const htmlReady = transformStatus === 'complete';
 		const preparing =
 			isPublished &&
+			htmlReady &&
 			!draftReady &&
 			!syncTimedOut &&
-			transformStatus === 'complete' &&
-			!campaignId;
+			!unlinkedThisSession;
+		const showCreateDraft =
+			isPublished &&
+			htmlReady &&
+			!draftReady &&
+			(unlinkedThisSession || syncTimedOut);
 		const draftEditable = !campaignStatus || campaignStatus === 'save';
-		const htmlReady = transformStatus === 'complete';
+		const unlinkConfirmIsStrong = ['sent', 'schedule', 'sending'].includes(
+			campaignStatus
+		);
 
 		return (
 			<PanelBody
@@ -363,6 +485,30 @@ function SendPanel({ postId }: SendPanelProps) {
 									'prc-email-builder'
 								)}
 							</Button>
+							<Button
+								variant="tertiary"
+								isDestructive
+								onClick={() => setIsUnlinkConfirmOpen(true)}
+								disabled={isUnlinking}
+								isBusy={isUnlinking}
+								style={{
+									width: '100%',
+									justifyContent: 'center',
+								}}
+							>
+								{__(
+									'Unlink from Mailchimp',
+									'prc-email-builder'
+								)}
+							</Button>
+							{campaignStatus === 'unavailable' && (
+								<Notice status="warning" isDismissible={false}>
+									{__(
+										'The linked Mailchimp campaign is missing. Unlink to create a new draft.',
+										'prc-email-builder'
+									)}
+								</Notice>
+							)}
 							{!htmlReady && (
 								<Notice status="warning" isDismissible={false}>
 									{__(
@@ -371,32 +517,70 @@ function SendPanel({ postId }: SendPanelProps) {
 									)}
 								</Notice>
 							)}
-							{!draftEditable && (
-								<Notice status="warning" isDismissible={false}>
-									{campaignStatus === 'sent'
-										? __(
-												'Campaign already sent in Mailchimp; content can no longer be updated.',
-												'prc-email-builder'
-											)
-										: campaignStatus === 'schedule'
+							{!draftEditable &&
+								campaignStatus !== 'unavailable' && (
+									<Notice
+										status="warning"
+										isDismissible={false}
+									>
+										{campaignStatus === 'sent'
 											? __(
-													'Campaign is scheduled in Mailchimp. Unschedule in Mailchimp to edit content here.',
+													'Campaign already sent in Mailchimp; content can no longer be updated.',
 													'prc-email-builder'
 												)
-											: __(
-													'Campaign is no longer a draft in Mailchimp; content can no longer be updated.',
-													'prc-email-builder'
-												)}
+											: campaignStatus === 'schedule'
+												? __(
+														'Campaign is scheduled in Mailchimp. Unschedule in Mailchimp to edit content here.',
+														'prc-email-builder'
+													)
+												: __(
+														'Campaign is no longer a draft in Mailchimp; content can no longer be updated.',
+														'prc-email-builder'
+													)}
+									</Notice>
+								)}
+							<ConfirmDialog
+								isOpen={isUnlinkConfirmOpen}
+								onConfirm={handleUnlinkMailchimpCampaign}
+								onCancel={() => setIsUnlinkConfirmOpen(false)}
+							>
+								{unlinkConfirmIsStrong
+									? __(
+											'This campaign may already be sent or scheduled in Mailchimp. Unlinking clears the WordPress link only; it does not delete the Mailchimp campaign. Continue?',
+											'prc-email-builder'
+										)
+									: __(
+											'Unlink this newsletter from its Mailchimp campaign? Audience and content settings stay. The Mailchimp campaign is not deleted.',
+											'prc-email-builder'
+										)}
+							</ConfirmDialog>
+						</>
+					) : showCreateDraft ? (
+						<>
+							{syncTimedOut && !unlinkedThisSession && (
+								<Notice status="error" isDismissible={false}>
+									{__(
+										'Mailchimp draft was not created automatically. Create one below, or check that Mailchimp is connected.',
+										'prc-email-builder'
+									)}
 								</Notice>
 							)}
+							<Button
+								variant="primary"
+								onClick={handleCreateMailchimpDraft}
+								disabled={isCreatingDraft}
+								isBusy={isCreatingDraft}
+								style={{
+									width: '100%',
+									justifyContent: 'center',
+								}}
+							>
+								{__(
+									'Create Mailchimp draft',
+									'prc-email-builder'
+								)}
+							</Button>
 						</>
-					) : syncTimedOut ? (
-						<Notice status="error" isDismissible={false}>
-							{__(
-								'Mailchimp draft was not created. Check that Mailchimp is connected and republish the campaign.',
-								'prc-email-builder'
-							)}
-						</Notice>
 					) : (
 						<Notice status="warning" isDismissible={false}>
 							{__(

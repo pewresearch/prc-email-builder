@@ -53,6 +53,15 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
   .footer-link, .footer-link:link, .footer-link:visited { color: #999999 !important; text-decoration: underline !important; }
   /* Body content links — blue */
   .body-link, .body-link:link, .body-link:visited { color: #2b6dad !important; text-decoration: underline !important; }
+  /* List markers — many clients reset native bullets; keep markers visible */
+  ul:not(.is-style-list-style-type-none) { list-style-type: disc !important; list-style-position: outside !important; padding-left: 24px !important; }
+  ol:not(.is-style-list-style-type-none) { list-style-type: decimal !important; list-style-position: outside !important; padding-left: 24px !important; }
+  ul:not(.is-style-list-style-type-none) li,
+  ol:not(.is-style-list-style-type-none) li { list-style-position: outside !important; }
+  ul.is-style-list-style-type-none,
+  ol.is-style-list-style-type-none { list-style-type: none !important; }
+  ul.is-style-list-style-type-none li,
+  ol.is-style-list-style-type-none li { list-style-type: none !important; }
   /* Opt-out via Gutenberg Decorations (text-decoration:none) — no color override */
   .body-link-plain, .body-link-plain:link, .body-link-plain:visited { text-decoration: none !important; }
   /* Custom Color → Link — underline without locking colour */

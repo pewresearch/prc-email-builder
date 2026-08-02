@@ -42,6 +42,11 @@ class Email_Block_Converter {
 		'core/columns',
 	);
 
+	private const STORY_ITEM_BLOCK = 'prc-block/story-item';
+
+	private const STORY_ITEM_DIVIDER_HTML = '<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
+		. '<tr><td style="border-top:1px solid #d6d7d8;font-size:0;line-height:0;">&nbsp;</td></tr></table>';
+
 	/**
 	 * Convert a newsletter post's content to an email HTML fragment.
 	 *
@@ -82,17 +87,18 @@ class Email_Block_Converter {
 	 * @return string Concatenated email-safe HTML fragment.
 	 */
 	public function blocks_to_email_html( array $blocks, \WP_Post $post ): string {
-		$parts    = array();
-		$fallback = new Html_To_Email_Converter();
+		$parts                   = array();
+		$last_emitted_block_name = null;
+		$fallback                = new Html_To_Email_Converter();
 
 		foreach ( $blocks as $block ) {
-			$block_name = $block['blockName'] ?? null;
+			$block_name = is_string( $block['blockName'] ?? null ) ? $block['blockName'] : null;
 
 			// Null blockName = freeform / classic content between blocks.
 			if ( null === $block_name ) {
 				$trimmed = trim( $block['innerHTML'] ?? '' );
 				if ( '' !== $trimmed ) {
-					$parts[] = $fallback->convert( $trimmed );
+					$this->append_fragment( $parts, $last_emitted_block_name, null, $fallback->convert( $trimmed ) );
 				}
 				continue;
 			}
@@ -104,15 +110,11 @@ class Email_Block_Converter {
 					$inner = $block['innerBlocks'] ?? array();
 					if ( ! empty( $inner ) ) {
 						$inner_html = $this->blocks_to_email_html( $inner, $post );
-						if ( '' !== trim( $inner_html ) ) {
-							$parts[] = $inner_html;
-						}
+						$this->append_fragment( $parts, $last_emitted_block_name, $block_name, $inner_html );
 					}
 					continue;
 				}
-				if ( '' !== trim( (string) $resolved['html'] ) ) {
-					$parts[] = (string) $resolved['html'];
-				}
+				$this->append_fragment( $parts, $last_emitted_block_name, $block_name, (string) $resolved['html'] );
 				continue;
 			}
 
@@ -137,9 +139,7 @@ class Email_Block_Converter {
 					$post
 				);
 
-				if ( '' !== trim( $fragment ) ) {
-					$parts[] = $fragment;
-				}
+				$this->append_fragment( $parts, $last_emitted_block_name, $block_name, $fragment );
 				continue;
 			}
 
@@ -148,9 +148,7 @@ class Email_Block_Converter {
 			if ( in_array( $block_name, self::CONTAINER_BLOCKS, true ) ) {
 				if ( ! empty( $inner ) ) {
 					$inner_html = $this->blocks_to_email_html( $inner, $post );
-					if ( '' !== trim( $inner_html ) ) {
-						$parts[] = $inner_html;
-					}
+					$this->append_fragment( $parts, $last_emitted_block_name, $block_name, $inner_html );
 				}
 				continue;
 			}
@@ -160,7 +158,7 @@ class Email_Block_Converter {
 			if ( ! empty( $inner ) ) {
 				$inner_html = $this->blocks_to_email_html( $inner, $post );
 				if ( '' !== trim( $inner_html ) ) {
-					$parts[] = $inner_html;
+					$this->append_fragment( $parts, $last_emitted_block_name, $block_name, $inner_html );
 					continue;
 				}
 			}
@@ -168,10 +166,36 @@ class Email_Block_Converter {
 			// 5. Leaf block with no callback — render to HTML and apply fallback.
 			$rendered = render_block( $block );
 			if ( '' !== trim( $rendered ) ) {
-				$parts[] = $fallback->convert( $rendered );
+				$this->append_fragment( $parts, $last_emitted_block_name, $block_name, $fallback->convert( $rendered ) );
 			}
 		}
 
 		return implode( "\n", $parts );
+	}
+
+	/**
+	 * Append one emitted sibling and update loop-local divider state.
+	 *
+	 * @param string[]    $parts                   Emitted fragments.
+	 * @param string|null $last_emitted_block_name Last non-empty sibling name.
+	 * @param string|null $block_name              Current sibling name.
+	 * @param string      $fragment                Rendered fragment.
+	 */
+	private function append_fragment(
+		array &$parts,
+		?string &$last_emitted_block_name,
+		?string $block_name,
+		string $fragment
+	): void {
+		if ( '' === trim( $fragment ) ) {
+			return;
+		}
+
+		if ( self::STORY_ITEM_BLOCK === $block_name && self::STORY_ITEM_BLOCK === $last_emitted_block_name ) {
+			$parts[] = self::STORY_ITEM_DIVIDER_HTML;
+		}
+
+		$parts[] = $fragment;
+		$last_emitted_block_name = $block_name;
 	}
 }

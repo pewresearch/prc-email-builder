@@ -93,7 +93,7 @@ class Mailchimp {
 
 		try {
 			$response = $client->lists->getAllLists( 'lists.id,lists.name', null, 1000 );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_audiences_error' );
 		}
 
@@ -153,7 +153,7 @@ class Mailchimp {
 				null,   // $offset
 				'saved' // $type — exclude static (tags) and fuzzy segments
 			);
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_segments_error' );
 		}
 
@@ -225,7 +225,7 @@ class Mailchimp {
 
 		try {
 			$response = $client->lists->getList( $audience_id, 'stats.member_count' );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_list_total_error' );
 		}
 
@@ -287,7 +287,7 @@ class Mailchimp {
 					$segment_id,
 					'member_count'
 				);
-			} catch ( ApiException $e ) {
+			} catch ( \Exception $e ) {
 				return $this->to_wp_error( $e, 'mailchimp_segment_count_error' );
 			}
 
@@ -347,7 +347,7 @@ class Mailchimp {
 					'auto_footer'  => false,
 				],
 			] );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_create_error' );
 		}
 
@@ -358,7 +358,7 @@ class Mailchimp {
 
 		try {
 			$client->campaigns->setContent( $campaign_id, [ 'html' => $html ] );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
 		}
 
@@ -452,13 +452,13 @@ class Mailchimp {
 					],
 				]
 			);
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_update_error' );
 		}
 
 		try {
 			$client->campaigns->setContent( $campaign_id, [ 'html' => $html ] );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
 		}
 
@@ -549,7 +549,7 @@ class Mailchimp {
 
 		try {
 			$response = $client->campaigns->get( $campaign_id );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_get_error' );
 		}
 
@@ -572,7 +572,7 @@ class Mailchimp {
 
 		try {
 			$response = $client->reports->getCampaignReport( $campaign_id, $fields );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_report_error' );
 		}
 
@@ -597,7 +597,7 @@ class Mailchimp {
 
 		try {
 			$response = $client->reports->getCampaignClickDetails( $campaign_id, $fields, null, $count );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_click_details_error' );
 		}
 
@@ -630,7 +630,7 @@ class Mailchimp {
 					'status'        => 'subscribed',
 				]
 			);
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_subscribe_error' );
 		}
 
@@ -651,7 +651,7 @@ class Mailchimp {
 
 		try {
 			$client->campaigns->send( $campaign_id );
-		} catch ( ApiException $e ) {
+		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_send_error' );
 		}
 
@@ -1206,7 +1206,13 @@ class Mailchimp {
 	}
 
 	/**
-	 * Converts a Throwable (typically ApiException) into a WP_Error.
+	 * Converts a Throwable into a WP_Error.
+	 *
+	 * The official mailchimp/marketing SDK rethrows bare Guzzle
+	 * RequestException/ClientException on many 4xx/5xx responses instead of
+	 * wrapping them in ApiException. Call sites must catch \Exception (not
+	 * only ApiException) so those failures become WP_Error instead of
+	 * crashing Action Scheduler / REST handlers.
 	 *
 	 * @param \Throwable $e    The exception.
 	 * @param string     $code WP_Error code slug.
@@ -1214,15 +1220,31 @@ class Mailchimp {
 	 */
 	private function to_wp_error( \Throwable $e, string $code ): WP_Error {
 		$detail = $e->getMessage();
-		$status = 500;
+		$status = (int) $e->getCode();
+		if ( $status < 100 || $status > 599 ) {
+			$status = 500;
+		}
+
 		if ( $e instanceof ApiException ) {
 			$body   = json_decode( (string) $e->getResponseBody(), true );
-			$detail = $body['detail'] ?? $body['title'] ?? $detail;
+			$detail = is_array( $body ) ? ( $body['detail'] ?? $body['title'] ?? $detail ) : $detail;
 			$status = (int) $e->getCode();
 			if ( $status < 100 || $status > 599 ) {
 				$status = 500;
 			}
+		} elseif (
+			class_exists( \GuzzleHttp\Exception\RequestException::class )
+			&& $e instanceof \GuzzleHttp\Exception\RequestException
+			&& $e->hasResponse()
+		) {
+			$response = $e->getResponse();
+			$status   = $response->getStatusCode();
+			$body     = json_decode( (string) $response->getBody(), true );
+			if ( is_array( $body ) ) {
+				$detail = $body['detail'] ?? $body['title'] ?? $detail;
+			}
 		}
+
 		return new WP_Error( $code, $detail, [ 'status' => $status ] );
 	}
 }

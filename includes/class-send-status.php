@@ -69,6 +69,7 @@ class Send_Status {
 		return match ( sanitize_text_field( $status ) ) {
 			'sent' => self::TONE_SUCCESS,
 			'save', 'sending', 'schedule', 'paused', '' => self::TONE_WARNING,
+			'unavailable' => self::TONE_ERROR,
 			default => self::TONE_WARNING,
 		};
 	}
@@ -115,6 +116,10 @@ class Send_Status {
 			[
 				'value' => 'paused',
 				'label' => __( 'Paused', 'prc-email-builder' ),
+			],
+			[
+				'value' => 'unavailable',
+				'label' => __( 'MC Unavailable', 'prc-email-builder' ),
 			],
 		];
 	}

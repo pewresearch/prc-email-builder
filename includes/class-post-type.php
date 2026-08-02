@@ -65,7 +65,7 @@ class Post_Type {
 		'prc_email_mailchimp_segment_id'         => 'Mailchimp saved-segment ID; restricts recipients within the audience.',
 		'prc_email_mailchimp_campaign_id'        => 'Mailchimp campaign ID created on publish.',
 		'prc_email_mailchimp_campaign_admin_url' => 'Mailchimp admin URL to edit the campaign draft.',
-		'prc_email_mailchimp_campaign_status'    => 'Cached Mailchimp campaign status: "save" (draft), "sent", "schedule", "sending", "paused", or "" (no campaign).',
+		'prc_email_mailchimp_campaign_status'    => 'Cached Mailchimp campaign status: "save" (draft), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
 	];
 
 	/** Meta registered only on transactional (Mandrill) posts. */

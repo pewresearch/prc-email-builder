@@ -451,13 +451,17 @@ class Form_Send_System_Email {
 			return null;
 		}
 
-		$interest_id = $this->find_mailchimp_optin( $form_fields );
-		if ( null === $interest_id ) {
+		$optin = $this->find_mailchimp_optin_target( $form_fields );
+		if ( is_wp_error( $optin ) ) {
+			return 'failed';
+		}
+		if ( null === $optin ) {
 			return 'skipped';
 		}
 
 		$values    = $this->field_values( $form_fields );
-		$interests = [ $interest_id ];
+		$list_id   = $optin['audience_id'];
+		$interests = $optin['interests'];
 
 		/**
 		 * Filter Mailchimp interest IDs for a sendSystemEmail newsletter opt-in.
@@ -469,7 +473,7 @@ class Form_Send_System_Email {
 		 * @param int                   $post_id      Resolved newsletter post ID.
 		 */
 		$interests = apply_filters( 'prc_email_builder_system_email_mailchimp_optin', $interests, $values, $post_id );
-		if ( ! is_array( $interests ) || empty( $interests ) ) {
+		if ( ! is_array( $interests ) ) {
 			return 'skipped';
 		}
 
@@ -482,14 +486,22 @@ class Form_Send_System_Email {
 				static fn( string $id ): bool => '' !== $id
 			)
 		);
-		if ( empty( $interests ) ) {
+		// Legacy interest-only opt-ins must resolve to at least one interest.
+		// Audience/segment targeting may subscribe to the list with no interests
+		// (entire audience, or a segment with no interest conditions).
+		if ( empty( $interests ) && ! $optin['from_segment'] ) {
 			return 'skipped';
 		}
 
 		$validated_interests = [];
 		foreach ( $interests as $candidate ) {
 			$sanitized = $this->sanitize_interest_id( $candidate );
-			if ( null === $sanitized || ! $this->is_interest_id_allowed( $sanitized ) ) {
+			if ( null === $sanitized ) {
+				return 'skipped';
+			}
+			// Legacy interest-only opt-ins still require the cached allowlist.
+			// Audience + saved-segment opt-ins are resolved server-side already.
+			if ( ! $optin['from_segment'] && ! $this->is_interest_id_allowed( $sanitized ) ) {
 				return 'skipped';
 			}
 			$validated_interests[] = $sanitized;
@@ -500,9 +512,11 @@ class Form_Send_System_Email {
 			return 'failed';
 		}
 
-		$list_id = defined( '\PRC\Platform\Mailchimp\DEFAULT_LIST_ID' )
-			? \PRC\Platform\Mailchimp\DEFAULT_LIST_ID
-			: '3e953b9b70';
+		if ( '' === $list_id ) {
+			$list_id = defined( '\PRC\Platform\Mailchimp\DEFAULT_LIST_ID' )
+				? \PRC\Platform\Mailchimp\DEFAULT_LIST_ID
+				: '3e953b9b70';
+		}
 
 		$origin_url = $this->resolve_origin_url( $form_data, $request );
 		$form_id    = isset( $form_data['formId'] ) ? sanitize_text_field( (string) $form_data['formId'] ) : '';
@@ -547,9 +561,28 @@ class Form_Send_System_Email {
 	/**
 	 * Find a checked mailchimp_signup field and return its sanitized interest ID.
 	 *
+	 * Legacy helper kept for tests/back-compat. Prefer find_mailchimp_optin_target().
+	 *
 	 * @param array $form_fields Submitted form fields.
 	 */
 	private function find_mailchimp_optin( array $form_fields ): ?string {
+		$target = $this->find_mailchimp_optin_target( $form_fields );
+		if ( null === $target || is_wp_error( $target ) || empty( $target['interests'][0] ) ) {
+			return null;
+		}
+		return (string) $target['interests'][0];
+	}
+
+	/**
+	 * Find a checked mailchimp_signup field and resolve audience + interests.
+	 *
+	 * New forms store audienceId + saved-segment ID (value). Legacy forms store
+	 * an interest ID in value with no audienceId.
+	 *
+	 * @param array $form_fields Submitted form fields.
+	 * @return array{audience_id: string, interests: array<int, string>, from_segment: bool}|WP_Error|null
+	 */
+	private function find_mailchimp_optin_target( array $form_fields ) {
 		foreach ( $form_fields as $field ) {
 			if ( ! isset( $field['name'] ) || 'mailchimp_signup' !== (string) $field['name'] ) {
 				continue;
@@ -557,13 +590,64 @@ class Form_Send_System_Email {
 			if ( ! $this->is_field_checked( $field['checked'] ?? false ) ) {
 				continue;
 			}
+
 			$value = isset( $field['value'] ) ? (string) $field['value'] : '';
+			$audience_id = '';
+			if ( isset( $field['audienceId'] ) ) {
+				$audience_id = sanitize_text_field( (string) $field['audienceId'] );
+			}
+
+			// Audience targeting: empty value = entire audience; digits = saved segment.
+			if ( '' !== $audience_id ) {
+				if ( '' === $value ) {
+					return [
+						'audience_id'  => $audience_id,
+						'interests'    => [],
+						'from_segment' => true,
+					];
+				}
+				if ( ctype_digit( $value ) ) {
+					if ( ! function_exists( '\PRC\Platform\Mailchimp\resolve_segment_interest_ids' ) ) {
+						error_log( 'Form_Send_System_Email: resolve_segment_interest_ids is unavailable.' );
+						return null;
+					}
+					$resolved = \PRC\Platform\Mailchimp\resolve_segment_interest_ids(
+						$audience_id,
+						[ $value ],
+						'mailchimp-form'
+					);
+					if ( is_wp_error( $resolved ) ) {
+						error_log(
+							sprintf(
+								'Form_Send_System_Email: Mailchimp segment resolution failed: %s',
+								$resolved->get_error_message()
+							)
+						);
+						return $resolved;
+					}
+					if ( ! is_array( $resolved ) ) {
+						$resolved = [];
+					}
+					return [
+						'audience_id'  => $audience_id,
+						'interests'    => array_values( array_map( 'strval', $resolved ) ),
+						'from_segment' => true,
+					];
+				}
+			}
+
 			if ( '' === $value ) {
 				continue;
 			}
+
+			// Legacy interest-ID opt-in.
 			$interest_id = $this->sanitize_interest_id( $value );
 			if ( null !== $interest_id ) {
-				return $interest_id;
+				return [
+					'audience_id'  => $audience_id,
+					'interests'    => [ $interest_id ],
+					'from_segment' => false,
+				];
 			}
 		}
 		return null;

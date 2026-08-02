@@ -94,6 +94,7 @@ class Plugin {
 		// Mailchimp integration.
 		require_once $includes . 'mailchimp/class-mailchimp.php';
 		require_once $includes . 'mailchimp/class-campaign-status-sync.php';
+		require_once $includes . 'mailchimp/class-campaign-linkage.php';
 
 		// Mandrill delivery.
 		require_once $includes . 'mandrill/class-mandrill-sender.php';

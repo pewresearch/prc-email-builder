@@ -23,6 +23,8 @@ use wpdb;
  *  GET /prc-email-builder/v1/audiences-system                — System-email audiences from wp_options
  *  POST /prc-email-builder/v1/send                           — Mandrill bulk send (explicit, edit_post scoped)
  *  POST /prc-email-builder/v1/campaigns/update-draft         — Push post HTML/settings to existing Mailchimp draft
+ *  POST /prc-email-builder/v1/campaigns/unlink               — Clear Mailchimp campaign linkage meta
+ *  POST /prc-email-builder/v1/campaigns/create-draft         — Create a new Mailchimp draft for an unlinked campaign
  */
 class REST_API {
 	const NAMESPACE = 'prc-email-builder/v1';
@@ -129,6 +131,40 @@ class REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ $this, 'update_mailchimp_draft' ],
+				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
+				'args'                => [
+					'post_id' => [
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/campaigns/unlink',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'unlink_mailchimp_campaign' ],
+				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
+				'args'                => [
+					'post_id' => [
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/campaigns/create-draft',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'create_mailchimp_draft' ],
 				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
 				'args'                => [
 					'post_id' => [
@@ -601,6 +637,126 @@ class REST_API {
 
 		return rest_ensure_response(
 			array_merge( [ 'success' => true ], $result )
+		);
+	}
+
+	/**
+	 * Clear Mailchimp campaign linkage meta (and related report/Slack markers).
+	 *
+	 * Idempotent: already-unlinked posts still return 200.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 */
+	public function unlink_mailchimp_campaign( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return new \WP_Error(
+				'invalid_post_type',
+				'Mailchimp campaign unlink applies only to campaign newsletters.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$cleared = Campaign_Linkage::clear( $post_id );
+
+		return rest_ensure_response(
+			[
+				'success' => true,
+				'post_id' => $post_id,
+				'cleared' => [
+					'campaign_id' => $cleared['campaign_id'],
+					'had_report'  => $cleared['had_report'],
+				],
+				'linkage' => [
+					'campaign_id' => '',
+					'admin_url'   => '',
+					'status'      => '',
+				],
+			]
+		);
+	}
+
+	/**
+	 * Create a Mailchimp draft for a published, unlinked campaign newsletter.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 */
+	public function create_mailchimp_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return new \WP_Error(
+				'invalid_post_type',
+				'Mailchimp draft creation applies only to campaign newsletters.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post || 'publish' !== $post->post_status ) {
+			return new \WP_Error(
+				'not_published',
+				'Publish the campaign before creating a Mailchimp draft.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( Migration::is_migrated( $post_id ) ) {
+			return new \WP_Error(
+				'migrated_campaign',
+				'Migrated campaigns cannot create a new Mailchimp draft from this panel.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( Campaign_Linkage::is_linked( $post_id ) ) {
+			return new \WP_Error(
+				'already_linked',
+				'This campaign is already linked to a Mailchimp campaign. Unlink it first.',
+				[ 'status' => 409 ]
+			);
+		}
+
+		$mailchimp = new Mailchimp();
+		if ( ! $mailchimp->is_connected() ) {
+			return new \WP_Error(
+				'mailchimp_not_connected',
+				'Mailchimp is not connected.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$html = Cached_Email_Html::resolve( $post_id );
+		if ( is_wp_error( $html ) ) {
+			return $this->normalize_rest_error( $html );
+		}
+		if ( '' === $html ) {
+			return new \WP_Error(
+				'missing_email_html',
+				'Email HTML is not ready. Generate email content before creating a Mailchimp draft.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$result = $mailchimp->create_campaign_draft( $post_id, $html );
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		Mailchimp::persist_campaign_meta(
+			$post_id,
+			$result['campaign_id'],
+			$result['admin_url']
+		);
+
+		return rest_ensure_response(
+			[
+				'success'     => true,
+				'campaign_id' => $result['campaign_id'],
+				'admin_url'   => $result['admin_url'],
+				'status'      => 'save',
+			]
 		);
 	}
 

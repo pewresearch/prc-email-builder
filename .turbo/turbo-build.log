@@ -4,7 +4,7 @@
 
 assets by chunk 75 KiB (id hint: style) 6 assets
 assets by path [1m[32mlatest-campaign-query/[39m[22m 1.54 KiB 3 assets
-assets by chunk 174 KiB (name: sidebar/index) 2 assets
+assets by chunk 177 KiB (name: sidebar/index) 2 assets
 assets by chunk 131 KiB (name: term-admin/index)
   asset [1m[32mterm-admin/index.js[39m[22m 130 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: term-admin/index)
   asset [1m[32mterm-admin/index.asset.php[39m[22m 339 bytes [1m[32m[emitted][39m[22m (name: term-admin/index)
@@ -18,14 +18,14 @@ asset [1m[32mcampaign-email-preview/render.php[39m[22m 2.73 KiB [1m[32m[em
 asset [1m[32mcampaign-email-preview/block.json[39m[22m 1.13 KiB [1m[32m[emitted][39m[22m [from: src/campaign-email-preview/block.json] [1m[32m[copied][39m[22m
 Entrypoint [1mcampaign-email-preview/index[39m[22m 6.84 KiB = [1m[32mcampaign-email-preview/style-index.css[39m[22m 919 bytes [1m[32mcampaign-email-preview/style-index-rtl.css[39m[22m 920 bytes [1m[32mcampaign-email-preview/index.js[39m[22m 4.84 KiB [1m[32mcampaign-email-preview/index.asset.php[39m[22m 207 bytes
 Entrypoint [1mlatest-campaign-query/index[39m[22m 1.16 KiB = [1m[32mlatest-campaign-query/index.js[39m[22m 1.02 KiB [1m[32mlatest-campaign-query/index.asset.php[39m[22m 144 bytes
-Entrypoint [1msidebar/index[39m[22m 188 KiB = [1m[32msidebar/style-index.css[39m[22m 6.71 KiB [1m[32msidebar/style-index-rtl.css[39m[22m 6.71 KiB [1m[32msidebar/index.js[39m[22m 174 KiB [1m[32msidebar/index.asset.php[39m[22m 365 bytes
+Entrypoint [1msidebar/index[39m[22m 190 KiB = [1m[32msidebar/style-index.css[39m[22m 6.71 KiB [1m[32msidebar/style-index-rtl.css[39m[22m 6.71 KiB [1m[32msidebar/index.js[39m[22m 176 KiB [1m[32msidebar/index.asset.php[39m[22m 365 bytes
 Entrypoint [1mform-action/index[39m[22m 1.4 KiB = [1m[32mform-action/index.js[39m[22m 1.25 KiB [1m[32mform-action/index.asset.php[39m[22m 158 bytes
 Entrypoint [1mterm-admin/index[39m[22m 204 KiB = 6 assets
 orphan modules 1.14 MiB (javascript) 4.58 KiB (runtime) [1m[33m[orphan][39m[22m 802 modules
 runtime modules 12.1 KiB 20 modules
-built modules 786 KiB (javascript) 37.5 KiB (css/mini-extract) [1m[33m[built][39m[22m
-  modules by path [1m./src/[39m[22m 778 KiB (javascript) 37.5 KiB (css/mini-extract)
-    javascript modules 778 KiB
+built modules 790 KiB (javascript) 37.5 KiB (css/mini-extract) [1m[33m[built][39m[22m
+  modules by path [1m./src/[39m[22m 782 KiB (javascript) 37.5 KiB (css/mini-extract)
+    javascript modules 782 KiB
       [1m./src/campaign-email-preview/index.js + 12 modules[39m[22m 6.56 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
       + 4 modules
     cacheable modules 37.5 KiB
@@ -36,7 +36,7 @@ built modules 786 KiB (javascript) 37.5 KiB (css/mini-extract) [1m[33m[built]
     [1m../../node_modules/use-sync-external-store/shim/index.js[39m[22m 234 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
     [1m../../node_modules/use-sync-external-store/cjs/use-sync-external-store-shim...(truncated)[39m[22m 1.92 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
   [1mexternal "React"[39m[22m 42 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 8798 ms
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 53600 ms
 Block metadata PHP file generated at: build/blocks-manifest.php
 assets by chunk 6.05 KiB (name: index)
   asset [1m[32mindex.js[39m[22m 5.9 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
@@ -54,7 +54,7 @@ runtime modules 2.51 KiB 3 modules
 built modules 7.66 KiB (javascript) 0 bytes (css/mini-extract) [1m[33m[built][39m[22m
   [1m./src/settings/index.tsx + 8 modules[39m[22m 7.66 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
   css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/settings/style.scss[39m[22m 0 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 1270 ms
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 9196 ms
 assets by chunk 955 KiB (name: index)
   assets by path [1m[32m*.css[39m[22m 3.38 KiB
     asset [1m[32mindex-rtl.css[39m[22m 1.69 KiB [1m[32m[emitted][39m[22m (name: index)
@@ -65,17 +65,17 @@ assets by path [1m[32m./*.css[39m[22m 202 KiB
   asset [1m[32m./style-index-rtl.css[39m[22m 101 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
   asset [1m[32m./style-index.css[39m[22m 101 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
 Entrypoint [1mindex[39m[22m [1m[33m[big][39m[22m 1.13 MiB = 6 assets
-orphan modules 7.1 MiB (javascript) 5.49 KiB (runtime) [1m[33m[orphan][39m[22m 3375 modules
+orphan modules 7.12 MiB (javascript) 5.49 KiB (runtime) [1m[33m[orphan][39m[22m 3376 modules
 runtime modules 4.48 KiB 7 modules
-built modules 2.55 MiB (javascript) 103 KiB (css/mini-extract) [1m[33m[built][39m[22m
+built modules 2.56 MiB (javascript) 103 KiB (css/mini-extract) [1m[33m[built][39m[22m
   modules by path [1m../[39m[22m 92.1 KiB (javascript) 70.6 KiB (css/mini-extract)
     javascript modules 92.1 KiB 9 modules
     css modules 70.6 KiB
       css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m../prc-scripts/includes/scripts/src/@prc/components/icon-picker/styles.scss[39m[22m 558 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
       css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m../prc-scripts/includes/scripts/src/@prc/components/ai/styles.scss[39m[22m 1.14 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
       + 2 modules
-  modules by path [1m./src/[39m[22m 2.46 MiB (javascript) 31.9 KiB (css/mini-extract)
-    [1m./src/library/index.tsx + 455 modules[39m[22m 2.46 MiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  modules by path [1m./src/[39m[22m 2.47 MiB (javascript) 31.9 KiB (css/mini-extract)
+    [1m./src/library/index.tsx + 456 modules[39m[22m 2.47 MiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/library/style.scss[39m[22m 30.4 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
     css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/engagement/style.scss[39m[22m 1.45 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
   [1mexternal "React"[39m[22m 42 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
@@ -124,4 +124,4 @@ Entrypoints:
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
 For more info visit https://webpack.js.org/guides/code-splitting/[39m[22m
 
-webpack 5.106.2 compiled with [1m[33m6 warnings[39m[22m in 16461 ms
+webpack 5.106.2 compiled with [1m[33m6 warnings[39m[22m in 116691 ms
