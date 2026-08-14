@@ -1262,6 +1262,7 @@ class REST_API {
 			'type'             => $type,
 			'title'            => get_the_title( $post ),
 			'status'           => $post->post_status,
+			'previousStatus'   => (string) get_post_meta( $post->ID, '_wp_trash_meta_status', true ),
 			'date'             => mysql2date( 'c', $post->post_date, false ),
 			'modified'         => mysql2date( 'c', $post->post_modified, false ),
 			'edit_url'         => get_edit_post_link( $post->ID, 'raw' ),
