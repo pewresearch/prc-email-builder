@@ -1,126 +1,93 @@
 
-> @prc/email-builder@1.2.0 build
-> wp-scripts build --webpack-copy-php && wp-scripts build-blocks-manifest && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.library.config.js
+> @prc/email-builder@1.4.0 build
+> wp-scripts build --webpack-copy-php && wp-scripts build-blocks-manifest && wp-scripts build --config webpack.settings.config.js && wp-scripts build --config webpack.admin-dataview.config.js
 
-assets by chunk 75 KiB (id hint: style) 6 assets
-assets by path latest-campaign-query/ 1.54 KiB 3 assets
-assets by status 177 KiB [emitted] 2 assets
-assets by chunk 131 KiB (name: term-admin/index)
-  asset term-admin/index.js 130 KiB [compared for emit] [minimized] (name: term-admin/index)
-  asset term-admin/index.asset.php 339 bytes [compared for emit] (name: term-admin/index)
-assets by chunk 5.05 KiB (name: campaign-email-preview/index)
-  asset campaign-email-preview/index.js 4.84 KiB [compared for emit] [minimized] (name: campaign-email-preview/index)
-  asset campaign-email-preview/index.asset.php 207 bytes [compared for emit] (name: campaign-email-preview/index)
-assets by path form-action/ 1.4 KiB
-  asset form-action/index.js 1.25 KiB [compared for emit] [minimized] (name: form-action/index)
-  asset form-action/index.asset.php 158 bytes [compared for emit] (name: form-action/index)
-asset campaign-email-preview/render.php 2.73 KiB [compared for emit] [from: src/campaign-email-preview/render.php] [copied]
-asset campaign-email-preview/block.json 1.13 KiB [compared for emit] [from: src/campaign-email-preview/block.json] [copied]
-Entrypoint campaign-email-preview/index 6.84 KiB = campaign-email-preview/style-index.css 919 bytes campaign-email-preview/style-index-rtl.css 920 bytes campaign-email-preview/index.js 4.84 KiB campaign-email-preview/index.asset.php 207 bytes
-Entrypoint latest-campaign-query/index 1.16 KiB = latest-campaign-query/index.js 1.02 KiB latest-campaign-query/index.asset.php 144 bytes
-Entrypoint sidebar/index 190 KiB = sidebar/style-index.css 6.71 KiB sidebar/style-index-rtl.css 6.71 KiB sidebar/index.js 176 KiB sidebar/index.asset.php 365 bytes
-Entrypoint form-action/index 1.4 KiB = form-action/index.js 1.25 KiB form-action/index.asset.php 158 bytes
-Entrypoint term-admin/index 204 KiB = 6 assets
-orphan modules 1.14 MiB (javascript) 4.58 KiB (runtime) [orphan] 802 modules
+assets by chunk 367 KiB (id hint: style) 6 assets
+assets by path [1m[32mcampaign-query/[39m[22m 1.6 KiB 3 assets
+assets by path [1m[32mlatest-campaign-query/[39m[22m 1.54 KiB 3 assets
+assets by status [1m[33m743 KiB[39m[22m [1m[33m[big][39m[22m
+  asset [1m[33msidebar/index.js[39m[22m [1m[33m397 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: sidebar/index)
+  asset [1m[33mterm-admin/index.js[39m[22m [1m[33m346 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: term-admin/index)
+assets by chunk 5.42 KiB (name: campaign-email-preview/index)
+  asset [1m[32mcampaign-email-preview/index.js[39m[22m 5.21 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: campaign-email-preview/index)
+  asset [1m[32mcampaign-email-preview/index.asset.php[39m[22m 207 bytes [1m[32m[emitted][39m[22m (name: campaign-email-preview/index)
+assets by path [1m[32mform-action/[39m[22m 1.4 KiB
+  asset [1m[32mform-action/index.js[39m[22m 1.25 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: form-action/index)
+  asset [1m[32mform-action/index.asset.php[39m[22m 158 bytes [1m[32m[emitted][39m[22m (name: form-action/index)
++ 4 assets
+orphan modules 4.9 MiB (javascript) 4.58 KiB (runtime) [1m[33m[orphan][39m[22m 2315 modules
 runtime modules 12.1 KiB 20 modules
-built modules 790 KiB (javascript) 37.5 KiB (css/mini-extract) [built]
-  modules by path ./src/ 782 KiB (javascript) 37.5 KiB (css/mini-extract)
-    javascript modules 782 KiB
-      ./src/campaign-email-preview/index.js + 12 modules 6.56 KiB [not cacheable] [built] [code generated]
-      + 4 modules
-    cacheable modules 37.5 KiB
-      modules by path ./src/sidebar/ 6.71 KiB 3 modules
+built modules 2.28 MiB (javascript) 183 KiB (css/mini-extract) [1m[33m[built][39m[22m
+  javascript modules 2.28 MiB
+    modules by path [1m./src/[39m[22m 2.27 MiB 6 modules
+    cacheable modules 13 KiB
+      modules by path [1m../../node_modules/use-sync-external-store/[39m[22m 5.03 KiB 4 modules
       + 2 modules
-  modules by path ../../node_modules/ 8.22 KiB
-    ../../node_modules/remove-accents/index.js 6.07 KiB [built] [code generated]
-    ../../node_modules/use-sync-external-store/shim/index.js 234 bytes [built] [code generated]
-    ../../node_modules/use-sync-external-store/cjs/use-sync-external-store-shim...(truncated) 1.92 KiB [built] [code generated]
-  external "React" 42 bytes [built] [code generated]
-webpack 5.106.2 compiled successfully in 3284 ms
-Block metadata PHP file generated at: build/blocks-manifest.php
-assets by chunk 6.05 KiB (name: index)
-  asset index.js 5.9 KiB [emitted] [minimized] (name: index)
-  asset index.asset.php 160 bytes [emitted] (name: index)
-assets by path campaign-email-preview/ 3.86 KiB
-  asset campaign-email-preview/render.php 2.73 KiB [emitted] [from: src/campaign-email-preview/render.php] [copied]
-  asset campaign-email-preview/block.json 1.13 KiB [emitted] [from: src/campaign-email-preview/block.json] [copied]
-assets by path ./*.css 2 bytes
-  asset ./style-index-rtl.css 1 bytes [emitted] (name: ./style-index) (id hint: style)
-  asset ./style-index.css 1 bytes [emitted] (name: ./style-index) (id hint: style)
-asset latest-campaign-query/block.json 386 bytes [emitted] [from: src/latest-campaign-query/block.json] [copied]
-Entrypoint index 6.06 KiB = ./style-index.css 1 bytes ./style-index-rtl.css 1 bytes index.js 5.9 KiB index.asset.php 160 bytes
-orphan modules 10.3 KiB (javascript) 937 bytes (runtime) [orphan] 16 modules
-runtime modules 2.51 KiB 3 modules
-built modules 7.66 KiB (javascript) 0 bytes (css/mini-extract) [built]
-  ./src/settings/index.tsx + 8 modules 7.66 KiB [not cacheable] [built] [code generated]
-  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/settings/style.scss 0 bytes [built] [code generated]
-webpack 5.106.2 compiled successfully in 694 ms
-assets by chunk 955 KiB (name: index)
-  assets by path *.css 3.38 KiB
-    asset index-rtl.css 1.69 KiB [emitted] (name: index)
-    asset index.css 1.69 KiB [emitted] (name: index)
-  asset index.js 951 KiB [emitted] [minimized] [big] (name: index)
-  asset index.asset.php 418 bytes [emitted] (name: index)
-assets by path ./*.css 202 KiB
-  asset ./style-index-rtl.css 101 KiB [emitted] (name: ./style-index) (id hint: style)
-  asset ./style-index.css 101 KiB [emitted] (name: ./style-index) (id hint: style)
-Entrypoint index [big] 1.13 MiB = 6 assets
-orphan modules 7.12 MiB (javascript) 5.49 KiB (runtime) [orphan] 3376 modules
-runtime modules 4.48 KiB 7 modules
-built modules 2.56 MiB (javascript) 103 KiB (css/mini-extract) [built]
-  modules by path ../ 92.1 KiB (javascript) 70.6 KiB (css/mini-extract)
-    javascript modules 92.1 KiB 9 modules
-    css modules 70.6 KiB
-      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!../prc-scripts/includes/scripts/src/@prc/components/icon-picker/styles.scss 558 bytes [built] [code generated]
-      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!../prc-scripts/includes/scripts/src/@prc/components/ai/styles.scss 1.14 KiB [built] [code generated]
+    [1mexternal "React"[39m[22m 42 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css modules 183 KiB
+    modules by path [1m./src/sidebar/[39m[22m 95.9 KiB
+      css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/engagement/style.scss[39m[22m 4.65 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
       + 2 modules
-  modules by path ./src/ 2.47 MiB (javascript) 31.9 KiB (css/mini-extract)
-    ./src/library/index.tsx + 456 modules 2.47 MiB [not cacheable] [built] [code generated]
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/library/style.scss 30.4 KiB [built] [code generated]
-    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]!./src/sidebar/engagement/style.scss 1.45 KiB [built] [code generated]
-  external "React" 42 bytes [built] [code generated]
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/campaign-email-preview/style.scss[39m[22m 1.18 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+    css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/term-admin/style.scss[39m[22m 86.3 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
 
-WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 108:14-38
-export 'currentUser' (imported as 'firebaseAuth') was not found in 'firebase/auth' (possible exports: ActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode)
- @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
- @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
- @ ./src/library/components/dataviews.tsx 10:0-77 130:35-63
- @ ./src/library/email-library.tsx 3:0-47 36:36-45
- @ ./src/library/index.tsx 2:0-43 8:34-46
-
-WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 120:14-38
-export 'currentUser' (imported as 'firebaseAuth') was not found in 'firebase/auth' (possible exports: ActionCodeOperation, ActionCodeURL, AuthCredential, AuthErrorCodes, EmailAuthCredential, EmailAuthProvider, FacebookAuthProvider, FactorId, GithubAuthProvider, GoogleAuthProvider, OAuthCredential, OAuthProvider, OperationType, PhoneAuthCredential, PhoneAuthProvider, PhoneMultiFactorGenerator, ProviderId, RecaptchaVerifier, SAMLAuthProvider, SignInMethod, TotpMultiFactorGenerator, TotpSecret, TwitterAuthProvider, applyActionCode, beforeAuthStateChanged, browserLocalPersistence, browserPopupRedirectResolver, browserSessionPersistence, checkActionCode, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, debugErrorMap, deleteUser, fetchSignInMethodsForEmail, getAdditionalUserInfo, getAuth, getIdToken, getIdTokenResult, getMultiFactorResolver, getRedirectResult, inMemoryPersistence, indexedDBLocalPersistence, initializeAuth, initializeRecaptchaConfig, isSignInWithEmailLink, linkWithCredential, linkWithPhoneNumber, linkWithPopup, linkWithRedirect, multiFactor, onAuthStateChanged, onIdTokenChanged, parseActionCodeURL, prodErrorMap, reauthenticateWithCredential, reauthenticateWithPhoneNumber, reauthenticateWithPopup, reauthenticateWithRedirect, reload, revokeAccessToken, sendEmailVerification, sendPasswordResetEmail, sendSignInLinkToEmail, setPersistence, signInAnonymously, signInWithCredential, signInWithCustomToken, signInWithEmailAndPassword, signInWithEmailLink, signInWithPhoneNumber, signInWithPopup, signInWithRedirect, signOut, unlink, updateCurrentUser, updateEmail, updatePassword, updatePhoneNumber, updateProfile, useDeviceLanguage, validatePassword, verifyBeforeUpdateEmail, verifyPasswordResetCode)
- @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
- @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
- @ ./src/library/components/dataviews.tsx 10:0-77 130:35-63
- @ ./src/library/email-library.tsx 3:0-47 36:36-45
- @ ./src/library/index.tsx 2:0-43 8:34-46
-
-WARNING in ../prc-scripts/includes/scripts/src/@prc/components/auth-provider-context/index.js 171:4-21
-export 'database' (imported as 'firebase') was not found in 'firebase/app' (possible exports: FirebaseError, SDK_VERSION, _DEFAULT_ENTRY_NAME, _addComponent, _addOrOverwriteComponent, _apps, _clearComponents, _components, _getProvider, _isFirebaseApp, _isFirebaseServerApp, _registerComponent, _removeServiceInstance, _serverApps, deleteApp, getApp, getApps, initializeApp, initializeServerApp, onLog, registerVersion, setLogLevel)
- @ ../prc-scripts/includes/scripts/src/@prc/components/exports.ts 7:0-63 7:0-63 7:0-63
- @ ./src/library/components/generate-links-newsletter-modal.tsx 9:0-63 31:6-18 119:28-42
- @ ./src/library/components/dataviews.tsx 10:0-77 130:35-63
- @ ./src/library/email-library.tsx 3:0-47 36:36-45
- @ ./src/library/index.tsx 2:0-43 8:34-46
-
-WARNING in asset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
+[1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
 This can impact web performance.
 Assets: 
-  index.js (951 KiB)
+  sidebar/index.js (397 KiB)
+  term-admin/index.js (346 KiB)[39m[22m
 
-WARNING in entrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
+[1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
 Entrypoints:
-  index (1.13 MiB)
-      ./style-index.css
-      ./style-index-rtl.css
-      index.css
-      index.js
-      index-rtl.css
-      index.asset.php
+  sidebar/index (589 KiB)
+      sidebar/style-index.css
+      sidebar/style-index-rtl.css
+      sidebar/index.js
+      sidebar/index.asset.php
+  term-admin/index (711 KiB)
+      sidebar/style-index.css
+      sidebar/style-index-rtl.css
+      term-admin/style-index.css
+      term-admin/style-index-rtl.css
+      term-admin/index.js
+      term-admin/index.asset.php
+[39m[22m
 
-WARNING in webpack performance recommendations: 
+[1m[33mWARNING[39m[22m in [1mwebpack performance recommendations: 
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
-For more info visit https://webpack.js.org/guides/code-splitting/
+For more info visit https://webpack.js.org/guides/code-splitting/[39m[22m
 
-webpack 5.106.2 compiled with 6 warnings in 6610 ms
+webpack 5.106.2 compiled with [1m[33m3 warnings[39m[22m in 139494 ms
+Block metadata PHP file generated at: build/blocks-manifest.php
+assets by chunk 6.05 KiB (name: index)
+  asset [1m[32mindex.js[39m[22m 5.9 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
+  asset [1m[32mindex.asset.php[39m[22m 160 bytes [1m[32m[emitted][39m[22m (name: index)
+assets by path [1m[32mcampaign-email-preview/[39m[22m 4.23 KiB
+  asset [1m[32mcampaign-email-preview/render.php[39m[22m 3.04 KiB [1m[32m[emitted][39m[22m [from: src/campaign-email-preview/render.php] [1m[32m[copied][39m[22m
+  asset [1m[32mcampaign-email-preview/block.json[39m[22m 1.2 KiB [1m[32m[emitted][39m[22m [from: src/campaign-email-preview/block.json] [1m[32m[copied][39m[22m
+assets by path [1m[32m./*.css[39m[22m 2 bytes
+  asset [1m[32m./style-index-rtl.css[39m[22m 1 bytes [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+  asset [1m[32m./style-index.css[39m[22m 1 bytes [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+asset [1m[32mlatest-campaign-query/block.json[39m[22m 386 bytes [1m[32m[emitted][39m[22m [from: src/latest-campaign-query/block.json] [1m[32m[copied][39m[22m
+asset [1m[32mcampaign-query/block.json[39m[22m 367 bytes [1m[32m[emitted][39m[22m [from: src/campaign-query/block.json] [1m[32m[copied][39m[22m
+Entrypoint [1mindex[39m[22m 6.06 KiB = [1m[32m./style-index.css[39m[22m 1 bytes [1m[32m./style-index-rtl.css[39m[22m 1 bytes [1m[32mindex.js[39m[22m 5.9 KiB [1m[32mindex.asset.php[39m[22m 160 bytes
+orphan modules 10.3 KiB (javascript) 937 bytes (runtime) [1m[33m[orphan][39m[22m 16 modules
+runtime modules 2.51 KiB 3 modules
+built modules 7.66 KiB (javascript) 0 bytes (css/mini-extract) [1m[33m[built][39m[22m
+  [1m./src/settings/index.tsx + 8 modules[39m[22m 7.66 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/settings/style.scss[39m[22m 0 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 12039 ms
+assets by chunk 27 KiB (name: index)
+  asset [1m[32mindex.js[39m[22m 26.8 KiB [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m (name: index)
+  asset [1m[32mindex.asset.php[39m[22m 208 bytes [1m[32m[emitted][39m[22m (name: index)
+assets by path [1m[32m./*.css[39m[22m 11 KiB
+  asset [1m[32m./style-index.css[39m[22m 5.51 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+  asset [1m[32m./style-index-rtl.css[39m[22m 5.5 KiB [1m[32m[emitted][39m[22m (name: ./style-index) (id hint: style)
+Entrypoint [1mindex[39m[22m 38 KiB = [1m[32m./style-index.css[39m[22m 5.51 KiB [1m[32m./style-index-rtl.css[39m[22m 5.5 KiB [1m[32mindex.js[39m[22m 26.8 KiB [1m[32mindex.asset.php[39m[22m 208 bytes
+orphan modules 262 KiB (javascript) 1.83 KiB (runtime) [1m[33m[orphan][39m[22m 351 modules
+runtime modules 3.07 KiB 5 modules
+built modules 48.9 KiB (javascript) 5.5 KiB (css/mini-extract) [1m[33m[built][39m[22m
+  [1m./src/admin-dataview/index.tsx + 24 modules[39m[22m 48.9 KiB [1m[31m[not cacheable][39m[22m [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/library/style.scss[39m[22m 871 bytes [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+  css ../../node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[3].use[1]!../../node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[3].use[2]!../../node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[3].use[3]![1m./src/sidebar/engagement/style.scss[39m[22m 4.65 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+webpack 5.106.2 compiled [1m[32msuccessfully[39m[22m in 20226 ms

@@ -12,19 +12,11 @@ import {
 } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 import { useAISuggest, AISuggestModal } from '@prc/components';
+import { getEmailConfig } from '../types';
 
 declare const prcEmailBuilderLibraryAI: {
 	enabled: boolean;
 	linksNewsletterAbilityName: string;
-};
-
-declare const prcEmailLibrary: {
-	postEditUrl: string;
-	researchTeams?: Array<{
-		termId: number;
-		slug: string;
-		label: string;
-	}>;
 };
 
 interface GeneratedLinksNewsletter {
@@ -49,7 +41,8 @@ export default function GenerateLinksNewsletterModal({
 		typeof prcEmailBuilderLibraryAI !== 'undefined'
 			? prcEmailBuilderLibraryAI
 			: null;
-	const researchTeams = prcEmailLibrary?.researchTeams ?? [];
+	const config = getEmailConfig();
+	const researchTeams = config?.researchTeams ?? [];
 
 	const [additionalPrompt, setAdditionalPrompt] = useState('');
 	const [researchTeamId, setResearchTeamId] = useState('0');
@@ -107,7 +100,7 @@ export default function GenerateLinksNewsletterModal({
 					},
 				});
 
-				const editUrl = `${prcEmailLibrary.postEditUrl}?post=${post.id}&action=edit`;
+				const editUrl = `${config?.postEditUrl || 'post.php'}?post=${post.id}&action=edit`;
 				window.open(editUrl, '_blank', 'noopener,noreferrer');
 				onDraftCreated?.();
 				closeModal();
@@ -124,7 +117,7 @@ export default function GenerateLinksNewsletterModal({
 				setIsCreatingDraft(false);
 			}
 		},
-		[closeModal, onDraftCreated]
+		[closeModal, config?.postEditUrl, onDraftCreated]
 	);
 
 	useEffect(() => {

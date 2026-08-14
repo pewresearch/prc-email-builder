@@ -13,6 +13,7 @@ import {
 } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 import { useEmailPatterns } from '../../sidebar/pattern-selector/use-email-patterns';
+import { getEmailConfig } from '../types';
 
 interface NewsletterListOption {
 	termId: number;
@@ -20,15 +21,6 @@ interface NewsletterListOption {
 	label: string;
 	campaignPattern: string;
 }
-
-declare const prcEmailLibrary: {
-	postEditUrl: string;
-	campaignNewUrl?: string;
-	campaignPostType?: string;
-	newsletterListTaxonomy?: string;
-	campaignPatternCategorySlug?: string;
-	newsletterLists?: NewsletterListOption[];
-};
 
 type ListAvailability = 'ready' | 'missing' | 'unavailable';
 
@@ -42,17 +34,17 @@ interface ResolvedList {
 export default function CreateCampaignDropdown() {
 	const [isCreating, setIsCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const config = getEmailConfig();
 
 	const categorySlug =
-		prcEmailLibrary?.campaignPatternCategorySlug ?? 'email-campaign';
-	const postType = prcEmailLibrary?.campaignPostType ?? 'prc_email_campaign';
-	const taxonomy =
-		prcEmailLibrary?.newsletterListTaxonomy ?? 'prc_newsletter_list';
+		config?.campaignPatternCategorySlug ?? 'email-campaign';
+	const postType = config?.campaignPostType ?? 'prc_email_campaign';
+	const taxonomy = config?.newsletterListTaxonomy ?? 'prc_newsletter_list';
 
 	const { patterns, isLoading } = useEmailPatterns(categorySlug, true);
 
 	const resolvedLists = useMemo<ResolvedList[]>(() => {
-		const lists = prcEmailLibrary?.newsletterLists ?? [];
+		const lists: NewsletterListOption[] = config?.newsletterLists ?? [];
 		const patternsByName = new Map(
 			patterns.map((pattern) => [pattern.name, pattern])
 		);
@@ -84,7 +76,7 @@ export default function CreateCampaignDropdown() {
 				info: pattern.title,
 			};
 		});
-	}, [patterns]);
+	}, [config?.newsletterLists, patterns]);
 
 	const createDraftAndNavigate = useCallback(
 		async (data: Record<string, unknown>, onClose: () => void) => {
@@ -106,7 +98,7 @@ export default function CreateCampaignDropdown() {
 					},
 				});
 
-				const editUrl = `${prcEmailLibrary.postEditUrl}?post=${post.id}&action=edit`;
+				const editUrl = `${config?.postEditUrl || 'post.php'}?post=${post.id}&action=edit`;
 				window.location.href = editUrl;
 			} catch (err) {
 				const message =
@@ -120,7 +112,7 @@ export default function CreateCampaignDropdown() {
 				setIsCreating(false);
 			}
 		},
-		[isCreating, postType]
+		[config?.postEditUrl, isCreating, postType]
 	);
 
 	const handleCreate = useCallback(
@@ -142,10 +134,9 @@ export default function CreateCampaignDropdown() {
 
 	const handleCreateBlank = useCallback(() => {
 		const newUrl =
-			prcEmailLibrary?.campaignNewUrl ??
-			`post-new.php?post_type=${postType}`;
+			config?.campaignNewUrl ?? `post-new.php?post_type=${postType}`;
 		window.location.href = newUrl;
-	}, [postType]);
+	}, [config?.campaignNewUrl, postType]);
 
 	if (isCreating) {
 		return (
@@ -155,6 +146,10 @@ export default function CreateCampaignDropdown() {
 			</div>
 		);
 	}
+
+	const createLabel = isLoading
+		? __('Loading…', 'prc-email-builder')
+		: __('Create new', 'prc-email-builder');
 
 	return (
 		<div className="prc-email-library-create-campaign">
@@ -169,14 +164,15 @@ export default function CreateCampaignDropdown() {
 			) : null}
 			<DropdownMenu
 				icon={null}
-				label={__('Create new', 'prc-email-builder')}
-				text={__('Create new', 'prc-email-builder')}
+				label={createLabel}
+				text={createLabel}
 				popoverProps={{
 					placement: 'bottom-end',
 				}}
 				toggleProps={{
 					variant: 'primary',
 					disabled: isLoading,
+					isBusy: isLoading,
 					showTooltip: false,
 				}}
 			>

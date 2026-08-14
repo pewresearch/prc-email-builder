@@ -5,7 +5,7 @@
 	"version": "0.1.0",
 	"title": "Campaign Email Preview",
 	"category": "theme",
-	"description": "Renders a phone-width, cropped live preview of a campaign's email HTML.",
+	"description": "Renders a phone-width, scrollable live preview of a campaign's email HTML.",
 	"keywords": ["email", "newsletter", "preview", "campaign"],
 	"textdomain": "prc-email-builder",
 	"attributes": {
@@ -28,6 +28,10 @@
 		"linkText": {
 			"type": "string",
 			"default": "Read the latest issue"
+		},
+		"linkUrl": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"supports": {

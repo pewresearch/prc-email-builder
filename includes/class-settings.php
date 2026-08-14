@@ -8,6 +8,8 @@ declare( strict_types=1 );
 
 namespace PRC\Platform\Email_Builder;
 
+use PRC\Platform\Settings_Page_Boot;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -38,7 +40,7 @@ class Settings {
 	}
 
 	public function render_admin_page(): void {
-		echo '<div class="wrap"><div id="prc-email-builder-settings-admin"></div></div>';
+		Settings_Page_Boot::render( 'prc-email-builder-settings-admin' );
 	}
 
 	/** @hook admin_enqueue_scripts */
@@ -76,6 +78,12 @@ class Settings {
 				$asset['version']
 			);
 		}
+
+		Settings_Page_Boot::enqueue(
+			$handle,
+			(string) $asset['version'],
+			'prc-email-builder-settings-admin'
+		);
 	}
 
 	// -------------------------------------------------------------------------

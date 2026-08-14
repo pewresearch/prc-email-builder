@@ -5,6 +5,7 @@
  *                              (Campaign Setup plugin sidebar).
  */
 
+import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
 import { SelectControl, Notice, Spinner } from '@wordpress/components';
 
@@ -156,7 +157,7 @@ export function CampaignListControl() {
 		},
 		...newsletterLists.map((list) => ({
 			value: String(list.id),
-			label: list.name,
+			label: decodeEntities(list.name),
 		})),
 	];
 

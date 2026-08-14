@@ -44,9 +44,6 @@ class Email_Block_Converter {
 
 	private const STORY_ITEM_BLOCK = 'prc-block/story-item';
 
-	private const STORY_ITEM_DIVIDER_HTML = '<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
-		. '<tr><td style="border-top:1px solid #d6d7d8;font-size:0;line-height:0;">&nbsp;</td></tr></table>';
-
 	/**
 	 * Convert a newsletter post's content to an email HTML fragment.
 	 *
@@ -192,7 +189,7 @@ class Email_Block_Converter {
 		}
 
 		if ( self::STORY_ITEM_BLOCK === $block_name && self::STORY_ITEM_BLOCK === $last_emitted_block_name ) {
-			$parts[] = self::STORY_ITEM_DIVIDER_HTML;
+			$parts[] = Email_Block_Integration::hairline_row( 'story-item-divider' );
 		}
 
 		$parts[] = $fragment;

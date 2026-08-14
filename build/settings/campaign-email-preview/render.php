@@ -31,6 +31,17 @@ $frame_height = max( 320, min( 900, $frame_height ) );
 
 $preview_url = rest_url( REST_API::NAMESPACE . '/campaign-preview/' . $post_id );
 $permalink   = get_permalink( $post_id );
+$link_url    = $permalink;
+if (
+	isset( $attributes['linkUrl'] )
+	&& is_string( $attributes['linkUrl'] )
+	&& '' !== trim( $attributes['linkUrl'] )
+) {
+	$custom_link_url = esc_url( $attributes['linkUrl'] );
+	if ( '' !== $custom_link_url ) {
+		$link_url = $custom_link_url;
+	}
+}
 $title       = get_the_title( $post_id );
 $iframe_title = sprintf(
 	/* translators: %s: campaign title */
@@ -47,7 +58,7 @@ $wrapper_attributes = get_block_wrapper_attributes(
 	array(
 		'class' => implode( ' ', $classes ),
 		'style' => sprintf(
-			'--preview-width:%dpx;--preview-height:%dpx;',
+			'--preview-width:%d;--preview-height:%d;',
 			$frame_width,
 			$frame_height
 		),
@@ -61,16 +72,19 @@ $wrapper_attributes = get_block_wrapper_attributes(
 			src="<?php echo esc_url( $preview_url ); ?>"
 			title="<?php echo esc_attr( $iframe_title ); ?>"
 			loading="lazy"
-			scrolling="no"
 			sandbox="allow-popups allow-popups-to-escape-sandbox"
 		></iframe>
 		<?php if ( $show_fade ) : ?>
 			<div class="prc-email-builder-campaign-email-preview__fade" aria-hidden="true"></div>
 		<?php endif; ?>
 	</div>
-	<?php if ( $show_link && is_string( $permalink ) && '' !== $permalink ) : ?>
+	<?php if ( $show_link && is_string( $link_url ) && '' !== $link_url ) : ?>
 		<p class="prc-email-builder-campaign-email-preview__link">
-			<a href="<?php echo esc_url( $permalink ); ?>">
+			<a
+				href="<?php echo esc_url( $link_url ); ?>"
+				target="_blank"
+				rel="noopener noreferrer"
+			>
 				<?php echo esc_html( $link_text ); ?>
 			</a>
 		</p>

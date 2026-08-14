@@ -8,7 +8,7 @@ return array(
 		'version' => '0.1.0',
 		'title' => 'Campaign Email Preview',
 		'category' => 'theme',
-		'description' => 'Renders a phone-width, cropped live preview of a campaign\'s email HTML.',
+		'description' => 'Renders a phone-width, scrollable live preview of a campaign\'s email HTML.',
 		'keywords' => array(
 			'email',
 			'newsletter',
@@ -36,6 +36,10 @@ return array(
 			'linkText' => array(
 				'type' => 'string',
 				'default' => 'Read the latest issue'
+			),
+			'linkUrl' => array(
+				'type' => 'string',
+				'default' => ''
 			)
 		),
 		'supports' => array(
@@ -58,6 +62,17 @@ return array(
 		'editorScript' => 'file:./index.js',
 		'style' => 'file:./style-index.css',
 		'render' => 'file:./render.php'
+	),
+	'campaign-query' => array(
+		'$schema' => 'https://schemas.wp.org/trunk/block.json',
+		'apiVersion' => 3,
+		'name' => 'prc-email-builder/campaign-query',
+		'version' => '0.1.0',
+		'title' => 'Campaign Query',
+		'category' => 'theme',
+		'description' => 'Editor script that registers the Newsletter Campaigns Query Loop variation.',
+		'textdomain' => 'prc-email-builder',
+		'editorScript' => 'file:./index.js'
 	),
 	'latest-campaign-query' => array(
 		'$schema' => 'https://schemas.wp.org/trunk/block.json',

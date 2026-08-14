@@ -144,6 +144,7 @@ class Email_Style_Resolver {
 	 * @return array<string,string> property => light value
 	 */
 	private static function build_style_declaration_parts( array $attrs, array &$classes, string $html = '' ): array {
+		$attrs      = self::hydrate_preset_color_attrs( $attrs, $html );
 		$normalized = self::normalize_attrs_for_style_engine( $attrs );
 		$parts      = array();
 
@@ -510,10 +511,42 @@ class Email_Style_Resolver {
 			}
 		}
 
+		if ( ! isset( $out['font-family'] ) ) {
+			$class_font = '';
+			if ( ! empty( $attrs['className'] ) && is_string( $attrs['className'] ) ) {
+				$class_font = self::font_family_slug_from_class_string( $attrs['className'] );
+			}
+			if ( '' === $class_font && '' !== $html ) {
+				$class_font = self::font_family_slug_from_class_string( $html );
+			}
+			if ( '' !== $class_font ) {
+				$resolved = self::resolve_font_family( $class_font );
+				if ( '' !== $resolved ) {
+					$out['font-family'] = $resolved;
+				}
+			}
+		}
+
 		if ( ! isset( $out['font-size'] ) ) {
 			$preset_size = $attrs['fontSize'] ?? null;
 			if ( is_string( $preset_size ) && '' !== trim( $preset_size ) ) {
 				$size = self::resolve_font_size( $preset_size );
+				if ( '' !== $size ) {
+					$out['font-size'] = $size;
+				}
+			}
+		}
+
+		if ( ! isset( $out['font-size'] ) ) {
+			$class_size = '';
+			if ( ! empty( $attrs['className'] ) && is_string( $attrs['className'] ) ) {
+				$class_size = self::preset_slug_from_has_class( $attrs['className'], 'font-size' );
+			}
+			if ( '' === $class_size && '' !== $html ) {
+				$class_size = self::preset_slug_from_has_class( $html, 'font-size' );
+			}
+			if ( '' !== $class_size ) {
+				$size = self::resolve_font_size( $class_size );
 				if ( '' !== $size ) {
 					$out['font-size'] = $size;
 				}
@@ -529,7 +562,96 @@ class Email_Style_Resolver {
 	}
 
 	/**
+	 * Extract a font-family preset slug from `has-{slug}-font-family`.
+	 *
+	 * @param string $haystack Class attribute or saved HTML.
+	 * @return string Slug or empty string.
+	 */
+	private static function font_family_slug_from_class_string( string $haystack ): string {
+		return self::preset_slug_from_has_class( $haystack, 'font-family' );
+	}
+
+	/**
+	 * Extract a Gutenberg `has-{slug}-{suffix}` preset slug.
+	 *
+	 * @param string $haystack Class attribute or saved HTML.
+	 * @param string $suffix   Class suffix (font-family, font-size, background-color, …).
+	 * @return string Lowercase slug or empty string.
+	 */
+	private static function preset_slug_from_has_class( string $haystack, string $suffix ): string {
+		$quoted = preg_quote( $suffix, '/' );
+		if ( preg_match( '/\bhas-([a-z0-9-]+)-' . $quoted . '\b/', $haystack, $matches ) ) {
+			return sanitize_key( $matches[1] );
+		}
+		return '';
+	}
+
+	/**
+	 * Copy named color slugs from `has-{slug}-*-color` classes onto attrs.
+	 *
+	 * Existing textColor / backgroundColor / borderColor values win.
+	 *
+	 * @param array<string,mixed> $attrs Block attrs.
+	 * @param string              $html  Optional saved block HTML.
+	 * @return array<string,mixed>
+	 */
+	public static function hydrate_preset_color_attrs( array $attrs, string $html = '' ): array {
+		$sources = array();
+		if ( ! empty( $attrs['className'] ) && is_string( $attrs['className'] ) ) {
+			$sources[] = $attrs['className'];
+		}
+		if ( '' !== $html ) {
+			$sources[] = $html;
+		}
+
+		if ( empty( $attrs['backgroundColor'] ) || ! is_string( $attrs['backgroundColor'] ) ) {
+			foreach ( $sources as $hay ) {
+				$slug = self::preset_slug_from_has_class( $hay, 'background-color' );
+				if ( '' !== $slug ) {
+					$attrs['backgroundColor'] = $slug;
+					break;
+				}
+			}
+		}
+
+		if ( empty( $attrs['borderColor'] ) || ! is_string( $attrs['borderColor'] ) ) {
+			foreach ( $sources as $hay ) {
+				$slug = self::preset_slug_from_has_class( $hay, 'border-color' );
+				if ( '' !== $slug ) {
+					$attrs['borderColor'] = $slug;
+					break;
+				}
+			}
+		}
+
+		if ( empty( $attrs['textColor'] ) || ! is_string( $attrs['textColor'] ) ) {
+			foreach ( $sources as $hay ) {
+				if ( ! preg_match_all( '/\bhas-([a-z0-9-]+)-color\b/', $hay, $matches ) ) {
+					continue;
+				}
+				foreach ( $matches[1] as $raw ) {
+					$slug = sanitize_key( $raw );
+					// has-text-color is Gutenberg's "text is colored" flag, not a slug.
+					if ( '' === $slug || 'text' === $slug ) {
+						continue;
+					}
+					if ( str_ends_with( $slug, '-background' ) || str_ends_with( $slug, '-border' ) ) {
+						continue;
+					}
+					$attrs['textColor'] = $slug;
+					break 2;
+				}
+			}
+		}
+
+		return $attrs;
+	}
+
+	/**
 	 * Map theme/editor font tokens to email-safe font stacks.
+	 *
+	 * Preset slugs and CSS variables resolve through theme.json fontFamilies.
+	 * Unknown refs return empty so the callback base stack wins.
 	 *
 	 * @param string $raw Raw font family value from block attrs.
 	 * @return string Email-safe font-family value, or empty string if unmappable.
@@ -539,21 +661,21 @@ class Email_Style_Resolver {
 		if ( '' === $raw ) {
 			return '';
 		}
-		$lower = strtolower( $raw );
-		if ( 'serif' === $lower ) {
-			return self::EMAIL_FONT_SERIF;
+
+		$slug = self::slug_from_var_preset( $raw, 'font-family' );
+		if ( null !== $slug ) {
+			$raw = $slug;
 		}
-		if ( 'sans-serif' === $lower ) {
-			return self::EMAIL_FONT_FRANKLIN_SANS;
+
+		if ( preg_match( '/^[a-z0-9-]+$/i', $raw ) ) {
+			return Email_Preset_Resolver::font_family_stack( strtolower( $raw ) );
 		}
-		if ( str_contains( $lower, 'franklin' ) ) {
-			return self::EMAIL_FONT_FRANKLIN_SANS;
+
+		if ( str_contains( $raw, ',' ) || str_contains( $raw, "'" ) ) {
+			return self::sanitize_css_value( $raw );
 		}
-		// CSS custom-property references are not resolvable in email.
-		if ( str_starts_with( $raw, 'var:' ) || str_starts_with( $raw, 'var(--' ) ) {
-			return '';
-		}
-		return self::sanitize_css_value( $raw );
+
+		return '';
 	}
 
 	/**
@@ -570,17 +692,12 @@ class Email_Style_Resolver {
 		if ( preg_match( '/^\d+(\.\d+)?(px|em|rem|%)$/', $raw ) ) {
 			return self::sanitize_css_value( $raw );
 		}
-		if ( str_starts_with( $raw, 'var:' ) ) {
-			$slug = self::slug_from_var_preset( $raw );
-			if ( null === $slug ) {
-				return '';
-			}
-			return self::preset_slug_to_px( $slug );
+		$preset_slug = self::slug_from_var_preset( $raw, 'font-size' );
+		if ( null !== $preset_slug ) {
+			return Email_Preset_Resolver::font_size_px( $preset_slug );
 		}
-		// Bare slug (e.g. 'medium', 'h-two').
-		$known = array( 'small', 'medium', 'large', 'x-large', 'h-one', 'h-two', 'h-three' );
-		if ( in_array( strtolower( $raw ), $known, true ) ) {
-			return self::preset_slug_to_px( strtolower( $raw ) );
+		if ( preg_match( '/^[a-z0-9-]+$/i', $raw ) ) {
+			return Email_Preset_Resolver::font_size_px( strtolower( $raw ) );
 		}
 		return '';
 	}
@@ -592,29 +709,30 @@ class Email_Style_Resolver {
 	 * @return string px value or empty string.
 	 */
 	public static function preset_slug_to_px( string $slug ): string {
-		$sizes = array(
-			'small'   => '14px',
-			'medium'  => '16px',
-			'large'   => '18px',
-			'x-large' => '22px',
-			'h-one'   => '28px',
-			'h-two'   => '22px',
-			'h-three' => '18px',
-		);
-		return $sizes[ $slug ] ?? '';
+		return Email_Preset_Resolver::font_size_px( $slug );
 	}
 
 	/**
-	 * Extract the slug from a `var:preset|font-size|<slug>` reference.
+	 * Extract the slug from a `var:preset|{group}|<slug>` or
+	 * `var(--wp--preset--{group}--<slug>)` reference.
 	 *
-	 * @param string $var The var: reference string.
+	 * @param string $var   The var: or var(-- reference string.
+	 * @param string $group Preset group (font-size, font-family, color, …).
 	 * @return string|null Slug or null on no match.
 	 */
-	public static function slug_from_var_preset( string $var ): ?string {
-		if ( ! preg_match( '/^var:preset\|font-size\|([a-z0-9\-]+)$/i', $var, $m ) ) {
+	public static function slug_from_var_preset( string $var, string $group = 'font-size' ): ?string {
+		$group = sanitize_key( $group );
+		if ( '' === $group ) {
 			return null;
 		}
-		return strtolower( $m[1] );
+		$quoted = preg_quote( $group, '/' );
+		if ( preg_match( '/^var:preset\|' . $quoted . '\|([a-z0-9\-]+)$/i', $var, $m ) ) {
+			return strtolower( $m[1] );
+		}
+		if ( preg_match( '/^var\(--wp--preset--' . $quoted . '--([a-z0-9\-]+)\)$/i', $var, $m ) ) {
+			return strtolower( $m[1] );
+		}
+		return null;
 	}
 
 	/**

@@ -1,5 +1,5 @@
 import { __ } from '@wordpress/i18n';
-import type { EmailLibraryRow } from '../hooks/use-emails';
+import { getEmailConfig, type EmailLibraryRow } from '../types';
 
 export type SendStatusTone = 'success' | 'warning' | 'error' | 'neutral';
 
@@ -97,17 +97,8 @@ export function resolveSendStatus(item: EmailLibraryRow): ResolvedSendStatus {
 	};
 }
 
-declare global {
-	interface Window {
-		prcEmailLibrary?: {
-			sendStatuses?: Array<{ value: string; label: string }>;
-			postTypeScope?: 'campaign' | 'txn';
-		};
-	}
-}
-
 export function getSendStatusFilterElements(scope?: 'campaign' | 'txn') {
-	const elements = window?.prcEmailLibrary?.sendStatuses || [];
+	const elements = getEmailConfig()?.sendStatuses || [];
 	if (!scope) {
 		return elements;
 	}

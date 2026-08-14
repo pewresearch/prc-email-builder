@@ -232,12 +232,16 @@ class Email_Block_Integration {
 		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
 			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;';
 		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
+		$align  = Email_Style_Resolver::text_align_from_attrs( $attrs, $raw_html );
 
-		return sprintf(
-			'<p style="%s"%s>%s</p>',
-			esc_attr( $merged['style'] ),
-			$this->class_attr( $merged['class'] ),
-			$this->rewrite_links( $inner, $attrs )
+		return self::wrap_aligned_flow(
+			sprintf(
+				'<p style="%s"%s>%s</p>',
+				esc_attr( $merged['style'] ),
+				$this->class_attr( $merged['class'] ),
+				$this->rewrite_links( $inner, $attrs )
+			),
+			$align
 		);
 	}
 
@@ -268,18 +272,25 @@ class Email_Block_Integration {
 		);
 
 		$level_parts = $size_map[ $level ] ?? $size_map[2];
-		$base_style  = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF . ';font-weight:bold;color:#000000;padding:0;'
+		$font_family = in_array( $level, array( 1, 3, 5 ), true )
+			? Email_Style_Resolver::EMAIL_FONT_SERIF
+			: Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS;
+		$base_style  = 'font-family:' . $font_family . ';font-weight:bold;color:#000000;padding:0;'
 			. implode( ';', $level_parts ) . ';';
 		$merged      = Email_Style_Resolver::merge_block_style( $base_style, $attrs, $raw_html );
+		$align       = Email_Style_Resolver::text_align_from_attrs( $attrs, $raw_html );
 
 		$tag = 'h' . $level;
 
-		return sprintf(
-			'<%1$s style="%2$s"%4$s>%3$s</%1$s>',
-			$tag,
-			esc_attr( $merged['style'] ),
-			$this->rewrite_links( $inner, $attrs ),
-			$this->class_attr( $merged['class'] )
+		return self::wrap_aligned_flow(
+			sprintf(
+				'<%1$s style="%2$s"%4$s>%3$s</%1$s>',
+				$tag,
+				esc_attr( $merged['style'] ),
+				$this->rewrite_links( $inner, $attrs ),
+				$this->class_attr( $merged['class'] )
+			),
+			$align
 		);
 	}
 
@@ -370,8 +381,7 @@ class Email_Block_Integration {
 		}
 
 		// Email clients often reset native list markers; declare type inline.
-		$list_base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
-			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;padding-left:24px;'
+		$list_base   = 'font-size:16px;line-height:26px;color:#333333;margin:0 0 16px 0;padding-left:24px;'
 			. 'list-style-type:' . $list_style_type . ';list-style-position:outside;';
 		$list_merged = Email_Style_Resolver::merge_block_style( $list_base, $attrs, $raw_html );
 		$item_style  = 'margin:0 0 8px 0;list-style-type:' . $list_style_type . ';list-style-position:outside;';
@@ -444,8 +454,7 @@ class Email_Block_Integration {
 		if ( '' === trim( wp_strip_all_tags( $inner ) ) ) {
 			return '';
 		}
-		$base   = 'font-family:' . Email_Style_Resolver::EMAIL_FONT_SERIF
-			. ';font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;'
+		$base   = 'font-size:16px;line-height:26px;color:#333333;margin:0 0 8px 0;'
 			. 'list-style-type:disc;list-style-position:outside;';
 		$merged = Email_Style_Resolver::merge_block_style( $base, $attrs, $raw_html );
 
@@ -492,7 +501,7 @@ class Email_Block_Integration {
 			foreach ( $xpath->query( 'th|td', $tr ) as $cell ) {
 				$cells .= sprintf(
 					'<th style="font-family:%s;font-size:14px;font-weight:bold;color:#333333;text-align:left;border-bottom:2px solid #d1d1d1;padding:8px;">%s</th>',
-					esc_attr( Email_Style_Resolver::EMAIL_FONT_SERIF ),
+					esc_attr( Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS ),
 					$doc->saveHTML( $cell )
 				);
 			}
@@ -504,7 +513,7 @@ class Email_Block_Integration {
 			foreach ( $xpath->query( 'td|th', $tr ) as $cell ) {
 				$cells .= sprintf(
 					'<td style="font-family:%s;font-size:14px;color:#333333;border-bottom:1px solid #eeeeee;padding:8px;">%s</td>',
-					esc_attr( Email_Style_Resolver::EMAIL_FONT_SERIF ),
+					esc_attr( Email_Style_Resolver::EMAIL_FONT_FRANKLIN_SANS ),
 					$doc->saveHTML( $cell )
 				);
 			}
@@ -648,7 +657,54 @@ class Email_Block_Integration {
 	 * @param \WP_Post $post  Post.
 	 */
 	public function separator( array $block, \WP_Post $post ): string {
-		return '<hr style="border:0;border-top:1px solid #d1d1d1;margin:20px 0;" />';
+		return self::hairline_row( 'email-separator' );
+	}
+
+	/**
+	 * Outlook/Gmail-safe 1px hairline. `hr` and `border-top` are stripped or
+	 * dropped in those clients; a `bgcolor` row is not.
+	 *
+	 * @param string $class Class name for tests and targeting.
+	 */
+	public static function hairline_row( string $class = 'email-separator' ): string {
+		return sprintf(
+			'<table class="%1$s" width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
+			. '<tr><td style="padding:16px 0;font-size:0;line-height:0;">'
+			. '<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
+			. '<tr><td height="1" bgcolor="#d6d7d8" style="height:1px;line-height:1px;font-size:1px;background-color:#d6d7d8;border:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>'
+			. '</table></td></tr></table>',
+			esc_attr( $class )
+		);
+	}
+
+	/**
+	 * Center/right flow blocks with a shrink-wrapped nested table.
+	 *
+	 * `text-align` on headings is ignored by Gmail mobile. `td align` plus an
+	 * inner table without width=100% is the reliable pattern. Left-aligned
+	 * blocks stay bare so they can wrap around floated images.
+	 *
+	 * @param string $html  Block markup.
+	 * @param string $align left|center|right|''.
+	 */
+	public static function wrap_aligned_flow( string $html, string $align ): string {
+		if ( ! in_array( $align, array( 'center', 'right' ), true ) ) {
+			return $html;
+		}
+
+		// Center uses margin:0 auto; right uses margin-left:auto so align="right" wins.
+		$margin = 'right' === $align ? 'margin:0 0 0 auto' : 'margin:0 auto';
+
+		return sprintf(
+			'<table width="100%%" cellpadding="0" cellspacing="0" border="0" role="presentation">'
+			. '<tr><td align="%1$s" style="text-align:%1$s;">'
+			. '<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="%1$s" style="%2$s;max-width:100%%;">'
+			. '<tr><td align="%1$s" style="text-align:%1$s;">%3$s</td></tr>'
+			. '</table></td></tr></table>',
+			esc_attr( $align ),
+			esc_attr( $margin ),
+			$html
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -1023,6 +1079,7 @@ class Email_Block_Integration {
 		$url   = (string) ( $attrs['url'] ?? '' );
 		$inner = $block['innerHTML'] ?? '';
 		$text  = trim( wp_strip_all_tags( $inner ) );
+		$attrs = Email_Style_Resolver::hydrate_preset_color_attrs( $attrs, $inner );
 
 		if ( '' === $text ) {
 			return '';
@@ -1088,7 +1145,7 @@ class Email_Block_Integration {
 
 		// Author typography overrides (fontSize / fontFamily / weight / etc.)
 		// append after defaults so last-wins in email clients.
-		$typo = Email_Style_Resolver::typography_inline_css( $attrs );
+		$typo = Email_Style_Resolver::typography_inline_css( $attrs, $inner );
 		if ( '' !== $typo ) {
 			$anchor_style .= $typo;
 		}

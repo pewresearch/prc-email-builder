@@ -2,8 +2,11 @@ import { __ } from '@wordpress/i18n';
 import { Button } from '@wordpress/components';
 import { chartBar } from '@wordpress/icons';
 import SendStatusBadge from '../components/send-status-badge';
-import type { EmailLibraryRow } from '../hooks/use-emails';
-import type { EmailListScope } from '../types';
+import {
+	getEmailConfig,
+	type EmailLibraryRow,
+	type EmailListScope,
+} from '../types';
 import {
 	getSendStatusFilterElements,
 	resolveSendStatus,
@@ -19,22 +22,8 @@ function formatEngagementRate(rate: number | null | undefined): string {
 	return `${(rate * 100).toFixed(1)}%`;
 }
 
-declare global {
-	interface Window {
-		prcEmailLibrary?: {
-			newsletterLists?: Array<{
-				termId?: number;
-				slug: string;
-				label: string;
-				campaignPattern?: string;
-			}>;
-			postTypeScope?: EmailListScope;
-		};
-	}
-}
-
 function getNewsletterListElements() {
-	const terms = window?.prcEmailLibrary?.newsletterLists || [];
+	const terms = getEmailConfig()?.newsletterLists || [];
 	return terms.map((term) => ({
 		value: term.slug,
 		label: term.label,
@@ -219,14 +208,20 @@ export function getFieldsForScope(
 	if (scope === 'txn') {
 		return fields.filter(
 			(field) =>
+				field.id !== 'title' &&
 				field.id !== 'newsletterLists' &&
 				field.id !== 'openRate' &&
 				field.id !== 'clickRate' &&
-				field.id !== 'stats'
+				field.id !== 'stats' &&
+				field.id !== 'date' &&
+				field.id !== 'status'
 		);
 	}
 
-	return fields;
+	return fields.filter(
+		(field) =>
+			field.id !== 'title' && field.id !== 'date' && field.id !== 'status'
+	);
 }
 
 export default getFieldsForScope;

@@ -18,13 +18,19 @@ import { store as coreStore } from '@wordpress/core-data';
  */
 import { REST_NAMESPACE } from './constants';
 
-export default function Edit({ attributes, setAttributes, context }) {
+export default function Edit({
+	attributes,
+	setAttributes,
+	context,
+	isSelected,
+}) {
 	const {
 		frameWidth = 375,
 		frameHeight = 560,
 		showFade = true,
 		showLink = true,
 		linkText = __('Read the latest issue', 'prc-email-builder'),
+		linkUrl = '',
 	} = attributes;
 
 	const postId = context?.postId ? Number(context.postId) : 0;
@@ -55,14 +61,15 @@ export default function Edit({ attributes, setAttributes, context }) {
 			.filter(Boolean)
 			.join(' '),
 		style: {
-			'--preview-width': `${frameWidth}px`,
-			'--preview-height': `${frameHeight}px`,
+			'--preview-width': `${frameWidth}`,
+			'--preview-height': `${frameHeight}`,
 		},
 	});
 
 	const previewUrl = postId
 		? `${window.wpApiSettings?.root || '/wp-json/'}${REST_NAMESPACE}/campaign-preview/${postId}`
 		: '';
+	const href = linkUrl.trim() || permalink;
 
 	const iframeTitle = sprintf(
 		/* translators: %s: campaign title */
@@ -111,13 +118,29 @@ export default function Edit({ attributes, setAttributes, context }) {
 						onChange={(value) => setAttributes({ showLink: value })}
 					/>
 					{showLink && (
-						<TextControl
-							label={__('Link text', 'prc-email-builder')}
-							value={linkText}
-							onChange={(value) =>
-								setAttributes({ linkText: value })
-							}
-						/>
+						<>
+							<TextControl
+								label={__('Link text', 'prc-email-builder')}
+								value={linkText}
+								onChange={(value) =>
+									setAttributes({ linkText: value })
+								}
+							/>
+							<TextControl
+								label={__(
+									'Link destination',
+									'prc-email-builder'
+								)}
+								help={__(
+									'Leave empty to use the campaign permalink.',
+									'prc-email-builder'
+								)}
+								value={linkUrl}
+								onChange={(value) =>
+									setAttributes({ linkUrl: value })
+								}
+							/>
+						</>
 					)}
 				</PanelBody>
 			</InspectorControls>
@@ -142,8 +165,10 @@ export default function Edit({ attributes, setAttributes, context }) {
 								src={previewUrl}
 								title={iframeTitle}
 								loading="lazy"
-								scrolling="no"
 								sandbox="allow-popups allow-popups-to-escape-sandbox"
+								style={{
+									pointerEvents: isSelected ? 'auto' : 'none',
+								}}
 							/>
 							{showFade && (
 								<div
@@ -152,9 +177,15 @@ export default function Edit({ attributes, setAttributes, context }) {
 								/>
 							)}
 						</div>
-						{showLink && permalink && (
+						{showLink && href && (
 							<p className="prc-email-builder-campaign-email-preview__link">
-								<a href={permalink}>{linkText}</a>
+								<a
+									href={href}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									{linkText}
+								</a>
 							</p>
 						)}
 					</>

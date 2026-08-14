@@ -1,3 +1,9 @@
+/*
+ * Editor screens get DataViews styles from core; this modal can load without
+ * them, so bundle the stylesheet here (mirrors term-admin/style.scss).
+ */
+@import "@wordpress/dataviews/build-style/style.css";
+
 .prc-email-pattern-selector__modal {
 	.components-modal__content {
 		padding-top: 4px;

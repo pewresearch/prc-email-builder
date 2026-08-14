@@ -310,6 +310,16 @@ class REST_API {
 						'default'           => 1,
 						'sanitize_callback' => 'absint',
 					],
+					'watchingOnly'      => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_key',
+					],
+					'activeEditors'     => [
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_key',
+					],
 				],
 			]
 		);
@@ -842,8 +852,16 @@ class REST_API {
 			$query_args['tax_query'] = $tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 		}
 
+		$dataview_post_type = $post_types[0];
+
 		if ( $querying_both && $has_mailchimp && $has_mandrill ) {
-			$query = $this->query_library_with_dual_status_filter(
+			$query_args = apply_filters(
+				'prc_wp_admin_dataview_query_args',
+				$query_args,
+				$request,
+				$dataview_post_type
+			);
+			$query      = $this->query_library_with_dual_status_filter(
 				$query_args,
 				$mailchimp_values,
 				$mandrill_values
@@ -857,7 +875,13 @@ class REST_API {
 				$query_args['meta_query'] = $meta_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			}
 
-			$query = new \WP_Query( $query_args );
+			$query_args = apply_filters(
+				'prc_wp_admin_dataview_query_args',
+				$query_args,
+				$request,
+				$dataview_post_type
+			);
+			$query      = new \WP_Query( $query_args ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 		}
 
 		$posts = $query->posts;
@@ -875,7 +899,12 @@ class REST_API {
 		}
 
 		$rows = array_map(
-			fn( \WP_Post $post ) => $this->shape_library_row( $post ),
+			fn( \WP_Post $post ) => apply_filters(
+				'prc_wp_admin_dataview_shape_row',
+				$this->shape_library_row( $post ),
+				$post,
+				$post->post_type
+			),
 			$posts
 		);
 
@@ -1061,16 +1090,23 @@ class REST_API {
 		$id_args['fields']         = 'ids';
 		unset( $id_args['paged'] );
 
+		$existing_meta = isset( $id_args['meta_query'] ) && is_array( $id_args['meta_query'] )
+			? $id_args['meta_query']
+			: [];
+
 		$campaign_args = array_merge(
 			$id_args,
 			[
 				'post_type'  => [ Post_Type::CAMPAIGN_POST_TYPE ],
-				'meta_query' => [
-					$this->build_status_meta_clause(
-						'prc_email_mailchimp_campaign_status',
-						$mailchimp_values
-					),
-				],
+				'meta_query' => array_merge(
+					$existing_meta,
+					[
+						$this->build_status_meta_clause(
+							'prc_email_mailchimp_campaign_status',
+							$mailchimp_values
+						),
+					]
+				),
 			]
 		);
 
@@ -1078,12 +1114,15 @@ class REST_API {
 			$id_args,
 			[
 				'post_type'  => [ Post_Type::TRANSACTIONAL_POST_TYPE ],
-				'meta_query' => [
-					$this->build_status_meta_clause(
-						'prc_email_mandrill_send_status',
-						$mandrill_values
-					),
-				],
+				'meta_query' => array_merge(
+					$existing_meta,
+					[
+						$this->build_status_meta_clause(
+							'prc_email_mandrill_send_status',
+							$mandrill_values
+						),
+					]
+				),
 			]
 		);
 

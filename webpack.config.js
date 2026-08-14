@@ -6,7 +6,7 @@ module.exports = {
 	...config,
 	entry: {
 		// Auto-discover src/**/block.json entries (campaign-email-preview,
-		// latest-campaign-query shim, future blocks).
+		// latest-campaign-query / campaign-query shims, future blocks).
 		...getWebpackEntryPoints('script')(),
 		// Explicit non-block editor apps.
 		'sidebar/index': path.resolve(__dirname, 'src/sidebar/index.tsx'),

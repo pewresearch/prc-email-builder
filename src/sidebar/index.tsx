@@ -1,15 +1,10 @@
-/**
- * Newsletter Builder block editor sidebar panel.
- * Registered on email campaign and transactional post types.
- */
-
 import { registerPlugin } from '@wordpress/plugins';
 import { useSelect } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';
 
-import NewsletterPanel from './newsletter-panel';
+import EmailSettingsPanel from './email-settings-panel';
 import { EmailPreviewMenuItem } from './preview/index';
-import { SendNewsletterSidebar } from './send/index';
+import { SendSidebar } from './send/index';
 import EmailPatternSelector from './pattern-selector';
 import { EngagementPanel } from './engagement';
 import { isEmailPostType } from './use-newsletter-data';
@@ -27,9 +22,9 @@ function NewsletterBuilderSidebar() {
 	return (
 		<>
 			<EmailPatternSelector />
-			<NewsletterPanel />
+			<EmailSettingsPanel />
 			<EngagementPanel />
-			<SendNewsletterSidebar />
+			<SendSidebar />
 			<EmailPreviewMenuItem />
 		</>
 	);

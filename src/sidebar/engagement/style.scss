@@ -1,27 +1,14 @@
 .prc-email-engagement {
-	.prc-email-engagement-metric {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 2px 0;
-	}
+	container-type: inline-size;
 
-	.prc-email-engagement-metric__label {
-		flex: 1 1 auto;
-		min-width: 0;
-		color: #757575;
-		font-size: 12px;
-		line-height: 1.4;
-	}
+	.prc-email-engagement-tabs {
+		.components-tab-panel__tabs {
+			margin-bottom: 0;
+		}
 
-	.prc-email-engagement-metric__value {
-		flex: 0 0 auto;
-		font-size: 12px;
-		font-weight: 600;
-		line-height: 1.4;
-		text-align: right;
-		white-space: nowrap;
+		.components-tab-panel__tab-content {
+			padding-top: 12px;
+		}
 	}
 
 	.prc-email-engagement-section-title {
@@ -31,6 +18,151 @@
 		letter-spacing: 0.02em;
 		text-transform: uppercase;
 		color: #757575;
+	}
+
+	.prc-email-engagement-chart {
+		margin: 0;
+		padding: 0;
+	}
+
+	.prc-email-engagement-chart__description {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.4;
+		color: #757575;
+	}
+
+	.prc-email-engagement-chart__track {
+		display: flex;
+		overflow: hidden;
+		min-height: 24px;
+		border-radius: 2px;
+		background: var(--wp-admin-theme-color-lighter-90, #f0f0f0);
+	}
+
+	.prc-email-engagement-chart__track--empty {
+		min-height: 8px;
+	}
+
+	.prc-email-engagement-chart__segment {
+		flex-basis: 0;
+		min-width: 0;
+	}
+
+	.prc-email-engagement-chart__segment--clicked,
+	.prc-email-engagement-chart__swatch--clicked {
+		background: var(--wp-admin-theme-color, #007cba);
+	}
+
+	.prc-email-engagement-chart__segment--opened-no-click,
+	.prc-email-engagement-chart__swatch--opened-no-click {
+		background: var(--wp-admin-theme-color-lighter-40, #66bfe3);
+	}
+
+	.prc-email-engagement-chart__segment--not-opened,
+	.prc-email-engagement-chart__swatch--not-opened {
+		background: #ddd;
+	}
+
+	.prc-email-engagement-chart__segment--hard-bounces,
+	.prc-email-engagement-chart__swatch--hard-bounces {
+		background: #cc1818;
+	}
+
+	.prc-email-engagement-chart__segment--soft-bounces,
+	.prc-email-engagement-chart__swatch--soft-bounces {
+		background: #f0b849;
+	}
+
+	.prc-email-engagement-chart__segment--unsubscribes,
+	.prc-email-engagement-chart__swatch--unsubscribes {
+		background: #757575;
+	}
+
+	.prc-email-engagement-chart__segment--abuse-reports,
+	.prc-email-engagement-chart__swatch--abuse-reports {
+		background: #3c2861;
+	}
+
+	.prc-email-engagement-chart__legend {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 6px 12px;
+		margin: 0;
+		padding: 0;
+		padding-inline-start: 0;
+		list-style: none;
+	}
+
+	.prc-email-engagement-chart__legend-item {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 4px 6px;
+		margin: 0;
+		padding: 0;
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.prc-email-engagement-chart__swatch {
+		flex: 0 0 auto;
+		width: 8px;
+		height: 8px;
+		border-radius: 1px;
+		align-self: center;
+	}
+
+	.prc-email-engagement-chart__legend-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		color: #1e1e1e;
+	}
+
+	.prc-email-engagement-chart__legend-value {
+		flex: 0 0 auto;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.prc-email-engagement-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 1rem;
+	}
+
+	.prc-email-engagement-card {
+		position: relative;
+		display: flex;
+		min-height: 70px;
+		padding: 0.75rem;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--wp-admin-theme-color-lighter-70, #c5d9ed);
+		border-radius: 4px;
+		background: #fff;
+		text-align: center;
+	}
+
+	.prc-email-engagement-card__label {
+		position: absolute;
+		inset-block-start: 0.25rem;
+		inset-inline-start: 0.5rem;
+		inset-inline-end: 0.5rem;
+		overflow: hidden;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		color: #757575;
+		text-align: start;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.prc-email-engagement-card__value {
+		font-size: 1.25rem;
+		font-weight: 600;
+		line-height: 1.2;
+		color: var(--wp-admin-theme-color-darker-10, #006ba1);
 	}
 
 	.prc-email-engagement-clicks {
@@ -83,5 +215,15 @@
 		margin: 0;
 		font-size: 11px;
 		color: #757575;
+	}
+
+	@container (max-width: 420px) {
+		.prc-email-engagement-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.prc-email-engagement-chart__legend {
+			grid-template-columns: 1fr;
+		}
 	}
 }

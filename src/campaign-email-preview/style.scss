@@ -1,6 +1,7 @@
 .prc-email-builder-campaign-email-preview {
-	--preview-width: 375px;
-	--preview-height: 560px;
+	--preview-width: 375;
+	--preview-height: 560;
+	--email-width: 600;
 
 	display: flex;
 	flex-direction: column;
@@ -10,23 +11,33 @@
 }
 
 .prc-email-builder-campaign-email-preview__frame {
+	box-sizing: border-box;
 	position: relative;
-	width: var(--preview-width);
+	width: calc(var(--preview-width) * 1px);
 	max-width: 100%;
-	height: var(--preview-height);
+	min-width: 0;
+	height: calc(var(--preview-height) * 1px);
 	overflow: hidden;
 	border: 1px solid #d0d0d0;
 	border-radius: 12px;
 	background: #fff;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+	/* Scale the iframe against this element's used width, not --preview-width. */
+	container-type: inline-size;
 }
 
 .prc-email-builder-campaign-email-preview__iframe {
+	position: absolute;
+	inset: 0 auto auto 0;
 	display: block;
-	width: 100%;
-	height: 100%;
+	width: calc(var(--email-width) * 1px);
+	height: calc(
+		var(--preview-height) * var(--email-width) * 1px * 1px / 100cqw
+	);
 	border: 0;
-	pointer-events: none;
+	transform: scale(calc(100cqw / (var(--email-width) * 1px)));
+	transform-origin: top left;
+	pointer-events: auto;
 }
 
 .prc-email-builder-campaign-email-preview.has-fade

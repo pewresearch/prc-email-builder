@@ -3,7 +3,7 @@ import { Modal } from '@wordpress/components';
 import { EngagementContent } from '../../sidebar/engagement/engagement-content';
 import { useCampaignReport } from '../../sidebar/engagement/use-report';
 import '../../sidebar/engagement/style.scss';
-import type { EmailLibraryRow } from '../hooks/use-emails';
+import type { EmailLibraryRow } from '../types';
 
 interface CampaignStatsModalProps {
 	campaign: EmailLibraryRow | null;

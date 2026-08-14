@@ -313,6 +313,7 @@ class Post_Type {
 			'prc-schema-seo',
 			'prc-art-direction',
 			'prc-publish-workflows',
+			'presence',
 		];
 
 		// Transactional emails are not public web content; exclude pub-listing and SEO.

@@ -1,5 +1,7 @@
 # PRC Email Builder
 
+> Canonical docs: [docs/plugins/prc-email-builder/](../../docs/plugins/prc-email-builder/)
+
 Native WordPress email authoring and Mailchimp/Mandrill delivery for PRC Platform.
 
 ## What it does
@@ -27,7 +29,7 @@ The vendored **Newsletter Glue Pro** plugin and the automated NGL → `prc_email
 
 Email posts split producer controls across the **document panel** (always visible) and a pinned **plugin sidebar** (toolbar send icon):
 
-| Post type | Document panel ("Newsletter Settings") | Plugin sidebar |
+| Post type | Document panel ("Email Settings") | Plugin sidebar |
 | --- | --- | --- |
 | `prc_email_campaign` | Subject, preview text, newsletter list picker | **Campaign Setup** — Mailchimp audience/segment/template overrides, draft update, and send actions |
 | `prc_email_txn` | Subject and preview text only | **Transactional Setup** — delivery type, Mandrill recipient list or dynamic system email slug, automations, and send actions |
@@ -46,7 +48,7 @@ Dynamic system emails are identified by their **post slug** (`post_name`), not a
 
 1. Author creates a `prc_email_campaign` post and sets subject, preview text, and (optionally) newsletter list in the document panel
 2. _(Optional)_ Assign a `prc_newsletter_list` term — when present, audience and segment post meta are overwritten from the term's Mailchimp settings on save (see [Newsletter lists](#newsletter-lists)). Advanced audience/segment/template overrides live in **Campaign Setup**.
-3. _(Optional)_ Open **Email Preview** or click **Refresh preview** in the sidebar to verify rendered HTML
+3. _(Optional)_ Open **Preview** in the Email Content document panel to verify rendered HTML
 4. Author publishes — email HTML is rendered synchronously and a Mailchimp campaign draft is created immediately
 5. Author reviews and sends the campaign from the Mailchimp dashboard
 
@@ -62,6 +64,19 @@ Constraints (enforced server-side):
 - Mailchimp campaign status must be `save` (draft) — sent/scheduled campaigns return `409`
 - Stored audience and segment must still match the linked Mailchimp campaign
 - Post must have renderable email HTML
+
+### Unlinking and recovering a deleted Mailchimp draft
+
+When the linked Mailchimp campaign is missing (deleted in Mailchimp or never created after publish), **Campaign Setup** shows a warning and offers **Unlink from Mailchimp**. Unlinking clears WordPress linkage meta (`prc_email_mailchimp_campaign_id`, admin URL, status, and any stored engagement report) but does **not** delete the remote Mailchimp campaign.
+
+After unlink, **Create Mailchimp draft** appears for published, non-migrated campaigns. This calls `POST /prc-email-builder/v1/campaigns/create-draft` with `{ "post_id": <id> }` and mints a fresh Mailchimp draft from the current email HTML and audience settings.
+
+| Action | REST route | Notes |
+| --- | --- | --- |
+| Unlink | `POST /prc-email-builder/v1/campaigns/unlink` | Idempotent; strong confirm when Mailchimp status is `sent`, `schedule`, or `sending` |
+| Create draft | `POST /prc-email-builder/v1/campaigns/create-draft` | Requires `publish` status; returns `409` when still linked or when `Migration::is_migrated()` |
+
+Migrated NGL archive posts (`Migration::is_migrated()`) cannot create a new Mailchimp draft from this panel.
 
 ## Email Library
 
@@ -211,7 +226,7 @@ wp prc email automations run-due [--limit=<n>]   # manually trigger the dispatch
 | `includes/class-patterns.php`                    | Auto-registers block patterns from `patterns/*.php`                                                           |
 | `includes/class-quiz-email.php`                  | REST endpoint for the quiz results email block                                                                |
 | `includes/class-assets.php`                      | Enqueues editor sidebar JS (injects `from_name`/`from_email` defaults into `prcEmailBuilderConfig`)           |
-| `src/sidebar/`                                   | Editor document panels (Newsletter Settings, Email Content)                                                   |
+| `src/sidebar/`                                   | Editor document panels (Email Settings, Email Content)                                                   |
 | `src/sidebar/preview/`                           | Email Preview View-menu item + modal (see below)                                                              |
 | `src/settings/`                                  | React settings page (Mailchimp connection, From Name/Email)                                                   |
 | `src/form-action/`                               | Registers the `sendSystemEmail` prc-block/form action in the editor                                           |
@@ -248,6 +263,8 @@ The preview renders email HTML synchronously via `Email_Block_Converter` — the
 | `GET`      | `/prc-email-builder/v1/campaigns/{id}/report`         | Stored Mailchimp engagement report for a campaign              |
 | `POST`     | `/prc-email-builder/v1/campaigns/{id}/report/refresh` | On-demand Mailchimp report pull (throttled)                    |
 | `POST`     | `/prc-email-builder/v1/campaigns/update-draft`        | Push current HTML/settings to an existing Mailchimp draft      |
+| `POST`     | `/prc-email-builder/v1/campaigns/unlink`                | Clear Mailchimp campaign linkage meta (recover deleted drafts) |
+| `POST`     | `/prc-email-builder/v1/campaigns/create-draft`          | Create a new Mailchimp draft for an unlinked published campaign |
 | `GET`      | `/prc-email-builder/v1/audiences/{id}/segments`       | Saved segments for a Mailchimp audience (term admin + sidebar) |
 
 ### `sendSystemEmail` form action + Mailchimp opt-in

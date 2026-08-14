@@ -72,8 +72,12 @@ $card_attr  = '' !== $card_class ? ' class="' . esc_attr( $card_class ) . '"' : 
 
 		<!-- ── Footer ──────────────────────────────────────────────────── -->
 		<tr>
-			<td style="padding:0 32px;">
-				<hr style="border:none;border-top:1px solid #e0e0e0;margin:0;" />
+			<td style="padding:0 32px;font-size:0;line-height:0;">
+				<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+					<tr>
+						<td height="1" bgcolor="#e0e0e0" style="height:1px;line-height:1px;font-size:1px;background-color:#e0e0e0;border:0;mso-line-height-rule:exactly;">&nbsp;</td>
+					</tr>
+				</table>
 			</td>
 		</tr>
 		<tr>

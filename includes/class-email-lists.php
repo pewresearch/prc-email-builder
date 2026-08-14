@@ -19,15 +19,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Email_Lists {
 	public const CAMPAIGNS_PAGE_SLUG      = 'prc-email-builder-campaigns';
 	public const TRANSACTIONAL_PAGE_SLUG = 'prc-email-builder-transactional';
-	public const SCRIPT_HANDLE           = 'prc-email-builder-library';
+	public const SCRIPT_HANDLE           = 'prc-email-builder-admin-dataview';
 
 	public function __construct( Loader $loader ) {
-		$loader->add_action( 'admin_menu', $this, 'register_admin_pages' );
-		$loader->add_action( 'admin_menu', $this, 'rewrite_menu_destinations', 1000 );
-		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_admin_assets' );
-		$loader->add_action( 'load-edit.php', $this, 'redirect_classic_list_to_dataviews' );
-		$loader->add_filter( 'parent_file', $this, 'filter_parent_file' );
-		$loader->add_filter( 'submenu_file', $this, 'filter_submenu_file', 10, 2 );
+		$loader->add_action( 'prc_wp_admin_dataview_register_lists', $this, 'register_lists' );
+		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_provider_assets', 20 );
+		$loader->add_filter( 'prc_wp_admin_dataview_localize', $this, 'localize_provider', 10, 2 );
 	}
 
 	/**
@@ -54,247 +51,122 @@ class Email_Lists {
 		};
 	}
 
-	/** @hook admin_menu */
-	public function register_admin_pages(): void {
+	/**
+	 * Register campaign and transactional lists with the shared shell.
+	 *
+	 * @param object $lists Shared list registry.
+	 */
+	public function register_lists( $lists ): void {
+		if ( ! is_object( $lists ) || ! method_exists( $lists, 'register' ) ) {
+			return;
+		}
+
 		$parent = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
-
-		add_submenu_page(
-			$parent,
-			__( 'Campaigns', 'prc-email-builder' ),
-			__( 'Campaigns', 'prc-email-builder' ),
-			'edit_posts',
-			self::CAMPAIGNS_PAGE_SLUG,
-			[ $this, 'render_admin_page' ]
-		);
-
-		add_submenu_page(
-			$parent,
-			__( 'Transactional Emails', 'prc-email-builder' ),
-			__( 'Transactional', 'prc-email-builder' ),
-			'edit_posts',
-			self::TRANSACTIONAL_PAGE_SLUG,
-			[ $this, 'render_admin_page' ]
-		);
-	}
-
-	public function render_admin_page(): void {
-		echo '<div id="prc-email-builder-library-admin"></div>';
-	}
-
-	/**
-	 * Point Campaigns / Transactional submenu items at DataViews pages.
-	 *
-	 * Top-level Emails keeps the classic edit.php parent slug so $submenu
-	 * parenting stays intact; load-edit.php redirects that URL to DataViews.
-	 *
-	 * @hook admin_menu (priority 1000)
-	 */
-	public function rewrite_menu_destinations(): void {
-		global $submenu;
-
-		$parent        = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
-		$campaign_list = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
-		$txn_list      = 'edit.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE;
-
-		if ( empty( $submenu[ $parent ] ) || ! is_array( $submenu[ $parent ] ) ) {
-			return;
-		}
-
-		$seen     = [];
-		$reordered = [];
-
-		foreach ( $submenu[ $parent ] as $item ) {
-			if ( ! is_array( $item ) || ! isset( $item[2] ) ) {
-				continue;
-			}
-
-			if ( $campaign_list === $item[2] ) {
-				$item[2] = self::CAMPAIGNS_PAGE_SLUG;
-				$item[0] = __( 'Campaigns', 'prc-email-builder' );
-				$item[3] = __( 'Campaigns', 'prc-email-builder' );
-			} elseif ( $txn_list === $item[2] ) {
-				$item[2] = self::TRANSACTIONAL_PAGE_SLUG;
-				$item[0] = __( 'Transactional', 'prc-email-builder' );
-				$item[3] = __( 'Transactional Emails', 'prc-email-builder' );
-			}
-
-			if ( isset( $seen[ $item[2] ] ) ) {
-				continue;
-			}
-			$seen[ $item[2] ] = true;
-			$reordered[]      = $item;
-		}
-
-		$submenu[ $parent ] = array_values( $reordered );
-	}
-
-	/**
-	 * Redirect bare CPT list tables to DataViews unless ?classic=1.
-	 *
-	 * Skips POST so classic list-table form submissions (bulk actions,
-	 * screen options, empty trash) are not intercepted before edit.php runs.
-	 *
-	 * @hook load-edit.php
-	 */
-	public function redirect_classic_list_to_dataviews(): void {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- request method check only
-		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'POST' === strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! empty( $_GET['page'] ) ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( isset( $_GET['classic'] ) && '1' === (string) $_GET['classic'] ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$post_type = isset( $_GET['post_type'] )
-			? sanitize_key( wp_unslash( (string) $_GET['post_type'] ) )
-			: '';
-
-		if ( ! Post_Type::is_email_post_type( $post_type ) ) {
-			return;
-		}
-
-		$scope = Post_Type::TRANSACTIONAL_POST_TYPE === $post_type ? 'txn' : 'campaign';
-		wp_safe_redirect( self::get_page_url( $scope ) );
-		exit;
-	}
-
-	/**
-	 * Keep Emails parent highlighted on DataViews pages.
-	 *
-	 * @hook parent_file
-	 */
-	public function filter_parent_file( string $parent_file ): string {
-		$scope = $this->current_page_scope();
-		if ( null !== $scope ) {
-			return 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
-		}
-		return $parent_file;
-	}
-
-	/**
-	 * Highlight the correct Campaigns / Transactional submenu item.
-	 *
-	 * @hook submenu_file
-	 * @param string|null $submenu_file
-	 * @param string      $parent_file
-	 */
-	public function filter_submenu_file( $submenu_file, string $parent_file ) {
-		unset( $parent_file );
-		$scope = $this->current_page_scope();
-		if ( 'campaign' === $scope ) {
-			return self::CAMPAIGNS_PAGE_SLUG;
-		}
-		if ( 'txn' === $scope ) {
-			return self::TRANSACTIONAL_PAGE_SLUG;
-		}
-		return $submenu_file;
-	}
-
-	/** @hook admin_enqueue_scripts */
-	public function enqueue_admin_assets( string $hook_suffix ): void {
-		$scope = $this->scope_from_hook_suffix( $hook_suffix );
-		if ( null === $scope ) {
-			return;
-		}
-
-		$asset_file = PRC_EMAIL_BUILDER_DIR . '/build/library/index.asset.php';
-		if ( ! file_exists( $asset_file ) ) {
-			return;
-		}
-
-		$asset  = require $asset_file;
-		$handle = self::SCRIPT_HANDLE;
-
-		wp_enqueue_script(
-			$handle,
-			plugins_url( 'build/library/index.js', PRC_EMAIL_BUILDER_FILE ),
-			$asset['dependencies'],
-			$asset['version'],
-			true
-		);
-
-		if ( file_exists( PRC_EMAIL_BUILDER_DIR . '/build/library/style-index.css' ) ) {
-			wp_enqueue_style(
-				$handle,
-				plugins_url( 'build/library/style-index.css', PRC_EMAIL_BUILDER_FILE ),
-				[ 'wp-components' ],
-				$asset['version']
-			);
-		}
-
-		$page_title = 'txn' === $scope
-			? __( 'Transactional Emails', 'prc-email-builder' )
-			: __( 'Campaigns', 'prc-email-builder' );
-
-		$page_description = 'txn' === $scope
-			? __( 'Browse and manage transactional emails.', 'prc-email-builder' )
-			: __( 'Browse and manage email campaigns.', 'prc-email-builder' );
-
-		$classic_post_type = 'txn' === $scope
-			? Post_Type::TRANSACTIONAL_POST_TYPE
-			: Post_Type::CAMPAIGN_POST_TYPE;
-
-		wp_localize_script(
-			$handle,
-			'prcEmailLibrary',
+		$lists->register(
 			[
-				'nonce'                       => wp_create_nonce( 'wp_rest' ),
-				'restUrl'                     => esc_url_raw( rest_url() ),
-				'postEditUrl'                 => esc_url_raw( admin_url( 'post.php' ) ),
-				'campaignNewUrl'              => esc_url_raw(
-					admin_url( 'post-new.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE )
-				),
-				'transactionalNewUrl'         => esc_url_raw(
-					admin_url( 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE )
-				),
-				'classicUrl'                  => esc_url_raw(
-					admin_url( 'edit.php?post_type=' . $classic_post_type . '&classic=1' )
-				),
-				'postTypeScope'               => $scope,
-				'pageTitle'                   => $page_title,
-				'pageDescription'             => $page_description,
-				'newsletterLists'             => $this->get_newsletter_list_terms(),
-				'sendStatuses'                => Send_Status::library_filter_options( $scope ),
-				'researchTeams'               => $this->get_research_team_options(),
-				'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
-				'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
-				'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
-				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
+				'postType'             => Post_Type::CAMPAIGN_POST_TYPE,
+				'pageSlug'             => self::CAMPAIGNS_PAGE_SLUG,
+				'menuTitle'            => __( 'Campaigns', 'prc-email-builder' ),
+				'pageTitle'            => __( 'Campaigns', 'prc-email-builder' ),
+				'restPath'             => '/prc-email-builder/v1/library',
+				'menuParent'           => $parent,
+				'hideDefaultNewButton' => true,
+				'postTypeScope'        => 'campaign',
+			]
+		);
+
+		$lists->register(
+			[
+				'postType'             => Post_Type::TRANSACTIONAL_POST_TYPE,
+				'pageSlug'             => self::TRANSACTIONAL_PAGE_SLUG,
+				'menuTitle'            => __( 'Transactional', 'prc-email-builder' ),
+				'pageTitle'            => __( 'Transactional Emails', 'prc-email-builder' ),
+				'restPath'             => '/prc-email-builder/v1/library',
+				'menuParent'           => $parent,
+				'hideDefaultNewButton' => true,
+				'postTypeScope'        => 'txn',
 			]
 		);
 	}
 
 	/**
-	 * @return 'campaign'|'txn'|null
+	 * Add email options to the shell boot data.
+	 *
+	 * @param array  $localize Localized shell data.
+	 * @param string $post_type Current post type.
+	 * @return array
 	 */
-	private function current_page_scope(): ?string {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : '';
-		return self::scope_from_page_slug( $page );
+	public function localize_provider( $localize, $post_type ) {
+		if ( ! Post_Type::is_email_post_type( $post_type ) ) {
+			return $localize;
+		}
+
+		$scope = Post_Type::TRANSACTIONAL_POST_TYPE === $post_type ? 'txn' : 'campaign';
+		$localize['statuses'] = [
+			[
+				'value' => 'publish',
+				'label' => __( 'Published', 'prc-email-builder' ),
+			],
+			[
+				'value' => 'draft',
+				'label' => __( 'Draft', 'prc-email-builder' ),
+			],
+			[
+				'value' => 'private',
+				'label' => __( 'Private', 'prc-email-builder' ),
+			],
+		];
+		$localize['email'] = [
+			'postEditUrl'                 => esc_url_raw( admin_url( 'post.php' ) ),
+			'campaignNewUrl'              => esc_url_raw( admin_url( 'post-new.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE ) ),
+			'transactionalNewUrl'         => esc_url_raw( admin_url( 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE ) ),
+			'postTypeScope'               => $scope,
+			'newsletterLists'             => $this->get_newsletter_list_terms(),
+			'sendStatuses'                => Send_Status::library_filter_options( $scope ),
+			'researchTeams'               => $this->get_research_team_options(),
+			'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
+			'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
+			'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
+			'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
+		];
+
+		return $localize;
 	}
 
 	/**
-	 * @return 'campaign'|'txn'|null
+	 * Enqueue the email provider after the shared shell.
+	 *
+	 * @param string $hook_suffix Current admin hook.
 	 */
-	private function scope_from_hook_suffix( string $hook_suffix ): ?string {
-		$campaigns_hook = Post_Type::CAMPAIGN_POST_TYPE . '_page_' . self::CAMPAIGNS_PAGE_SLUG;
-		$txn_hook       = Post_Type::CAMPAIGN_POST_TYPE . '_page_' . self::TRANSACTIONAL_PAGE_SLUG;
+	public function enqueue_provider_assets( string $hook_suffix ): void {
+		unset( $hook_suffix );
 
-		if ( $campaigns_hook === $hook_suffix ) {
-			return 'campaign';
+		if ( ! wp_script_is( 'prc-wp-admin-dataview', 'enqueued' ) ) {
+			return;
 		}
-		if ( $txn_hook === $hook_suffix ) {
-			return 'txn';
+
+		$asset_file = PRC_EMAIL_BUILDER_DIR . '/build/admin-dataview/index.asset.php';
+		if ( ! file_exists( $asset_file ) ) {
+			return;
 		}
-		return null;
+
+		$asset = require $asset_file;
+		wp_enqueue_script(
+			self::SCRIPT_HANDLE,
+			plugins_url( 'build/admin-dataview/index.js', PRC_EMAIL_BUILDER_FILE ),
+			array_merge( $asset['dependencies'], [ 'prc-wp-admin-dataview' ] ),
+			$asset['version'],
+			true
+		);
+
+		if ( file_exists( PRC_EMAIL_BUILDER_DIR . '/build/admin-dataview/style-index.css' ) ) {
+			wp_enqueue_style(
+				self::SCRIPT_HANDLE,
+				plugins_url( 'build/admin-dataview/style-index.css', PRC_EMAIL_BUILDER_FILE ),
+				[ 'wp-components' ],
+				$asset['version']
+			);
+		}
 	}
 
 	/**

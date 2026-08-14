@@ -1,11 +1,3 @@
-/**
- * Campaign Setup / Transactional Setup — pinned editor toolbar sidebar.
- *
- * SendPanel renders collapsible PanelBody sections:
- *  - Dispatch Info — delivery settings and send/draft actions (all email types).
- *  - Automations — follow-up sequence config (dynamic transactional only).
- */
-
 import { __, sprintf } from '@wordpress/i18n';
 import { useState, useCallback } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
@@ -80,7 +72,7 @@ interface CreateDraftResponse {
 	status: string;
 }
 
-export function SendNewsletterSidebar() {
+export function SendSidebar() {
 	const postId: number = useSelect(
 		(select) => select(editorStore).getCurrentPostId(),
 		[]

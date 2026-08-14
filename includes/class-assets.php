@@ -17,11 +17,34 @@ class Assets {
 	const SCRIPT_HANDLE                = 'prc-email-builder-sidebar';
 	const FORM_ACTION_HANDLE           = 'prc-email-builder-form-action';
 	const LATEST_CAMPAIGN_QUERY_HANDLE = 'prc-email-builder-latest-campaign-query';
+	const CAMPAIGN_QUERY_HANDLE        = 'prc-email-builder-campaign-query';
 
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_sidebar' );
 		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_form_action' );
 		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_latest_campaign_query' );
+		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_campaign_query' );
+	}
+
+	/**
+	 * Registers the Newsletter Campaigns core/query variation.
+	 *
+	 * Unscoped so listing pages (any post type) can insert the variation.
+	 */
+	public function enqueue_campaign_query(): void {
+		$asset_file = PRC_EMAIL_BUILDER_DIR . '/build/campaign-query/index.asset.php';
+		if ( ! file_exists( $asset_file ) ) {
+			return;
+		}
+		$asset = require $asset_file;
+
+		wp_enqueue_script(
+			self::CAMPAIGN_QUERY_HANDLE,
+			plugins_url( 'build/campaign-query/index.js', PRC_EMAIL_BUILDER_FILE ),
+			$asset['dependencies'],
+			$asset['version'],
+			true
+		);
 	}
 
 	/**

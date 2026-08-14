@@ -88,7 +88,7 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',serif;color-scheme:light dark;">
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',Times,serif;color-scheme:light dark;">
 
 <?php if ( ! empty( $preview_text ) ) : ?>
 <!--[if !mso]><!-->

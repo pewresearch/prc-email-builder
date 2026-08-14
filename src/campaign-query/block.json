@@ -1,0 +1,11 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "prc-email-builder/campaign-query",
+	"version": "0.1.0",
+	"title": "Campaign Query",
+	"category": "theme",
+	"description": "Editor script that registers the Newsletter Campaigns Query Loop variation.",
+	"textdomain": "prc-email-builder",
+	"editorScript": "file:./index.js"
+}
