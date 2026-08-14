@@ -158,6 +158,7 @@ export function getFieldsForScope(
 		{
 			id: 'subject',
 			type: 'text',
+			readOnly: true,
 			label: __('Subject', 'prc-email-builder'),
 			getValue: ({ item }: { item: EmailLibraryRow }) =>
 				item?.subject || '',

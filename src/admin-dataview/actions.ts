@@ -5,8 +5,8 @@ interface DataviewAction {
 }
 
 /**
- * Keep shell Edit / View / Trash. Hide View on transactional lists
- * because that post type is not public.
+ * Keep shell Edit / Duplicate / View / Trash. Hide View on transactional
+ * lists because that post type is not public.
  *
  * @param actions Incoming shell actions.
  * @param scope   Current email list scope, or null off email screens.

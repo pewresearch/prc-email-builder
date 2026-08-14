@@ -61,7 +61,19 @@ class Email_Lists {
 			return;
 		}
 
-		$parent = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
+		$parent    = 'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE;
+		$duplicate = array(
+			'includeMeta' => array(
+				'prc_email_subject',
+				'prc_email_preview_text',
+				'prc_email_template_slug',
+				'prc_email_mailchimp_audience_id',
+				'prc_email_mailchimp_segment_id',
+				'prc_email_delivery_mode',
+				'prc_email_audience_option_key',
+				'prc_email_mandrill_template',
+			),
+		);
 		$lists->register(
 			[
 				'postType'             => Post_Type::CAMPAIGN_POST_TYPE,
@@ -72,6 +84,7 @@ class Email_Lists {
 				'menuParent'           => $parent,
 				'hideDefaultNewButton' => true,
 				'postTypeScope'        => 'campaign',
+				'duplicate'            => $duplicate,
 			]
 		);
 
@@ -85,6 +98,7 @@ class Email_Lists {
 				'menuParent'           => $parent,
 				'hideDefaultNewButton' => true,
 				'postTypeScope'        => 'txn',
+				'duplicate'            => $duplicate,
 			]
 		);
 	}
