@@ -829,7 +829,6 @@ class REST_API {
 			'paged'                  => $page,
 			'orderby'                => (string) $request->get_param( 'orderby' ),
 			'order'                  => strtoupper( (string) $request->get_param( 'order' ) ),
-			's'                      => (string) $request->get_param( 'search' ),
 			'no_found_rows'          => false,
 			'update_post_meta_cache' => true,
 			'update_post_term_cache' => true,
@@ -861,6 +860,7 @@ class REST_API {
 				$request,
 				$dataview_post_type
 			);
+			$query_args = $this->apply_library_search( $query_args, $request, $statuses );
 			$query      = $this->query_library_with_dual_status_filter(
 				$query_args,
 				$mailchimp_values,
@@ -881,6 +881,7 @@ class REST_API {
 				$request,
 				$dataview_post_type
 			);
+			$query_args = $this->apply_library_search( $query_args, $request, $statuses );
 			$query      = new \WP_Query( $query_args ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 		}
 
@@ -913,6 +914,25 @@ class REST_API {
 		$response->header( 'X-WP-TotalPages', (string) $total_pages );
 
 		return $response;
+	}
+
+	/**
+	 * Route library search through ElasticPress when the DataViews shell is present.
+	 *
+	 * @param array<string, mixed> $query_args Query args.
+	 * @param WP_REST_Request      $request    Request.
+	 * @param string[]             $statuses   Post statuses.
+	 * @return array<string, mixed>
+	 */
+	private function apply_library_search( array $query_args, WP_REST_Request $request, array $statuses ): array {
+		$search = (string) $request->get_param( 'search' );
+		if ( class_exists( \PRC\Platform\Wp_Admin_Dataview\Search_Query::class ) ) {
+			return \PRC\Platform\Wp_Admin_Dataview\Search_Query::apply( $query_args, $search, $statuses );
+		}
+		if ( '' !== $search ) {
+			$query_args['s'] = $search;
+		}
+		return $query_args;
 	}
 
 	/**

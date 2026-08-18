@@ -43,6 +43,9 @@ type Viewport = 'desktop' | 'mobile';
 type ColorMode = 'light' | 'dark';
 type ActiveTab = 'preview' | 'html';
 
+const DARK_MODE_PREVIEW_STYLE =
+	'<style>body,table,td,div,p,h1,h2,h3,h4,h5,h6,li,blockquote{background-color:#1a1a1a!important;color:#f0f0f0!important;-webkit-text-fill-color:#f0f0f0!important;}a{color:#5B9BD5!important;-webkit-text-fill-color:#5B9BD5!important;}</style>';
+
 // ─── InboxBar ────────────────────────────────────────────────────────────────
 
 function InboxBar({ data }: { data: PreviewData | null }) {
@@ -177,10 +180,7 @@ function PreviewFrame({
 }) {
 	const width = viewport === 'desktop' ? DESKTOP_WIDTH : MOBILE_WIDTH;
 
-	const darkStyle =
-		colorMode === 'dark'
-			? `<style>body,table,td,div,p{background-color:#1a1a1a!important;color:#e6e6e6!important;}a{color:#7ab8f5!important;}</style>`
-			: '';
+	const darkStyle = colorMode === 'dark' ? DARK_MODE_PREVIEW_STYLE : '';
 
 	const srcDoc = darkStyle
 		? html.includes('</head>')

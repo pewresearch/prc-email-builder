@@ -58,19 +58,70 @@ class Dark_Mode_Registry {
 			return '';
 		}
 
-		$class = 'dm-' . substr( md5( $property . '|' . $light . '|' . $dark ), 0, 8 );
-		$prop  = preg_replace( '/[^a-z\-]/', '', strtolower( $property ) );
+		$prop = preg_replace( '/[^a-z\-]/', '', strtolower( $property ) );
 		if ( '' === $prop ) {
 			return '';
 		}
 
-		$declaration = $prop . ':' . Email_Style_Resolver::sanitize_css_value( $dark ) . '!important;';
-		if ( '' === Email_Style_Resolver::sanitize_css_value( $dark ) ) {
+		$sanitized = Email_Style_Resolver::sanitize_css_value( $dark );
+		if ( '' === $sanitized ) {
 			return '';
+		}
+
+		$class       = 'dm-' . substr( md5( $property . '|' . $light . '|' . $dark ), 0, 8 );
+		$declaration = $prop . ':' . $sanitized . '!important;';
+		if ( 'color' === $prop ) {
+			// iOS Mail keeps inline `color` through auto-inversion; this property is what it honors.
+			$declaration .= '-webkit-text-fill-color:' . $sanitized . '!important;';
 		}
 
 		self::add( $class, $declaration );
 		return $class;
+	}
+
+	/**
+	 * Dark-mode text rules for elements that never registered a color pair.
+	 *
+	 * Headings and paragraphs inline hardcoded dark hex. iOS Mail inverts light
+	 * backgrounds and leaves that inline color, so those nodes need a stylesheet
+	 * override with -webkit-text-fill-color.
+	 *
+	 * @return string Rule bodies (no @media wrapper).
+	 */
+	public static function get_fallback_text_css(): string {
+		$text  = self::preset_dark( 'ui-black', '#f0f0f0' );
+		$link  = self::preset_dark( 'ui-link-color', '#5B9BD5' );
+		$muted = self::preset_dark( 'ui-gray-very-dark', '#a0a0a0' );
+
+		// Omit strong/em/b/i so they inherit a parent .dm-* fill instead of flattening to body text.
+		// Body fill inherits onto anchors; restore inline color for custom/plain link classes.
+		return 'body,h1,h2,h3,h4,h5,h6,p,li,blockquote{'
+			. 'color:' . $text . '!important;'
+			. '-webkit-text-fill-color:' . $text . '!important;'
+			. '}'
+			. '.body-link,.body-link:link,.body-link:visited{'
+			. 'color:' . $link . '!important;'
+			. '-webkit-text-fill-color:' . $link . '!important;'
+			. '}'
+			. '.body-link-plain,.body-link-plain:link,.body-link-plain:visited,'
+			. '.body-link-custom,.body-link-custom:link,.body-link-custom:visited{'
+			. '-webkit-text-fill-color:currentcolor!important;'
+			. '}'
+			. '.footer-link,.footer-link:link,.footer-link:visited{'
+			. 'color:' . $muted . '!important;'
+			. '-webkit-text-fill-color:' . $muted . '!important;'
+			. '}';
+	}
+
+	/**
+	 * @param string $slug     Palette slug.
+	 * @param string $fallback Hex used when the preset is missing.
+	 */
+	private static function preset_dark( string $slug, string $fallback ): string {
+		$pair = Email_Preset_Resolver::color_pair( $slug );
+		$dark = '' !== $pair['dark'] ? $pair['dark'] : $fallback;
+		$san  = Email_Style_Resolver::sanitize_css_value( $dark );
+		return '' !== $san ? $san : $fallback;
 	}
 
 	/**

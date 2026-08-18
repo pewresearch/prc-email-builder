@@ -86,6 +86,12 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
       height: auto !important;
     }
   }
+  @media (prefers-color-scheme: dark) {
+<?php
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated from trusted preset registry.
+	echo Dark_Mode_Registry::get_fallback_text_css();
+?>
+  }
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',Times,serif;color-scheme:light dark;">
