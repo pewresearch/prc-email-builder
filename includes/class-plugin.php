@@ -106,6 +106,8 @@ class Plugin {
 		require_once $includes . 'system-email/class-system-email-recipients-table.php';
 		require_once $includes . 'system-email/class-system-email-send-log.php';
 		require_once $includes . 'system-email/class-form-send-system-email.php';
+		require_once $includes . 'system-email/class-auth-domain-matcher.php';
+		require_once $includes . 'system-email/class-auth-domain-audience-service.php';
 
 		// Scheduled follow-up automations.
 		require_once $includes . 'automations/class-automation-window.php';

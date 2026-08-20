@@ -141,12 +141,22 @@ wp prc email audience build-from-log \
   --key=typology-2026-requesters \
   --dry-run
 
+# Build from Firebase Auth email domains (substring of the domain only, not the local-part).
+# Calls buildEmailDomainAudience. Default verification is verified. Does not create a
+# draft post unless --create-post. Deploy the CF first:
+#   cd firebase && ./bin/deploy-audience-functions.sh staging /path/to/sa.json
+wp prc email audience build-from-auth-domain --domain-contains=k12 --dry-run
+wp prc email audience build-from-auth-domain \
+  --domain-contains=k12 \
+  --label="K-12 school domains (verified)"
+wp prc email audience build-from-auth-domain --domain-contains=k12 --create-post
+
 # Migrate legacy prc_email_system_email_key meta to post slugs
 wp prc email migrate-system-keys --dry-run
 wp prc email migrate-system-keys --dry-run=false
 ```
 
-Both `build-from-*` commands accept `--create-post` to draft a `prc_email_txn` newsletter pre-targeted at the new audience.
+Both `build-from-mandrill` and `build-from-log` accept `--create-post` to draft a `prc_email_txn` newsletter pre-targeted at the new audience. `build-from-auth-domain` defaults to **not** creating a post (operators usually already have a transactional email); pass `--create-post` when you want a draft.
 
 ## Scheduled automations
 

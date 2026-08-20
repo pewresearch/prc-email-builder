@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
+use PRC\Platform\CLI_Audience_Verification;
 use WP_CLI;
 use WP_CLI\Utils;
 
@@ -19,10 +20,16 @@ if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 	return;
 }
 
+if ( ! trait_exists( '\\PRC\\Platform\\CLI_Audience_Verification' ) ) {
+	require_once dirname( __DIR__, 3 ) . '/prc-firebase/includes/trait-cli-audience-verification.php';
+}
+
 /**
  * Create, list, and delete system-email audience lists for Mandrill newsletters.
  */
 class CLI_Audience {
+
+	use CLI_Audience_Verification;
 
 	/**
 	 * wp_options key prefix for audience email lists.
@@ -504,6 +511,141 @@ class CLI_Audience {
 			$create_post,
 			sprintf( 'Update for %s recipients', $final_label ),
 			sprintf( 'Update: %s', $final_label )
+		);
+	}
+
+	/**
+	 * Build an audience from Firebase Auth users whose email domain contains a substring.
+	 *
+	 * Pages Auth via the buildEmailDomainAudience Cloud Function. Matches the
+	 * domain only (the part after @). Example: --domain-contains=k12 matches
+	 * teacher@lausd.k12.ca.us and does not match k12fan@gmail.com.
+	 *
+	 * Default verification is verified-only. Unlike dataset/quiz builders, this
+	 * command does not create a draft newsletter unless --create-post is passed.
+	 *
+	 * Does not print recipient emails (PII). Dry-run still calls the Cloud
+	 * Function and reports counts only.
+	 *
+	 * ## OPTIONS
+	 *
+	 * --domain-contains=<needle>
+	 * : Case-insensitive substring of the email domain (not a regex, not the local-part).
+	 *
+	 * [--dry-run]
+	 * : Call the Cloud Function and report counts without writing wp_options or creating a post.
+	 *
+	 * [--create-post]
+	 * : After a successful persist, draft a prc_email_txn with Mandrill delivery
+	 *   targeting the new audience option. Off by default.
+	 *
+	 * [--label=<text>]
+	 * : Human-readable label for the sidebar picker. Default: Firebase Auth domains containing "<needle>" (mode).
+	 *
+	 * [--key=<slug>]
+	 * : Override the option key (full key or slug). Default: prc_email_audience_auth_domain_{slug}_{fingerprint}_{verification}.
+	 *
+	 * [--only-verified]
+	 * : Include only users with a verified Firebase email (default when no verification flag is passed).
+	 *
+	 * [--only-unverified]
+	 * : Include only users with an unverified Firebase email (must have an email on file).
+	 *
+	 * [--include-unverified]
+	 * : Include all users with an email on file (verified and unverified). Mutually exclusive with the other verification flags.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp prc email audience build-from-auth-domain --domain-contains=k12 --dry-run
+	 *
+	 *     wp prc email audience build-from-auth-domain --domain-contains=k12 --label="K-12 school domains (verified)"
+	 *
+	 *     wp prc email audience build-from-auth-domain --domain-contains=k12 --create-post
+	 *
+	 * @param array $args       Positional arguments (unused).
+	 * @param array $assoc_args Associative arguments.
+	 */
+	public function build_from_auth_domain( $args, $assoc_args ): void {
+		$domain_contains = Utils\get_flag_value( $assoc_args, 'domain-contains', '' );
+		$dry_run         = (bool) Utils\get_flag_value( $assoc_args, 'dry-run', false );
+		$create_post     = (bool) Utils\get_flag_value( $assoc_args, 'create-post', false );
+		$label           = Utils\get_flag_value( $assoc_args, 'label', null );
+		$key_raw         = Utils\get_flag_value( $assoc_args, 'key', '' );
+		$verification    = self::resolve_verification_mode( $assoc_args );
+
+		if ( '' === trim( (string) $domain_contains ) ) {
+			WP_CLI::error(
+				'--domain-contains is required (e.g. k12). Match is a case-insensitive substring of the email domain only, not the local-part.'
+			);
+		}
+
+		$audience_key = null;
+		if ( '' !== trim( (string) $key_raw ) ) {
+			$audience_key = $this->normalize_audience_key( (string) $key_raw );
+		}
+
+		WP_CLI::line(
+			sprintf(
+				'Calling buildEmailDomainAudience (domain_contains=%s, verification=%s)…',
+				(string) $domain_contains,
+				$verification
+			)
+		);
+
+		$result = Auth_Domain_Audience_Service::build(
+			(string) $domain_contains,
+			$verification,
+			array(
+				'dry_run'      => $dry_run,
+				'label'        => is_string( $label ) ? $label : null,
+				'audience_key' => $audience_key,
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::error( $result->get_error_message() );
+		}
+
+		WP_CLI::line(
+			sprintf(
+				'Scanned %s Auth users → %s matched → %s email(s) (%s).',
+				number_format( (int) ( $result['scanned'] ?? 0 ) ),
+				number_format( (int) ( $result['matched'] ?? 0 ) ),
+				number_format( (int) ( $result['count'] ?? 0 ) ),
+				(string) ( $result['verification'] ?? $verification )
+			)
+		);
+
+		if ( $dry_run ) {
+			WP_CLI::success(
+				sprintf(
+					'Dry-run complete. No data written. Would save to %s.',
+					(string) $result['key']
+				)
+			);
+			return;
+		}
+
+		WP_CLI::line( sprintf( 'Audience saved → option key: %s', (string) $result['key'] ) );
+
+		$count = (int) ( $result['count'] ?? 0 );
+		if ( $create_post && $count > 0 ) {
+			$post_label = (string) ( $result['label'] ?? $result['key'] );
+			$this->maybe_create_newsletter_draft(
+				(string) $result['key'],
+				sprintf( 'Update for %s', $post_label ),
+				sprintf( 'Update: %s', $post_label )
+			);
+		} elseif ( $create_post && 0 === $count ) {
+			WP_CLI::warning( 'Audience is empty. Skipping draft post creation.' );
+		}
+
+		WP_CLI::success(
+			sprintf(
+				'Done. Audience option: %s  |  %s email(s)',
+				(string) $result['key'],
+				number_format( $count )
+			)
 		);
 	}
 
