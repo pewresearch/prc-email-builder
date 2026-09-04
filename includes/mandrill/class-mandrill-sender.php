@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Mandrill bulk-send integration for "system email" newsletters.
  *
@@ -18,6 +17,8 @@ declare(strict_types=1);
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -59,9 +60,18 @@ class Mandrill_Sender {
 	/** Action Scheduler group for Mandrill send jobs. */
 	const ACTION_GROUP = 'prc-email-builder';
 
-	/** Options-table CAS lock for per-post Mandrill sends. */
+	/**
+	 * Options-table CAS lock for per-post Mandrill sends.
+	 *
+	 * @var Option_Lock
+	 */
 	private Option_Lock $send_lock;
 
+	/**
+	 * Constructor.
+	 *
+	 * @param Loader|null $loader Plugin loader.
+	 */
 	public function __construct( ?Loader $loader = null ) {
 		$this->send_lock = new Option_Lock( self::LOCK_OPTION_PREFIX, self::LOCK_TTL );
 		if ( $loader ) {
@@ -84,6 +94,11 @@ class Mandrill_Sender {
 	 * @return int|WP_Error Action Scheduler action ID, or WP_Error on failure.
 	 */
 	public function schedule_send( int $post_id ): int|WP_Error {
+		$ready = Email_Subject::require_for_send( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
 		if ( ! function_exists( 'as_enqueue_async_action' ) ) {
 			return new WP_Error(
 				'action_scheduler_unavailable',
@@ -93,7 +108,7 @@ class Mandrill_Sender {
 
 		$action_id = as_enqueue_async_action(
 			self::SEND_HOOK,
-			[ $post_id ],
+			array( $post_id ),
 			self::ACTION_GROUP,
 			true
 		);
@@ -124,11 +139,13 @@ class Mandrill_Sender {
 		$html = Cached_Email_Html::resolve( $post_id );
 		if ( is_wp_error( $html ) ) {
 			update_post_meta( $post_id, self::STATUS_META, 'failed' );
-			error_log( sprintf(
-				'[prc-email-builder] Mandrill scheduled send failed for post %d: %s',
-				$post_id,
-				$html->get_error_message()
-			) );
+			error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist scheduled-send failures for ops.
+				sprintf(
+					'[prc-email-builder] Mandrill scheduled send failed for post %d: %s',
+					$post_id,
+					$html->get_error_message()
+				) 
+			);
 			return;
 		}
 
@@ -138,23 +155,25 @@ class Mandrill_Sender {
 			if ( 'send_locked' === $result->get_error_code() ) {
 				if ( ! $this->is_locked( $post_id ) ) {
 					$current = (string) get_post_meta( $post_id, self::STATUS_META, true );
-					if ( in_array( $current, [ 'sending', '' ], true ) ) {
+					if ( in_array( $current, array( 'sending', '' ), true ) ) {
 						update_post_meta( $post_id, self::STATUS_META, 'failed' );
 						update_post_meta(
 							$post_id,
 							self::SUMMARY_META,
-							wp_json_encode( [ 'error' => $result->get_error_message() ] )
+							wp_json_encode( array( 'error' => $result->get_error_message() ) )
 						);
 					}
 				}
 				return;
 			}
 
-			error_log( sprintf(
-				'[prc-email-builder] Mandrill send failed for post %d: %s',
-				$post_id,
-				$result->get_error_message()
-			) );
+			error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist send failures for ops.
+				sprintf(
+					'[prc-email-builder] Mandrill send failed for post %d: %s',
+					$post_id,
+					$result->get_error_message()
+				) 
+			);
 		}
 	}
 
@@ -179,11 +198,14 @@ class Mandrill_Sender {
 
 		$delivery_mode = Post_Type::transactional_delivery_mode( $post_id );
 		$audience_key  = get_post_meta( $post_id, 'prc_email_audience_option_key', true );
-		$subject       = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
+		$ready         = Email_Subject::require_for_send( $post_id );
 		$preview_text  = get_post_meta( $post_id, 'prc_email_preview_text', true );
 
 		if ( 'mandrill' !== $delivery_mode ) {
 			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "mandrill".' );
+		}
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
 		}
 		if ( empty( $audience_key ) ) {
 			return new WP_Error( 'missing_audience_key', 'No audience option key set for this newsletter.' );
@@ -195,7 +217,7 @@ class Mandrill_Sender {
 		}
 
 		$settings = Mailchimp::get_settings();
-		$emails   = get_option( $audience_key, [] );
+		$emails   = get_option( $audience_key, array() );
 
 		if ( empty( $emails ) || ! is_array( $emails ) ) {
 			return new WP_Error( 'empty_audience', sprintf( 'No emails found in option "%s".', $audience_key ) );
@@ -223,17 +245,19 @@ class Mandrill_Sender {
 		}
 
 		// ── Resolve checkpoint / resume state ─────────────────────────────────
-		$progress      = $this->get_progress( $post_id );
-		$prior_status  = get_post_meta( $post_id, self::STATUS_META, true );
-		$completed     = [];
+		$progress     = $this->get_progress( $post_id );
+		$prior_status = get_post_meta( $post_id, self::STATUS_META, true );
+		$completed    = array();
 
 		if ( ! empty( $progress ) ) {
 			if ( ( $progress['audience_hash'] ?? '' ) === $audience_hash ) {
-				$completed = array_values( array_filter(
-					(array) ( $progress['completed_batches'] ?? [] ),
-					'is_int'
-				) );
-			} elseif ( in_array( $prior_status, [ 'partial', 'failed' ], true ) ) {
+				$completed = array_values(
+					array_filter(
+						(array) ( $progress['completed_batches'] ?? array() ),
+						'is_int'
+					) 
+				);
+			} elseif ( in_array( $prior_status, array( 'partial', 'failed' ), true ) ) {
 				// The recipient list changed under an in-progress send. Refuse to
 				// auto-resume against shifted batch boundaries — require a manual reset.
 				$this->release_lock( $post_id, $lock_token );
@@ -254,16 +278,16 @@ class Mandrill_Sender {
 		// ── Mark sending (lock already held) ─────────────────────────────────
 		update_post_meta( $post_id, self::STATUS_META, 'sending' );
 
-		$totals = [
-			'batches'        => $total_batches,
-			'sent'           => 0,
-			'queued'         => 0,
-			'rejected'       => 0,
-			'invalid'        => 0,
-			'failed_batches' => 0,
+		$totals = array(
+			'batches'         => $total_batches,
+			'sent'            => 0,
+			'queued'          => 0,
+			'rejected'        => 0,
+			'invalid'         => 0,
+			'failed_batches'  => 0,
 			'skipped_batches' => count( $completed ),
-			'sent_at'        => current_time( 'mysql', true ),
-		];
+			'sent_at'         => current_time( 'mysql', true ),
+		);
 
 		foreach ( $batches as $index => $batch ) {
 			// Skip batches already delivered in a prior run.
@@ -275,11 +299,13 @@ class Mandrill_Sender {
 			// worker reclaimed it), stop now so we never re-send a batch the new
 			// owner is responsible for. Prevents duplicate deliveries on overlap.
 			if ( ! $this->owns_lock( $post_id, $lock_token ) ) {
-				error_log( sprintf(
-					'[prc-email-builder] Mandrill send for post %d lost its lock mid-run; aborting before batch %d to avoid duplicate sends.',
-					$post_id,
-					$index
-				) );
+				error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist lock-loss so ops can diagnose duplicate-send fences.
+					sprintf(
+						'[prc-email-builder] Mandrill send for post %d lost its lock mid-run; aborting before batch %d to avoid duplicate sends.',
+						$post_id,
+						$index
+					) 
+				);
 				break;
 			}
 
@@ -288,77 +314,99 @@ class Mandrill_Sender {
 			if ( ! is_email( $reply_to ) ) {
 				$reply_to = $from_email;
 			}
-			$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : [ 'prc-newsletter' ];
+			$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : array( 'prc-newsletter' );
 
-			$message = [
+			$message = array(
 				'html'                => $html,
-				'subject'             => $subject,
+				'subject'             => $ready->line(),
 				'from_email'          => $from_email,
 				'from_name'           => $settings['from_name'] ?? '',
-				'headers'             => [ 'Reply-To' => $reply_to ],
+				'headers'             => array( 'Reply-To' => $reply_to ),
 				'track_opens'         => (bool) ( $settings['track_opens'] ?? true ),
 				'track_clicks'        => (bool) ( $settings['track_clicks'] ?? true ),
-				'tags'                => array_merge( $base_tags, [ 'bulk' ] ),
+				'tags'                => array_merge( $base_tags, array( 'bulk' ) ),
 				'preserve_recipients' => false,
 				'merge_language'      => 'mailchimp',
-				'global_merge_vars'   => [
-					[ 'name' => 'PREVIEW_TEXT', 'content' => $preview_text ],
-				],
+				'global_merge_vars'   => array(
+					array(
+						'name'    => 'PREVIEW_TEXT',
+						'content' => $preview_text,
+					),
+				),
 				'to'                  => array_map(
-					fn( string $e ) => [ 'email' => $e, 'type' => 'to' ],
+					fn( string $e ) => array(
+						'email' => $e,
+						'type'  => 'to',
+					),
 					$batch
 				),
-			];
+			);
 
 			$subaccount = (string) ( $settings['mandrill_subaccount'] ?? '' );
 			if ( '' !== $subaccount ) {
 				$message['subaccount'] = $subaccount;
 			}
 
-			$payload = [
+			/**
+			 * Filter the Mandrill message array before messages/send.
+			 *
+			 * @param array $message Mandrill message payload.
+			 * @param int   $post_id Transactional post ID.
+			 */
+			$message = apply_filters( 'prc_email_mandrill_message', $message, $post_id );
+			if ( ! is_array( $message ) ) {
+				$message = array();
+			}
+			$message = Mandrill_Send_Key::stamp( $message, $post_id );
+
+			$payload = array(
 				'key'     => $api_key,
 				'message' => $message,
 				'async'   => true,
-			];
+			);
 
 			$response = wp_remote_post(
 				self::API_URL . 'messages/send',
-				[
-					'timeout' => 30,
-					'headers' => [ 'Content-Type' => 'application/json' ],
+				array(
+					'timeout' => 30, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Mandrill batch send.
+					'headers' => array( 'Content-Type' => 'application/json' ),
 					'body'    => wp_json_encode( $payload ),
-				]
+				)
 			);
 
 			if ( is_wp_error( $response ) ) {
-				$totals['failed_batches']++;
-				error_log( sprintf(
-					'[prc-email-builder] Mandrill batch failed for post %d: %s',
-					$post_id,
-					$response->get_error_message()
-				) );
+				++$totals['failed_batches'];
+				error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist batch transport failures for ops.
+					sprintf(
+						'[prc-email-builder] Mandrill batch failed for post %d: %s',
+						$post_id,
+						$response->get_error_message()
+					) 
+				);
 				continue;
 			}
 
 			$status_code = wp_remote_retrieve_response_code( $response );
 			if ( $status_code >= 400 ) {
-				$totals['failed_batches']++;
-				$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? [];
+				++$totals['failed_batches'];
+				$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? array();
 				$detail = $body['message'] ?? $body['name'] ?? "HTTP {$status_code}";
-				error_log( sprintf(
-					'[prc-email-builder] Mandrill API error for post %d: %s',
-					$post_id,
-					$detail
-				) );
+				error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist Mandrill API errors for ops.
+					sprintf(
+						'[prc-email-builder] Mandrill API error for post %d: %s',
+						$post_id,
+						$detail
+					) 
+				);
 				continue;
 			}
 
 			// Aggregate per-recipient status counts from the response.
-			$results = json_decode( wp_remote_retrieve_body( $response ), true ) ?? [];
+			$results = json_decode( wp_remote_retrieve_body( $response ), true ) ?? array();
 			foreach ( (array) $results as $recipient ) {
 				$status = $recipient['status'] ?? '';
 				if ( isset( $totals[ $status ] ) ) {
-					$totals[ $status ]++;
+					++$totals[ $status ];
 				}
 			}
 
@@ -367,12 +415,12 @@ class Mandrill_Sender {
 			$completed_lookup[ $index ] = true;
 			$this->save_progress(
 				$post_id,
-				[
+				array(
 					'audience_hash'     => $audience_hash,
 					'total_batches'     => $total_batches,
 					'completed_batches' => $completed,
 					'updated_at'        => current_time( 'mysql', true ),
-				]
+				)
 			);
 
 			// Heartbeat: extend the lock so a long but healthy send keeps the
@@ -416,13 +464,13 @@ class Mandrill_Sender {
 	public function get_progress( int $post_id ): array {
 		$raw = get_post_meta( $post_id, self::PROGRESS_META, true );
 		if ( empty( $raw ) ) {
-			return [];
+			return array();
 		}
 		if ( is_array( $raw ) ) {
 			return $raw;
 		}
 		$decoded = json_decode( (string) $raw, true );
-		return is_array( $decoded ) ? $decoded : [];
+		return is_array( $decoded ) ? $decoded : array();
 	}
 
 	/**
@@ -516,10 +564,11 @@ class Mandrill_Sender {
 		$this->send_lock->release( $post_id, $token );
 	}
 
-	// -------------------------------------------------------------------------
-	// Private helpers
-	// -------------------------------------------------------------------------
-
+	/**
+	 * Mandrill API key from the platform constant, or empty when unset.
+	 *
+	 * @return string
+	 */
 	private function get_api_key(): string {
 		if ( defined( self::API_KEY_CONSTANT ) ) {
 			return (string) constant( self::API_KEY_CONSTANT );

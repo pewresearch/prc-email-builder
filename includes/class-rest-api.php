@@ -1,19 +1,21 @@
 <?php
-declare(strict_types=1);
 /**
  * REST API endpoints for the block editor sidebar.
  *
  * @package    PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
+use PRC\Platform\Email_Builder\Reports\Email_Reports;
 use PRC\Platform\Email_Builder\Reports\Report_Store;
-use PRC\Platform\Email_Builder\Reports\Report_Sync;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 use wpdb;
+use function PRC\Platform\Wp_Admin_Dataview\plain_text;
 
 /**
  * Provides read-only endpoints consumed by the sidebar panel:
@@ -21,324 +23,676 @@ use wpdb;
  *  GET /prc-email-builder/v1/connection                      — connection status + sender info
  *  GET /prc-email-builder/v1/audiences/{id}/segments         — Mailchimp saved segments for an audience
  *  GET /prc-email-builder/v1/audiences-system                — System-email audiences from wp_options
+ *  POST /prc-email-builder/v1/audience-jobs                  — Start a registry-backed audience job
+ *  GET /prc-email-builder/v1/audience-jobs/{jobId}           — Poll an audience job
+ *  POST /prc-email-builder/v1/audience-jobs/{jobId}/draft    — Draft a transactional email from a ready job
  *  POST /prc-email-builder/v1/send                           — Mandrill bulk send (explicit, edit_post scoped)
  *  POST /prc-email-builder/v1/campaigns/update-draft         — Push post HTML/settings to existing Mailchimp draft
  *  POST /prc-email-builder/v1/campaigns/unlink               — Clear Mailchimp campaign linkage meta
- *  POST /prc-email-builder/v1/campaigns/create-draft         — Create a new Mailchimp draft for an unlinked campaign
+ *  POST /prc-email-builder/v1/campaigns/create-draft         — Create and send a Mailchimp campaign (recovery)
+ *  POST /prc-email-builder/v1/transactional/create-from-audience — Draft prc_email_txn targeting an audience option
  */
 class REST_API {
 	const NAMESPACE = 'prc-email-builder/v1';
 
+	/**
+	 * Constructor.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'rest_api_init', $this, 'register_routes' );
 	}
 
+	/**
+	 * Register REST routes for the email builder sidebar.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			self::NAMESPACE,
 			'/audiences',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_audiences' ],
+				'callback'            => array( $this, 'get_audiences' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-			]
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/connection',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_connection' ],
+				'callback'            => array( $this, 'get_connection' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-			]
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/audiences-system',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'list_system_audiences' ],
+				'callback'            => array( $this, 'list_system_audiences' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-			]
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/auth-domain-audiences',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'start_auth_domain_audience' ),
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/auth-domain-audiences/(?P<job_id>ad_[a-z0-9]{13,32})',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_auth_domain_audience' ),
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+				'args'                => array(
+					'job_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/auth-domain-audiences/(?P<job_id>ad_[a-z0-9]{13,32})/draft',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'create_auth_domain_audience_draft' ),
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+				'args'                => array(
+					'job_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audience-jobs',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'start_audience_job' ),
+				'permission_callback' => array( $this, 'audience_job_create_permission' ),
+				'args'                => array(
+					'builder' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audience-jobs/(?P<job_id>(?:ad|ds|qz|cs)_[a-z0-9]{13,32})',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'get_audience_job' ),
+				'permission_callback' => array( $this, 'audience_job_access_permission' ),
+				'args'                => array(
+					'job_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audience-jobs/(?P<job_id>(?:ad|ds|qz|cs)_[a-z0-9]{13,32})/draft',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'create_audience_job_draft' ),
+				'permission_callback' => array( $this, 'audience_job_access_permission' ),
+				'args'                => array(
+					'job_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/transactional/create-from-audience',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'create_transactional_from_audience' ),
+				'permission_callback' => array( $this, 'create_transactional_from_audience_permission' ),
+				'args'                => array(
+					'audience_key' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'title'        => array(
+						'required'          => false,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'subject'      => array(
+						'required'          => false,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'quiz_id'      => array(
+						'required'          => false,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/send-system-email',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'send_system_email' ],
+				'callback'            => array( $this, 'send_system_email' ),
 				// Capability-gated: this endpoint can email arbitrary addresses,
 				// so it is for editors / programmatic callers. Anonymous public
 				// sends go through the nonce + captcha gated form action at
 				// /prc-api/v3/form/send-system-email instead. Requires edit rights
 				// on the *specific* transactional post (not just the generic
 				// edit_posts cap) — see send_system_email_permission_check().
-				'permission_callback' => [ $this, 'send_system_email_permission_check' ],
-				'args'                => [
-					'post_id'  => [
+				'permission_callback' => array( $this, 'send_system_email_permission_check' ),
+				'args'                => array(
+					'post_id'  => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-					'to_email' => [
+					),
+					'to_email' => array(
 						'required'          => true,
 						'type'              => 'string',
 						'sanitize_callback' => 'sanitize_email',
 						'validate_callback' => fn( $v ) => is_email( $v ),
-					],
-					'context'  => [
+					),
+					'context'  => array(
 						'required' => false,
 						'type'     => 'object',
-						'default'  => [],
-					],
-					'dry_run'  => [
+						'default'  => array(),
+					),
+					'dry_run'  => array(
 						'required' => false,
 						'type'     => 'boolean',
 						'default'  => false,
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/send',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'send_newsletter' ],
-				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'send_newsletter' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-					'reset'   => [
+					),
+					'reset'   => array(
 						'required' => false,
 						'type'     => 'boolean',
 						'default'  => false,
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/campaigns/update-draft',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'update_mailchimp_draft' ],
-				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'update_mailchimp_draft' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/campaigns/unlink',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'unlink_mailchimp_campaign' ],
-				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'unlink_mailchimp_campaign' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/campaigns/create-draft',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'create_mailchimp_draft' ],
-				'permission_callback' => [ $this, 'send_newsletter_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'create_mailchimp_draft' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/campaigns/(?P<post_id>\d+)/report',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_campaign_report' ],
-				'permission_callback' => [ $this, 'campaign_report_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'get_campaign_report' ),
+				'permission_callback' => array( $this, 'campaign_report_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/campaigns/(?P<post_id>\d+)/report/refresh',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'refresh_campaign_report' ],
-				'permission_callback' => [ $this, 'campaign_report_permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'refresh_campaign_report' ),
+				'permission_callback' => array( $this, 'campaign_report_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/mandrill-webhook',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'mandrill_webhook' ),
+				'permission_callback' => array( $this, 'mandrill_webhook_permission' ),
+				'args'                => array(
+					'key'             => array(
+						'required' => false,
+						'type'     => 'string',
+					),
+					'mandrill_events' => array(
+						'required' => false,
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/audiences/(?P<audience_id>[a-f0-9]+)/segments',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_segments' ],
+				'callback'            => array( $this, 'get_segments' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-				'args'                => [
-					'audience_id' => [
+				'args'                => array(
+					'audience_id' => array(
 						'type'              => 'string',
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/audiences/(?P<audience_id>[a-f0-9]+)/count',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_audience_subscriber_count' ],
+				'callback'            => array( $this, 'get_audience_subscriber_count' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-				'args'                => [
-					'audience_id' => [
+				'args'                => array(
+					'audience_id' => array(
 						'type'              => 'string',
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'segment_id'  => [
+					),
+					'segment_id'  => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/library',
-			[
+			array(
 				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'get_library' ],
+				'callback'            => array( $this, 'get_library' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-				'args'                => [
-					'post_type'         => [
+				'args'                => array(
+					'post_type'        => array(
 						'type'              => 'string',
 						'default'           => 'all',
 						'sanitize_callback' => 'sanitize_text_field',
-						'enum'              => [ 'all', 'campaign', 'txn' ],
-					],
-					'newsletter_list'   => [
+						'enum'              => array( 'all', 'campaign', 'txn' ),
+					),
+					'newsletter_list'  => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'mailchimp_status'  => [
+					),
+					'mailchimp_status' => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'mandrill_status'   => [
+					),
+					'mandrill_status'  => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'search'            => [
+					),
+					'search'           => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'orderby'           => [
+					),
+					'orderby'          => array(
 						'type'              => 'string',
 						'default'           => 'date',
 						'sanitize_callback' => 'sanitize_text_field',
-						'enum'              => [ 'date', 'modified', 'title', 'open_rate', 'click_rate' ],
-					],
-					'order'             => [
+						'enum'              => array( 'date', 'modified', 'title', 'open_rate', 'click_rate' ),
+					),
+					'order'            => array(
 						'type'              => 'string',
 						'default'           => 'desc',
 						'sanitize_callback' => 'sanitize_text_field',
-						'enum'              => [ 'asc', 'desc' ],
-					],
-					'status'            => [
+						'enum'              => array( 'asc', 'desc' ),
+					),
+					'status'           => array(
 						'type'              => 'string',
 						'default'           => 'publish,draft,private',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-					'per_page'          => [
+					),
+					'per_page'         => array(
 						'type'              => 'integer',
 						'default'           => 20,
 						'sanitize_callback' => 'absint',
-					],
-					'page'              => [
+					),
+					'page'             => array(
 						'type'              => 'integer',
 						'default'           => 1,
 						'sanitize_callback' => 'absint',
-					],
-					'watchingOnly'      => [
+					),
+					'watchingOnly'     => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_key',
-					],
-					'activeEditors'     => [
+					),
+					'activeEditors'    => array(
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_key',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
-
 	}
 
+	/**
+	 * Start a generic audience build job.
+	 *
+	 * @param WP_REST_Request $request Request with builder plus builder-specific input.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function start_audience_job( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$builder = sanitize_key( (string) $request->get_param( 'builder' ) );
+		$input   = $request->get_json_params();
+		if ( ! is_array( $input ) ) {
+			$input = $request->get_params();
+		}
+		$view = Audience_Job::start( $builder, $input );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return new WP_REST_Response( $view, 202 );
+	}
+
+	/**
+	 * Poll a generic audience build job.
+	 *
+	 * @param WP_REST_Request $request Request with job_id.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function get_audience_job( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$view = Audience_Job::status( (string) $request['job_id'] );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return rest_ensure_response( $view );
+	}
+
+	/**
+	 * Create a transactional draft from a finished audience job.
+	 *
+	 * @param WP_REST_Request $request Request with job_id.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function create_audience_job_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$view = Audience_Job::create_draft( (string) $request['job_id'] );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return rest_ensure_response( $view );
+	}
+
+	/**
+	 * Permission check for starting an audience job.
+	 *
+	 * @param WP_REST_Request $request Request with builder and source id.
+	 */
+	public function audience_job_create_permission( WP_REST_Request $request ): bool {
+		$slug    = sanitize_key( (string) $request->get_param( 'builder' ) );
+		$builder = Audience_Builder_Registry::get( $slug );
+		if ( null === $builder ) {
+			return current_user_can( 'edit_posts' );
+		}
+		if ( 'source-entity' === $builder['form'] ) {
+			$id = (int) $request->get_param( $builder['source_id_param'] );
+			return $id > 0 && current_user_can( 'edit_post', $id );
+		}
+
+		return current_user_can( 'edit_posts' );
+	}
+
+	/**
+	 * Permission check for polling or drafting an audience job.
+	 *
+	 * @param WP_REST_Request $request Request with job_id.
+	 */
+	public function audience_job_access_permission( WP_REST_Request $request ): bool {
+		$job_id = (string) $request['job_id'];
+		$job    = get_option( Audience_Job::job_option_key( $job_id ), null );
+		if ( ! is_array( $job ) ) {
+			return current_user_can( 'edit_posts' );
+		}
+
+		return Audience_Job::current_user_can_access( $job );
+	}
+
+	/**
+	 * Start an auth-domain audience build job.
+	 *
+	 * @param WP_REST_Request $request Request with domainContains, verification, and label.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function start_auth_domain_audience( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$verification = (string) $request->get_param( 'verification' );
+		$input        = array(
+			'domainContains' => sanitize_text_field( (string) $request->get_param( 'domainContains' ) ),
+			'verification'   => sanitize_key( '' !== $verification ? $verification : 'verified' ),
+			'label'          => sanitize_text_field( (string) $request->get_param( 'label' ) ),
+		);
+		$view         = Auth_Domain_Audience_Build::start( $input );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return new WP_REST_Response( $view, 202 );
+	}
+
+	/**
+	 * Poll an auth-domain audience build job.
+	 *
+	 * @param WP_REST_Request $request Request with job_id.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function get_auth_domain_audience( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$view = Auth_Domain_Audience_Build::status( (string) $request['job_id'] );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return rest_ensure_response( $view );
+	}
+
+	/**
+	 * Create a transactional draft from a finished auth-domain audience job.
+	 *
+	 * @param WP_REST_Request $request Request with job_id.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function create_auth_domain_audience_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$view = Auth_Domain_Audience_Build::create_draft( (string) $request['job_id'] );
+		if ( is_wp_error( $view ) ) {
+			return $view;
+		}
+
+		return rest_ensure_response( $view );
+	}
+
+	/**
+	 * Permission check for drafting a transactional email from an audience option.
+	 *
+	 * @param WP_REST_Request $request Request with optional quiz_id.
+	 * @return bool
+	 */
+	public function create_transactional_from_audience_permission( WP_REST_Request $request ): bool {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return false;
+		}
+
+		$quiz_id = (int) $request->get_param( 'quiz_id' );
+		if ( $quiz_id > 0 && ! current_user_can( 'edit_post', $quiz_id ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Draft a transactional email targeting an audience option.
+	 *
+	 * @param WP_REST_Request $request Request with audience_key and optional title, subject, quiz_id.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function create_transactional_from_audience( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$args  = array();
+		$title = $request->get_param( 'title' );
+		if ( is_string( $title ) && '' !== $title ) {
+			$args['title'] = $title;
+		}
+		$subject = $request->get_param( 'subject' );
+		if ( is_string( $subject ) && '' !== $subject ) {
+			$args['subject'] = $subject;
+		}
+		$quiz_id = (int) $request->get_param( 'quiz_id' );
+		if ( $quiz_id > 0 ) {
+			$args['quiz_id'] = $quiz_id;
+		}
+
+		$result = Transactional_Draft::create_from_audience(
+			(string) $request->get_param( 'audience_key' ),
+			$args
+		);
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		return rest_ensure_response( $result );
+	}
+
+	/**
+	 * GET /audiences — Mailchimp audience list.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
 	public function get_audiences( WP_REST_Request $request ): WP_REST_Response {
 		$mailchimp = new Mailchimp();
 		$audiences = $mailchimp->get_audiences();
 
 		if ( is_wp_error( $audiences ) ) {
 			return new WP_REST_Response(
-				[ 'error' => $audiences->get_error_message() ],
+				array( 'error' => $audiences->get_error_message() ),
 				503
 			);
 		}
 
 		$formatted = array_map(
-			fn( $id, $name ) => [ 'id' => $id, 'name' => $name ],
+			fn( $id, $name ) => array(
+				'id'   => $id,
+				'name' => $name,
+			),
 			array_keys( $audiences ),
 			array_values( $audiences )
 		);
@@ -346,17 +700,31 @@ class REST_API {
 		return rest_ensure_response( $formatted );
 	}
 
+	/**
+	 * GET /connection — Mailchimp connection status and sender info.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
 	public function get_connection( WP_REST_Request $request ): WP_REST_Response {
 		$mailchimp = new Mailchimp();
 		$settings  = Mailchimp::get_settings();
 
-		return rest_ensure_response( [
-			'connected'  => $mailchimp->is_connected(),
-			'from_name'  => $settings['from_name'],
-			'from_email' => $settings['from_email'],
-		] );
+		return rest_ensure_response(
+			array(
+				'connected'  => $mailchimp->is_connected(),
+				'from_name'  => $settings['from_name'],
+				'from_email' => $settings['from_email'],
+			)
+		);
 	}
 
+	/**
+	 * GET /audiences-system — system-email audiences stored in options.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
 	public function list_system_audiences( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
 
@@ -371,9 +739,9 @@ class REST_API {
 			)
 		);
 
-		$audiences = [];
+		$audiences = array();
 		foreach ( $results as $meta_option_name ) {
-			$meta = get_option( $meta_option_name, [] );
+			$meta = get_option( $meta_option_name, array() );
 			// Mirror CLI_Audience::is_audience_meta_array(): skip empty / list-shaped
 			// options (e.g. a raw email list whose key happens to end in "_meta") so
 			// the picker never surfaces non-audience options the CLI would ignore.
@@ -386,13 +754,7 @@ class REST_API {
 			}
 			// The base audience key is the meta key without the _meta suffix.
 			$audience_key = substr( $meta_option_name, 0, -5 );
-			$audiences[]  = [
-				'key'        => $audience_key,
-				'label'      => $meta['label'] ?? $audience_key,
-				'count'      => (int) ( $meta['count'] ?? 0 ),
-				'dataset_id' => $meta['dataset_id'] ?? null,
-				'built_at'   => $meta['built_at'] ?? null,
-			];
+			$audiences[]  = Audience_Builder_Registry::describe_audience( $audience_key, $meta );
 		}
 
 		return rest_ensure_response( $audiences );
@@ -411,6 +773,9 @@ class REST_API {
 
 	/**
 	 * Permission check for campaign engagement report endpoints.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 * @return bool
 	 */
 	public function campaign_report_permission_check( WP_REST_Request $request ): bool {
 		$post_id = (int) $request->get_param( 'post_id' );
@@ -419,44 +784,104 @@ class REST_API {
 	}
 
 	/**
-	 * GET /campaigns/{post_id}/report — stored engagement envelope for the editor panel.
+	 * GET /campaigns/{post_id}/report — stored or live engagement envelope.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 * @return WP_REST_Response|\WP_Error
 	 */
 	public function get_campaign_report( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
-		$post_id = (int) $request->get_param( 'post_id' );
-		$post    = get_post( $post_id );
-
-		if ( ! $post || ! Post_Type::is_campaign_post( $post ) ) {
-			return new \WP_Error(
-				'invalid_post',
-				__( 'Invalid campaign post.', 'prc-email-builder' ),
-				[ 'status' => 404 ]
-			);
+		$post = $this->engagement_report_post( $request );
+		if ( is_wp_error( $post ) ) {
+			return $post;
 		}
 
-		return rest_ensure_response( Report_Store::envelope( $post_id ) );
+		return rest_ensure_response( Email_Reports::envelope( (int) $post->ID ) );
 	}
 
 	/**
-	 * POST /campaigns/{post_id}/report/refresh — on-demand Mailchimp report pull.
+	 * POST /campaigns/{post_id}/report/refresh — Mailchimp pull or txn ledger recompute.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 * @return WP_REST_Response|\WP_Error
 	 */
 	public function refresh_campaign_report( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
-		$post_id = (int) $request->get_param( 'post_id' );
-		$post    = get_post( $post_id );
-
-		if ( ! $post || ! Post_Type::is_campaign_post( $post ) ) {
-			return new \WP_Error(
-				'invalid_post',
-				__( 'Invalid campaign post.', 'prc-email-builder' ),
-				[ 'status' => 404 ]
-			);
+		$post = $this->engagement_report_post( $request );
+		if ( is_wp_error( $post ) ) {
+			return $post;
 		}
 
-		$result = Report_Sync::refresh_now( $post_id );
+		$result = Email_Reports::refresh( (int) $post->ID );
 		if ( is_wp_error( $result ) ) {
 			return $this->normalize_rest_error( $result );
 		}
 
 		return rest_ensure_response( $result );
+	}
+
+	/**
+	 * Whether the Mandrill webhook key matches this plugin or, if loaded, CRM.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function mandrill_webhook_permission( WP_REST_Request $request ): bool {
+		$provided = (string) $request->get_param( 'key' );
+		if ( Mandrill_Event_Ledger::webhook_key_is_valid( $provided ) ) {
+			return true;
+		}
+		if ( class_exists( '\\PRC\\Platform\\CRM\\Email_Activity' ) ) {
+			return \PRC\Platform\CRM\Email_Activity::webhook_key_is_valid( $provided );
+		}
+		return false;
+	}
+
+	/**
+	 * POST /mandrill-webhook — ingest Mandrill events into the full-audience ledger.
+	 *
+	 * @param WP_REST_Request $request Request with mandrill_events.
+	 * @return array<string, int>
+	 */
+	public function mandrill_webhook( WP_REST_Request $request ): array {
+		$raw = $request->get_param( 'mandrill_events' );
+		if ( empty( $raw ) ) {
+			$body = $request->get_json_params();
+			if ( is_array( $body ) && isset( $body['mandrill_events'] ) ) {
+				$raw = $body['mandrill_events'];
+			}
+		}
+
+		$events = Mandrill_Event_Ledger::parse_mandrill_events( $raw );
+		$stored = Mandrill_Event_Ledger::ingest_events( $events );
+
+		if ( class_exists( '\\PRC\\Platform\\CRM\\Email_Activity' ) ) {
+			foreach ( $events as $event ) {
+				\PRC\Platform\CRM\Email_Activity::ingest_event( $event );
+			}
+		}
+
+		return array(
+			'stored' => $stored,
+		);
+	}
+
+	/**
+	 * Campaign or transactional post for engagement report routes.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 * @return \WP_Post|\WP_Error
+	 */
+	private function engagement_report_post( WP_REST_Request $request ) {
+		$post_id = (int) $request->get_param( 'post_id' );
+		$post    = get_post( $post_id );
+
+		if ( ! $post || ( ! Post_Type::is_campaign_post( $post ) && ! Post_Type::is_transactional_post( $post ) ) ) {
+			return new \WP_Error(
+				'invalid_post',
+				__( 'Invalid email post.', 'prc-email-builder' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		return $post;
 	}
 
 	/**
@@ -473,7 +898,7 @@ class REST_API {
 			return new \WP_Error(
 				'invalid_post',
 				__( 'Invalid transactional email post.', 'prc-email-builder' ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
@@ -481,7 +906,7 @@ class REST_API {
 			return new \WP_Error(
 				'not_published',
 				__( 'Newsletter must be published before sending.', 'prc-email-builder' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -489,7 +914,7 @@ class REST_API {
 			return new \WP_Error(
 				'migrated',
 				__( 'This newsletter has been migrated and cannot be sent from the builder.', 'prc-email-builder' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -497,7 +922,7 @@ class REST_API {
 			return new \WP_Error(
 				'wrong_delivery_mode',
 				__( 'Only bulk-list transactional emails can be sent from this endpoint.', 'prc-email-builder' ),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -506,7 +931,7 @@ class REST_API {
 			return new \WP_Error(
 				'already_sent',
 				__( 'This newsletter was already sent. Pass reset=true to send again.', 'prc-email-builder' ),
-				[ 'status' => 409 ]
+				array( 'status' => 409 )
 			);
 		}
 
@@ -517,7 +942,7 @@ class REST_API {
 
 		$html = Cached_Email_Html::resolve( $post_id );
 		if ( is_wp_error( $html ) ) {
-			$html->add_data( [ 'status' => 409 ] );
+			$html->add_data( array( 'status' => 409 ) );
 			return $html;
 		}
 
@@ -526,26 +951,28 @@ class REST_API {
 			return new \WP_Error(
 				'send_locked',
 				__( 'A send is already in progress for this newsletter.', 'prc-email-builder' ),
-				[ 'status' => 409 ]
+				array( 'status' => 409 )
 			);
 		}
 
 		$scheduled = $sender->schedule_send( $post_id );
 		if ( is_wp_error( $scheduled ) ) {
 			$code = $scheduled->get_error_code();
-			if ( in_array( $code, [ 'send_locked', 'send_already_scheduled' ], true ) ) {
-				$scheduled->add_data( [ 'status' => 409 ] );
+			if ( in_array( $code, array( 'send_locked', 'send_already_scheduled' ), true ) ) {
+				$scheduled->add_data( array( 'status' => 409 ) );
+			} elseif ( Email_Subject::ERROR_CODE === $code ) {
+				$scheduled->add_data( array( 'status' => 400 ) );
 			} else {
-				$scheduled->add_data( [ 'status' => 500 ] );
+				$scheduled->add_data( array( 'status' => 500 ) );
 			}
 			return $scheduled;
 		}
 
 		return rest_ensure_response(
-			[
+			array(
 				'status'  => 'sending',
-				'summary' => [],
-			]
+				'summary' => array(),
+			)
 		);
 	}
 
@@ -563,6 +990,12 @@ class REST_API {
 		return $post_id > 0 && current_user_can( 'edit_post', $post_id );
 	}
 
+	/**
+	 * POST /transactional/{post_id}/send — send one transactional email.
+	 *
+	 * @param WP_REST_Request $request Request with post_id, to_email, context, and optional dry_run.
+	 * @return WP_REST_Response|\WP_Error
+	 */
 	public function send_system_email( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
 		$post_id  = (int) $request->get_param( 'post_id' );
 		$to_email = (string) $request->get_param( 'to_email' );
@@ -574,7 +1007,15 @@ class REST_API {
 			if ( is_wp_error( $preview ) ) {
 				return $preview;
 			}
-			return rest_ensure_response( array_merge( [ 'success' => true, 'dry_run' => true ], $preview ) );
+			return rest_ensure_response(
+				array_merge(
+					array(
+						'success' => true,
+						'dry_run' => true,
+					),
+					$preview
+				)
+			);
 		}
 
 		$result = System_Email_Sender::send( $post_id, $to_email, $context );
@@ -582,16 +1023,22 @@ class REST_API {
 			return $result;
 		}
 
-		return rest_ensure_response( [ 'success' => true ] );
+		return rest_ensure_response( array( 'success' => true ) );
 	}
 
+	/**
+	 * GET /audiences/{id}/segments — Mailchimp saved segments for an audience.
+	 *
+	 * @param WP_REST_Request $request Request with audience_id.
+	 * @return WP_REST_Response
+	 */
 	public function get_segments( WP_REST_Request $request ): WP_REST_Response {
 		$audience_id = (string) $request['audience_id'];
 		$segments    = ( new Mailchimp() )->get_segments( $audience_id );
 
 		if ( is_wp_error( $segments ) ) {
 			return new WP_REST_Response(
-				[ 'error' => $segments->get_error_message() ],
+				array( 'error' => $segments->get_error_message() ),
 				503
 			);
 		}
@@ -611,16 +1058,16 @@ class REST_API {
 
 		if ( is_wp_error( $count ) ) {
 			return new WP_REST_Response(
-				[ 'error' => $count->get_error_message() ],
+				array( 'error' => $count->get_error_message() ),
 				503
 			);
 		}
 
 		return rest_ensure_response(
-			[
+			array(
 				'count' => (int) $count,
 				'scope' => '' !== $segment_id ? 'segment' : 'audience',
-			]
+			)
 		);
 	}
 
@@ -636,7 +1083,7 @@ class REST_API {
 			return new \WP_Error(
 				'invalid_post_type',
 				'Mailchimp draft updates apply only to campaign newsletters.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -646,7 +1093,7 @@ class REST_API {
 		}
 
 		return rest_ensure_response(
-			array_merge( [ 'success' => true ], $result )
+			array_merge( array( 'success' => true ), $result )
 		);
 	}
 
@@ -664,109 +1111,59 @@ class REST_API {
 			return new \WP_Error(
 				'invalid_post_type',
 				'Mailchimp campaign unlink applies only to campaign newsletters.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
 		$cleared = Campaign_Linkage::clear( $post_id );
 
 		return rest_ensure_response(
-			[
+			array(
 				'success' => true,
 				'post_id' => $post_id,
-				'cleared' => [
+				'cleared' => array(
 					'campaign_id' => $cleared['campaign_id'],
 					'had_report'  => $cleared['had_report'],
-				],
-				'linkage' => [
+				),
+				'linkage' => array(
 					'campaign_id' => '',
 					'admin_url'   => '',
 					'status'      => '',
-				],
-			]
+				),
+			)
 		);
 	}
 
 	/**
-	 * Create a Mailchimp draft for a published, unlinked campaign newsletter.
+	 * Create and send a Mailchimp campaign for a published campaign newsletter.
+	 *
+	 * Recovery path when auto-dispatch failed, or to retry send for a linked
+	 * draft (`save` status). Route path kept for backward compatibility.
 	 *
 	 * @param WP_REST_Request $request Request with post_id.
 	 */
 	public function create_mailchimp_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
 		$post_id = (int) $request->get_param( 'post_id' );
 
-		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+		$linkage = Campaign_Linkage::read( $post_id );
+		if (
+			'' !== $linkage['campaign_id']
+			&& ! in_array( $linkage['status'], array( '', 'save' ), true )
+		) {
 			return new \WP_Error(
-				'invalid_post_type',
-				'Mailchimp draft creation applies only to campaign newsletters.',
-				[ 'status' => 400 ]
+				'already_sent',
+				'This campaign was already sent or is no longer a Mailchimp draft. Unlink it first to create a new send.',
+				array( 'status' => 409 )
 			);
 		}
 
-		$post = get_post( $post_id );
-		if ( ! $post || 'publish' !== $post->post_status ) {
-			return new \WP_Error(
-				'not_published',
-				'Publish the campaign before creating a Mailchimp draft.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		if ( Migration::is_migrated( $post_id ) ) {
-			return new \WP_Error(
-				'migrated_campaign',
-				'Migrated campaigns cannot create a new Mailchimp draft from this panel.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		if ( Campaign_Linkage::is_linked( $post_id ) ) {
-			return new \WP_Error(
-				'already_linked',
-				'This campaign is already linked to a Mailchimp campaign. Unlink it first.',
-				[ 'status' => 409 ]
-			);
-		}
-
-		$mailchimp = new Mailchimp();
-		if ( ! $mailchimp->is_connected() ) {
-			return new \WP_Error(
-				'mailchimp_not_connected',
-				'Mailchimp is not connected.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		$html = Cached_Email_Html::resolve( $post_id );
-		if ( is_wp_error( $html ) ) {
-			return $this->normalize_rest_error( $html );
-		}
-		if ( '' === $html ) {
-			return new \WP_Error(
-				'missing_email_html',
-				'Email HTML is not ready. Generate email content before creating a Mailchimp draft.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		$result = $mailchimp->create_campaign_draft( $post_id, $html );
+		$result = ( new Mailchimp() )->create_and_send_campaign( $post_id, true );
 		if ( is_wp_error( $result ) ) {
 			return $this->normalize_rest_error( $result );
 		}
 
-		Mailchimp::persist_campaign_meta(
-			$post_id,
-			$result['campaign_id'],
-			$result['admin_url']
-		);
-
 		return rest_ensure_response(
-			[
-				'success'     => true,
-				'campaign_id' => $result['campaign_id'],
-				'admin_url'   => $result['admin_url'],
-				'status'      => 'save',
-			]
+			array_merge( array( 'success' => true ), $result )
 		);
 	}
 
@@ -787,7 +1184,7 @@ class REST_API {
 			array_map( 'sanitize_key', explode( ',', $status_param ) )
 		);
 		if ( empty( $statuses ) ) {
-			$statuses = [ 'publish', 'draft', 'private' ];
+			$statuses = array( 'publish', 'draft', 'private' );
 		}
 
 		$mailchimp_values = $this->parse_library_status_values(
@@ -804,24 +1201,24 @@ class REST_API {
 		if ( $querying_both && ( $has_mailchimp || $has_mandrill ) ) {
 			if ( $has_mailchimp && ! $has_mandrill ) {
 				$post_types = array_values(
-					array_intersect( $post_types, [ Post_Type::CAMPAIGN_POST_TYPE ] )
+					array_intersect( $post_types, array( Post_Type::CAMPAIGN_POST_TYPE ) )
 				);
 			} elseif ( $has_mandrill && ! $has_mailchimp ) {
 				$post_types = array_values(
-					array_intersect( $post_types, [ Post_Type::TRANSACTIONAL_POST_TYPE ] )
+					array_intersect( $post_types, array( Post_Type::TRANSACTIONAL_POST_TYPE ) )
 				);
 			}
 		}
 
 		if ( empty( $post_types ) ) {
-			$response = rest_ensure_response( [] );
+			$response = rest_ensure_response( array() );
 			$response->header( 'X-WP-Total', '0' );
 			$response->header( 'X-WP-TotalPages', '0' );
 
 			return $response;
 		}
 
-		$query_args = [
+		$query_args = array(
 			'post_type'              => $post_types,
 			'post_status'            => $statuses,
 			'perm'                   => 'editable',
@@ -832,16 +1229,16 @@ class REST_API {
 			'no_found_rows'          => false,
 			'update_post_meta_cache' => true,
 			'update_post_term_cache' => true,
-		];
+		);
 
-		$orderby_param      = (string) $request->get_param( 'orderby' );
-		$engagement_sort    = in_array( $orderby_param, [ 'open_rate', 'click_rate' ], true );
-		$engagement_meta_key = $orderby_param === 'click_rate'
+		$orderby_param       = (string) $request->get_param( 'orderby' );
+		$engagement_sort     = in_array( $orderby_param, array( 'open_rate', 'click_rate' ), true );
+		$engagement_meta_key = 'click_rate' === $orderby_param
 			? Report_Store::META_CLICK_RATE
 			: Report_Store::META_OPEN_RATE;
 
 		if ( $engagement_sort ) {
-			$query_args['posts_per_page'] = -1;
+			$query_args['posts_per_page'] = -1; // phpcs:ignore WordPressVIPMinimum.Performance.NoPaging.posts_per_page_posts_per_page -- engagement sort ranks the full editable set in PHP, then slices to the request page.
 			$query_args['paged']          = 1;
 			$query_args['orderby']        = 'date';
 		}
@@ -888,8 +1285,8 @@ class REST_API {
 		$posts = $query->posts;
 
 		if ( $engagement_sort ) {
-			$order = strtoupper( (string) $request->get_param( 'order' ) ) === 'ASC' ? 'ASC' : 'DESC';
-			$posts = $this->sort_posts_by_engagement_rate( $posts, $engagement_meta_key, $order );
+			$order       = strtoupper( (string) $request->get_param( 'order' ) ) === 'ASC' ? 'ASC' : 'DESC';
+			$posts       = $this->sort_posts_by_engagement_rate( $posts, $engagement_meta_key, $order );
 			$total       = count( $posts );
 			$total_pages = max( 1, (int) ceil( $total / $per_page ) );
 			$offset      = ( $page - 1 ) * $per_page;
@@ -972,7 +1369,11 @@ class REST_API {
 	}
 
 	/**
-	 * @return float|null Null when the row has no stored engagement rate.
+	 * Stored engagement rate for library sort, or null when the row has none.
+	 *
+	 * @param int    $post_id  Email post ID.
+	 * @param string $meta_key Open-rate or click-rate meta key.
+	 * @return float|null
 	 */
 	private function engagement_rate_for_sort( int $post_id, string $meta_key ): ?float {
 		if ( Post_Type::CAMPAIGN_POST_TYPE !== get_post_type( $post_id ) ) {
@@ -1000,8 +1401,8 @@ class REST_API {
 	 */
 	private function resolve_library_post_types( string $post_type_param ): array {
 		return match ( $post_type_param ) {
-			'campaign' => [ Post_Type::CAMPAIGN_POST_TYPE ],
-			'txn'      => [ Post_Type::TRANSACTIONAL_POST_TYPE ],
+			'campaign' => array( Post_Type::CAMPAIGN_POST_TYPE ),
+			'txn'      => array( Post_Type::TRANSACTIONAL_POST_TYPE ),
 			default    => Post_Type::POST_TYPES,
 		};
 	}
@@ -1021,17 +1422,17 @@ class REST_API {
 		);
 
 		if ( empty( $slugs ) ) {
-			return [];
+			return array();
 		}
 
-		return [
-			[
+		return array(
+			array(
 				'taxonomy' => Post_Type::TAXONOMY,
 				'field'    => 'slug',
 				'terms'    => $slugs,
 				'operator' => 'IN',
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -1061,7 +1462,7 @@ class REST_API {
 	 * @return array<int|string, mixed>
 	 */
 	private function build_library_meta_query_from_values( array $mailchimp_values, array $mandrill_values ): array {
-		$clauses = [];
+		$clauses = array();
 
 		if ( ! empty( $mailchimp_values ) ) {
 			$clauses[] = $this->build_status_meta_clause(
@@ -1078,7 +1479,7 @@ class REST_API {
 		}
 
 		if ( empty( $clauses ) ) {
-			return [];
+			return array();
 		}
 
 		if ( count( $clauses ) === 1 ) {
@@ -1086,7 +1487,7 @@ class REST_API {
 		}
 
 		return array_merge(
-			[ 'relation' => 'OR' ],
+			array( 'relation' => 'OR' ),
 			$clauses
 		);
 	}
@@ -1105,45 +1506,45 @@ class REST_API {
 		array $mailchimp_values,
 		array $mandrill_values
 	): \WP_Query {
-		$id_args = $query_args;
-		$id_args['posts_per_page'] = -1;
+		$id_args                   = $query_args;
+		$id_args['posts_per_page'] = -1; // phpcs:ignore WordPressVIPMinimum.Performance.NoPaging.posts_per_page_posts_per_page -- ID union across post types before the paged library query.
 		$id_args['fields']         = 'ids';
 		unset( $id_args['paged'] );
 
 		$existing_meta = isset( $id_args['meta_query'] ) && is_array( $id_args['meta_query'] )
 			? $id_args['meta_query']
-			: [];
+			: array();
 
 		$campaign_args = array_merge(
 			$id_args,
-			[
-				'post_type'  => [ Post_Type::CAMPAIGN_POST_TYPE ],
+			array(
+				'post_type'  => array( Post_Type::CAMPAIGN_POST_TYPE ),
 				'meta_query' => array_merge(
 					$existing_meta,
-					[
+					array(
 						$this->build_status_meta_clause(
 							'prc_email_mailchimp_campaign_status',
 							$mailchimp_values
 						),
-					]
+					)
 				),
-			]
+			)
 		);
 
 		$txn_args = array_merge(
 			$id_args,
-			[
-				'post_type'  => [ Post_Type::TRANSACTIONAL_POST_TYPE ],
+			array(
+				'post_type'  => array( Post_Type::TRANSACTIONAL_POST_TYPE ),
 				'meta_query' => array_merge(
 					$existing_meta,
-					[
+					array(
 						$this->build_status_meta_clause(
 							'prc_email_mandrill_send_status',
 							$mandrill_values
 						),
-					]
+					)
 				),
-			]
+			)
 		);
 
 		$campaign_ids = ( new \WP_Query( $campaign_args ) )->posts; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
@@ -1152,10 +1553,10 @@ class REST_API {
 
 		if ( empty( $ids ) ) {
 			return new \WP_Query(
-				[
-					'post__in' => [ 0 ],
+				array(
+					'post__in'  => array( 0 ),
 					'post_type' => Post_Type::POST_TYPES,
-				]
+				)
 			);
 		}
 
@@ -1173,7 +1574,7 @@ class REST_API {
 	 */
 	private function parse_library_status_values( string $raw ): array {
 		if ( '' === $raw ) {
-			return [];
+			return array();
 		}
 
 		return array_values(
@@ -1206,48 +1607,48 @@ class REST_API {
 		);
 
 		if ( $includes_empty && ! empty( $non_empty ) ) {
-			return [
+			return array(
 				'relation' => 'OR',
-				[
+				array(
 					'key'     => $meta_key,
 					'value'   => $non_empty,
 					'compare' => 'IN',
-				],
-				[
+				),
+				array(
 					'relation' => 'OR',
-					[
+					array(
 						'key'     => $meta_key,
 						'compare' => 'NOT EXISTS',
-					],
-					[
+					),
+					array(
 						'key'     => $meta_key,
 						'value'   => '',
 						'compare' => '=',
-					],
-				],
-			];
+					),
+				),
+			);
 		}
 
 		if ( $includes_empty ) {
-			return [
+			return array(
 				'relation' => 'OR',
-				[
+				array(
 					'key'     => $meta_key,
 					'compare' => 'NOT EXISTS',
-				],
-				[
+				),
+				array(
 					'key'     => $meta_key,
 					'value'   => '',
 					'compare' => '=',
-				],
-			];
+				),
+			);
 		}
 
-		return [
+		return array(
 			'key'     => $meta_key,
 			'value'   => $non_empty,
 			'compare' => 'IN',
-		];
+		);
 	}
 
 	/**
@@ -1260,53 +1661,53 @@ class REST_API {
 		$terms = wp_get_post_terms(
 			$post->ID,
 			Post_Type::TAXONOMY,
-			[ 'fields' => 'all' ]
+			array( 'fields' => 'all' )
 		);
 
 		if ( is_wp_error( $terms ) ) {
-			$terms = [];
+			$terms = array();
 		}
 
 		$newsletter_lists = array_map(
-			static fn( \WP_Term $term ) => [
+			static fn( \WP_Term $term ) => array(
 				'slug'  => $term->slug,
-				'label' => $term->name,
-			],
+				'label' => plain_text( (string) $term->name ),
+			),
 			$terms
 		);
 
-		$type = Post_Type::CAMPAIGN_POST_TYPE === $post->post_type ? 'campaign' : 'txn';
+		$type  = Post_Type::CAMPAIGN_POST_TYPE === $post->post_type ? 'campaign' : 'txn';
+		$stats = Email_Reports::row_stats( $post->ID );
 
-		return [
-			'id'               => $post->ID,
-			'type'             => $type,
-			'title'            => get_the_title( $post ),
-			'status'           => $post->post_status,
-			'previousStatus'   => (string) get_post_meta( $post->ID, '_wp_trash_meta_status', true ),
-			'date'             => mysql2date( 'c', $post->post_date, false ),
-			'modified'         => mysql2date( 'c', $post->post_modified, false ),
-			'edit_url'         => get_edit_post_link( $post->ID, 'raw' ),
-			'newsletter_lists' => $newsletter_lists,
-			'subject'          => (string) get_post_meta( $post->ID, 'prc_email_subject', true ),
-			'mailchimp_status' => (string) get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true ),
-			'mandrill_status'  => (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true ),
-			'delivery_mode'    => Post_Type::is_transactional_post( $post )
+		return array(
+			'id'                => $post->ID,
+			'type'              => $type,
+			'title'             => plain_text( (string) get_the_title( $post ) ),
+			'status'            => $post->post_status,
+			'previousStatus'    => (string) get_post_meta( $post->ID, '_wp_trash_meta_status', true ),
+			'date'              => mysql2date( 'c', $post->post_date, false ),
+			'modified'          => mysql2date( 'c', $post->post_modified, false ),
+			'edit_url'          => get_edit_post_link( $post->ID, 'raw' ),
+			'newsletter_lists'  => $newsletter_lists,
+			'subject'           => (string) get_post_meta( $post->ID, 'prc_email_subject', true ),
+			'mailchimp_status'  => (string) get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true ),
+			'mandrill_status'   => (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true ),
+			'delivery_mode'     => Post_Type::is_transactional_post( $post )
 				? Post_Type::transactional_delivery_mode( $post )
 				: '',
-			'open_rate'        => $type === 'campaign' && null !== Report_Store::get_report( $post->ID )
-				? (float) get_post_meta( $post->ID, Report_Store::META_OPEN_RATE, true )
-				: null,
-			'click_rate'       => $type === 'campaign' && null !== Report_Store::get_report( $post->ID )
-				? (float) get_post_meta( $post->ID, Report_Store::META_CLICK_RATE, true )
-				: null,
-			'report_sync_state' => $type === 'campaign'
-				? Report_Store::get_sync_state( $post->ID )
-				: '',
-		];
+			'open_rate'         => $stats['open_rate'],
+			'click_rate'        => $stats['click_rate'],
+			'stats_available'   => $stats['stats_available'],
+			'channel'           => $stats['channel'],
+			'report_sync_state' => Report_Store::get_sync_state( $post->ID ),
+		);
 	}
 
 	/**
 	 * Ensure a WP_Error carries an HTTP status for REST serialization.
+	 *
+	 * @param \WP_Error $error Original error.
+	 * @return \WP_Error
 	 */
 	private function normalize_rest_error( \WP_Error $error ): \WP_Error {
 		$data   = $error->get_error_data();
@@ -1318,8 +1719,7 @@ class REST_API {
 		return new \WP_Error(
 			$error->get_error_code(),
 			$error->get_error_message(),
-			[ 'status' => $status > 0 ? $status : 500 ]
+			array( 'status' => $status > 0 ? $status : 500 )
 		);
 	}
-
 }

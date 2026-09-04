@@ -27,6 +27,21 @@
 	margin-top: 8px;
 }
 
+.prc-newsletter-list-preview-campaign {
+	max-width: 640px;
+}
+
+.prc-newsletter-list-preview-campaign__selected {
+	margin: 0 0 12px;
+}
+
+.prc-newsletter-list-preview-campaign__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
 /*
  * Pattern picker modal layout styles come from
  * src/sidebar/pattern-selector/style.scss, bundled into this entry via the

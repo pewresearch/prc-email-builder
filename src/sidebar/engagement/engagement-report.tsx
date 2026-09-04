@@ -177,9 +177,9 @@ const CHART_DEFINITIONS = [
 	},
 ] satisfies ChartDefinition[];
 
-function formatNumber(value: number | undefined): string {
+function formatNumber(value: number | null | undefined): string {
 	if (value === undefined || value === null || Number.isNaN(value)) {
-		return '0';
+		return '—';
 	}
 	return value.toLocaleString();
 }
@@ -316,14 +316,20 @@ function ClickedLinksList({ clicks }: { clicks: ReportClickRow[] }) {
 				{visible.map((row) => (
 					<li key={row.url} className="prc-email-engagement-click">
 						<span className="prc-email-engagement-click__count">
-							{formatNumber(row.clicks)}
+							{typeof row.unique === 'number'
+								? `${formatNumber(row.unique)} / ${formatNumber(row.clicks)}`
+								: formatNumber(row.clicks)}
 						</span>
 						<a
 							className="prc-email-engagement-click__url"
 							href={row.url}
 							target="_blank"
 							rel="noopener noreferrer"
-							title={row.url}
+							title={
+								typeof row.unique === 'number'
+									? `${row.url} (${row.unique} unique, ${row.clicks} total)`
+									: row.url
+							}
 						>
 							{formatDisplayUrl(row.url)}
 						</a>

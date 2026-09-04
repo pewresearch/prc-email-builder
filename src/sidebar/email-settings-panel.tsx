@@ -37,23 +37,25 @@ function SettingsPanel() {
 			name="prc-email-builder-settings"
 			title={__('Email Settings', 'prc-email-builder')}
 		>
-			<VStack spacing={3}>
-				<InboxSubjectAI
-					postId={postId ?? 0}
-					subject={subject}
-					onChange={setSubject}
-					onApply={setSubject}
-				/>
-				<InboxPreviewAI
-					postId={postId ?? 0}
-					previewText={previewText}
-					currentSubject={subject}
-					onChange={setPreviewText}
-					onApply={setPreviewText}
-				/>
+			<div data-prc-tour="email-settings">
+				<VStack spacing={3}>
+					<InboxSubjectAI
+						postId={postId ?? 0}
+						subject={subject}
+						onChange={setSubject}
+						onApply={setSubject}
+					/>
+					<InboxPreviewAI
+						postId={postId ?? 0}
+						previewText={previewText}
+						currentSubject={subject}
+						onChange={setPreviewText}
+						onApply={setPreviewText}
+					/>
 
-				{isCampaign && <CampaignListControl />}
-			</VStack>
+					{isCampaign && <CampaignListControl />}
+				</VStack>
+			</div>
 		</PluginDocumentSettingPanel>
 	);
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @wordpress/i18n-text-domain -- shared TEXT_DOMAIN constant */
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { __experimentalText as Text } from '@wordpress/components';
@@ -8,11 +9,10 @@ import {
 } from '@prc/components';
 
 import './style.scss';
-import './store';
 import { fetchSettings, saveSettings } from './api';
 import { store as settingsStore } from './store';
 
-const TEXT_DOMAIN = 'prc-email-builder';
+const TEXT_DOMAIN = 'prc-email-builder' as const;
 
 const TIMEZONE_OPTIONS = [
 	{ value: 'America/New_York', label: 'Eastern (America/New_York)' },
@@ -82,7 +82,7 @@ function MandrillIntro() {
 		return (
 			<Text size={12} color="#757575">
 				{__(
-					'API key is set via the PRC_PLATFORM_MANDRILL_KEY constant. These defaults apply to all Mandrill sends from Newsletter Builder (bulk and system emails). A path-specific tag (bulk or system-email) is added automatically.',
+					'API key is set via the PRC_PLATFORM_MANDRILL_KEY constant. These defaults apply to all Mandrill sends from Email Builder (bulk and system emails). A path-specific tag (bulk or system-email) is added automatically.',
 					TEXT_DOMAIN
 				)}
 			</Text>
@@ -121,6 +121,15 @@ const mailchimpFields: SettingsFieldConfig[] = [
 		type: 'email',
 		label: __('From Email', TEXT_DOMAIN),
 		placeholder: 'newsletters@pewresearch.org',
+	},
+	{
+		id: 'auto_send_on_publish',
+		type: 'boolean',
+		label: __('Automatically send on publish', TEXT_DOMAIN),
+		description: __(
+			'When enabled, publishing or scheduling a campaign creates the Mailchimp campaign and sends it. When disabled, publish only saves the WordPress post. Use Send to Mailchimp in Campaign Setup to deliver.',
+			TEXT_DOMAIN
+		),
 	},
 ];
 
@@ -195,9 +204,9 @@ const automationFields: SettingsFieldConfig[] = [
 export default function SettingsApp() {
 	return (
 		<SettingsPage
-			title={__('Newsletter Builder Settings', TEXT_DOMAIN)}
+			title={__('Email Builder Settings', TEXT_DOMAIN)}
 			description={__(
-				'Configure Mailchimp integration and default sender settings for the Newsletter Builder.',
+				'Configure Mailchimp integration and default sender settings for the Email Builder.',
 				TEXT_DOMAIN
 			)}
 			textDomain={TEXT_DOMAIN}

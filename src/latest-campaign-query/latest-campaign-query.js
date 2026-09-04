@@ -12,14 +12,16 @@ const NAMESPACE = 'prc-email-builder/latest-campaign-preview';
  *
  * Authors pick a newsletter list via the native taxQuery control; the
  * variation locks post type, count, and order so the child preview block
- * always receives the most recent published campaign for that list.
+ * receives one published campaign for that list.
+ * On a newsletter list archive the queried term wins over taxQuery, and a
+ * campaign chosen on that list term pins the preview (otherwise latest).
  */
 export default function registerLatestCampaignQueryVariation() {
 	registerBlockVariation('core/query', {
 		name: NAMESPACE,
 		title: __('Latest Newsletter Preview', 'prc-email-builder'),
 		description: __(
-			'Show a live phone-width preview of the most recent email for a newsletter list.',
+			"Show a live phone-width preview of a newsletter. On a list archive, uses that list's latest campaign unless editors pick a specific one on the list term.",
 			'prc-email-builder'
 		),
 		icon: mobile,

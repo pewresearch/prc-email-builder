@@ -16,6 +16,7 @@ export const store = createSettingsStore<
 			mailchimp_api_key: '',
 			from_name: '',
 			from_email: '',
+			auto_send_on_publish: true,
 			track_opens: true,
 			track_clicks: true,
 			reply_to: '',

@@ -10,6 +10,7 @@ import { __ } from '@wordpress/i18n';
  * Internal Dependencies
  */
 import { composeEmailActions } from './actions';
+import { AudienceHubModal } from './audience-hub-modal';
 import CampaignStatsModal from '../library/components/campaign-stats-modal';
 import CreateCampaignDropdown from '../library/components/create-campaign-dropdown';
 import GenerateLinksNewsletterModal from '../library/components/generate-links-newsletter-modal';
@@ -28,16 +29,17 @@ declare const prcEmailBuilderLibraryAI:
 	  }
 	| undefined;
 
-const { Fill: HeaderActionsFill } = createSlotFill(
-	'prcWpAdminDataview.HeaderActions'
-);
 const { Fill: PageExtrasFill } = createSlotFill(
 	'prcWpAdminDataview.PageExtras'
 );
 const PAGE_EXTRA_EVENT = 'prcWpAdminDataview.pageExtra';
 
 function getScope(): EmailListScope | null {
-	return getEmailConfig()?.postTypeScope ?? null;
+	return (
+		getEmailConfig()?.postTypeScope ??
+		window.prcWpAdminDataview?.config?.postTypeScope ??
+		null
+	);
 }
 
 function emitPageExtra(type: string, payload?: EmailLibraryRow) {
@@ -51,6 +53,7 @@ function emitPageExtra(type: string, payload?: EmailLibraryRow) {
 function EmailPageExtras() {
 	const [campaign, setCampaign] = useState<EmailLibraryRow | null>(null);
 	const [isGenerateOpen, setIsGenerateOpen] = useState(false);
+	const [isAudienceOpen, setIsAudienceOpen] = useState(false);
 
 	useEffect(() => {
 		const handlePageExtra = (event: Event) => {
@@ -62,6 +65,9 @@ function EmailPageExtras() {
 			}
 			if (event.detail?.type === 'generate-links-newsletter') {
 				setIsGenerateOpen(true);
+			}
+			if (event.detail?.type === 'build-auth-domain-audience') {
+				setIsAudienceOpen(true);
 			}
 		};
 		window.addEventListener(PAGE_EXTRA_EVENT, handlePageExtra);
@@ -80,22 +86,74 @@ function EmailPageExtras() {
 				onClose={() => setIsGenerateOpen(false)}
 				onDraftCreated={() => window.location.reload()}
 			/>
+			<AudienceHubModal
+				isOpen={isAudienceOpen}
+				onClose={() => setIsAudienceOpen(false)}
+			/>
 		</>
 	);
 }
 
-function EmailFills() {
-	const config = getEmailConfig();
+function EmailHeaderActions() {
 	const scope = getScope();
-	if (!config || !scope) {
+	if (!scope) {
 		return null;
 	}
 
+	const config = getEmailConfig();
 	const isCampaign = scope === 'campaign';
 	const isAIEnabled =
 		isCampaign &&
 		typeof prcEmailBuilderLibraryAI !== 'undefined' &&
 		prcEmailBuilderLibraryAI.enabled;
+	const transactionalNewUrl =
+		config?.transactionalNewUrl ??
+		`post-new.php?post_type=${config?.transactionalPostType ?? 'prc_email_txn'}`;
+
+	return (
+		<Flex gap={2} align="center" justify="flex-end">
+			{isCampaign ? (
+				<CreateCampaignDropdown />
+			) : (
+				<>
+					<Button
+						__next40pxDefaultSize
+						variant="secondary"
+						onClick={() =>
+							emitPageExtra('build-auth-domain-audience')
+						}
+					>
+						{__('Build audience', 'prc-email-builder')}
+					</Button>
+					<Button
+						__next40pxDefaultSize
+						variant="primary"
+						href={transactionalNewUrl}
+					>
+						{__('Create new', 'prc-email-builder')}
+					</Button>
+				</>
+			)}
+			{isAIEnabled ? (
+				<Button
+					__next40pxDefaultSize
+					variant="secondary"
+					onClick={() => emitPageExtra('generate-links-newsletter')}
+				>
+					{__('Generate Links Newsletter', 'prc-email-builder')}
+				</Button>
+			) : null}
+		</Flex>
+	);
+}
+
+function EmailFills() {
+	const scope = getScope();
+	if (!scope) {
+		return null;
+	}
+
+	const isCampaign = scope === 'campaign';
 
 	return (
 		<>
@@ -110,33 +168,6 @@ function EmailFills() {
 							'prc-email-builder'
 						)}
 			</span>
-			<HeaderActionsFill>
-				<Flex gap={2} align="center" justify="flex-end">
-					{isCampaign ? (
-						<CreateCampaignDropdown />
-					) : (
-						<Button
-							variant="primary"
-							href={config.transactionalNewUrl}
-						>
-							{__('Create new', 'prc-email-builder')}
-						</Button>
-					)}
-					{isAIEnabled ? (
-						<Button
-							variant="secondary"
-							onClick={() =>
-								emitPageExtra('generate-links-newsletter')
-							}
-						>
-							{__(
-								'Generate Links Newsletter',
-								'prc-email-builder'
-							)}
-						</Button>
-					) : null}
-				</Flex>
-			</HeaderActionsFill>
 			<PageExtrasFill>
 				<EmailPageExtras />
 			</PageExtrasFill>
@@ -170,6 +201,12 @@ addFilter(
 		const scope = getScope();
 		return scope ? getDefaultVisibleFields(scope) : fields;
 	}
+);
+
+addFilter(
+	'prcWpAdminDataview.headerActions',
+	'prc-email-builder/header-actions',
+	(actions) => (getScope() ? <EmailHeaderActions /> : actions)
 );
 
 addFilter(

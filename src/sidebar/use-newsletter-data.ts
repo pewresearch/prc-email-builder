@@ -48,6 +48,8 @@ export interface NewsletterListTerm {
 	};
 }
 
+const localizedConfig = (window as any).prcEmailBuilderConfig ?? {};
+
 export const config: {
 	restNamespace: string;
 	postTypes: string[];
@@ -56,11 +58,15 @@ export const config: {
 	campaignPatternCategorySlug?: string;
 	transactionalPatternCategorySlug?: string;
 	nonce: string;
+	autoSendOnPublish: boolean;
 	defaults?: {
 		from_name: string;
 		from_email: string;
 	};
-} = (window as any).prcEmailBuilderConfig ?? {};
+} = {
+	...localizedConfig,
+	autoSendOnPublish: localizedConfig.autoSendOnPublish ?? true,
+};
 
 export function isEmailPostType(postType: string | undefined): boolean {
 	if (!postType) {
@@ -449,11 +455,16 @@ const MAILCHIMP_SYNC_POLL_MS = 3000;
 const MAILCHIMP_SYNC_MAX_ATTEMPTS = 20;
 
 /**
- * Poll server post meta for a Mailchimp campaign ID written asynchronously
- * after email HTML generation (see Mailchimp::on_rest_publish).
+ * Poll server post meta for a Mailchimp campaign written asynchronously
+ * after publish (see Mailchimp::on_rest_publish).
+ *
+ * Copies campaign_id, admin_url, and status together. Does not apply a
+ * draft (`save` / empty) snapshot into the editor until send leaves that
+ * state — otherwise the sidebar shows send-recovery after a successful
+ * auto-send whose ID arrived before status.
  *
  * @param postId     Newsletter post ID.
- * @param shouldSync When true, poll until campaign meta appears in the editor.
+ * @param shouldSync When true, poll until send meta is settled in the editor.
  */
 export function useSyncMailchimpCampaignMeta(
 	postId: number,
@@ -485,15 +496,33 @@ export function useSyncMailchimpCampaignMeta(
 			}
 		};
 
+		const applyCampaignMeta = (draft: {
+			id: string;
+			status: string;
+			adminUrl: string;
+		}) => {
+			editPost({
+				meta: {
+					prc_email_mailchimp_campaign_id: draft.id,
+					prc_email_mailchimp_campaign_status: draft.status,
+					...(draft.adminUrl
+						? {
+								prc_email_mailchimp_campaign_admin_url:
+									draft.adminUrl,
+							}
+						: {}),
+				},
+			});
+		};
+
 		const sync = () => {
 			if (cancelled) {
 				return;
 			}
 			attempts += 1;
-			if (attempts > MAILCHIMP_SYNC_MAX_ATTEMPTS) {
-				setSyncTimedOut(true);
+			const isFinalAttempt = attempts > MAILCHIMP_SYNC_MAX_ATTEMPTS;
+			if (isFinalAttempt) {
 				stopPolling();
-				return;
 			}
 
 			apiFetch<{ meta?: Record<string, string> }>({
@@ -505,25 +534,36 @@ export function useSyncMailchimpCampaignMeta(
 					}
 					const id = data.meta?.prc_email_mailchimp_campaign_id ?? '';
 					if (!id) {
+						if (isFinalAttempt) {
+							setSyncTimedOut(true);
+						}
+						return;
+					}
+					const status =
+						data.meta?.prc_email_mailchimp_campaign_status ?? '';
+					const adminUrl =
+						data.meta?.prc_email_mailchimp_campaign_admin_url ?? '';
+					if (!status || status === 'save') {
+						// Never apply a save/empty snapshot: that would set
+						// campaignId, stop shouldSync, and cancel in-flight
+						// polls that may already carry sending/sent.
+						if (isFinalAttempt) {
+							setSyncTimedOut(true);
+						}
 						return;
 					}
 					stopPolling();
-					editPost({
-						meta: {
-							prc_email_mailchimp_campaign_id: id,
-							...(data.meta
-								?.prc_email_mailchimp_campaign_admin_url
-								? {
-										prc_email_mailchimp_campaign_admin_url:
-											data.meta
-												.prc_email_mailchimp_campaign_admin_url,
-									}
-								: {}),
-						},
-					});
+					applyCampaignMeta({ id, status, adminUrl });
 				})
 				.catch(() => {
-					// Keep polling through transient REST errors.
+					if (cancelled) {
+						return;
+					}
+					// Keep polling through transient REST errors until the
+					// final attempt, which must settle the timeout UI.
+					if (isFinalAttempt) {
+						setSyncTimedOut(true);
+					}
 				});
 		};
 

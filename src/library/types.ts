@@ -1,3 +1,6 @@
+import { decodeEntities } from '@wordpress/html-entities';
+import type { AudienceBuilder } from '../admin-dataview/audience-catalog';
+
 export type EmailListScope = 'campaign' | 'txn';
 
 export interface EmailLibraryRow {
@@ -17,6 +20,8 @@ export interface EmailLibraryRow {
 	open_rate: number | null;
 	click_rate: number | null;
 	report_sync_state?: string;
+	stats_available?: boolean;
+	channel?: string;
 }
 
 export interface EmailDataviewConfig {
@@ -40,6 +45,7 @@ export interface EmailDataviewConfig {
 	transactionalPostType?: string;
 	newsletterListTaxonomy?: string;
 	campaignPatternCategorySlug?: string;
+	audienceBuilders?: AudienceBuilder[];
 }
 
 declare global {
@@ -54,6 +60,39 @@ declare global {
 	}
 }
 
+function decodeLabeledEntries<T extends { label?: string }>(
+	items?: T[]
+): T[] | undefined {
+	if (!items) {
+		return items;
+	}
+	return items.map((item) =>
+		typeof item.label === 'string'
+			? { ...item, label: decodeEntities(item.label) }
+			: item
+	);
+}
+
+/**
+ * Decode user-authored strings from PHP boot data for React text nodes.
+ *
+ * @param {EmailDataviewConfig} [config] Localized email DataViews boot object.
+ * @return {EmailDataviewConfig | undefined} Config with decoded labels.
+ */
+export function decodeEmailConfig(
+	config: EmailDataviewConfig | undefined
+): EmailDataviewConfig | undefined {
+	if (!config) {
+		return config;
+	}
+	return {
+		...config,
+		newsletterLists: decodeLabeledEntries(config.newsletterLists),
+		researchTeams: decodeLabeledEntries(config.researchTeams),
+		sendStatuses: decodeLabeledEntries(config.sendStatuses),
+	};
+}
+
 export function getEmailConfig(): EmailDataviewConfig | undefined {
-	return window.prcWpAdminDataview?.email;
+	return decodeEmailConfig(window.prcWpAdminDataview?.email);
 }

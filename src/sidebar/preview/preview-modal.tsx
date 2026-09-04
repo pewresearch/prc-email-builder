@@ -414,7 +414,10 @@ export function PreviewModal({ postId, onClose }: PreviewModalProps) {
 				/>
 			}
 		>
-			<div className="prc-email-preview__layout">
+			<div
+				className="prc-email-preview__layout"
+				data-prc-tour="email-preview"
+			>
 				{/* Zone 1: Inbox metadata bar */}
 				<InboxBar data={data} />
 

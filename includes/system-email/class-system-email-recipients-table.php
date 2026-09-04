@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Custom table for durable system-email recipient logging.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -107,7 +108,7 @@ class System_Email_Recipients_Table {
 		$table = self::table_name();
 		$now   = current_time( 'mysql', true );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name cannot be a placeholder.
 		$wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$table}
@@ -125,6 +126,7 @@ class System_Email_Recipients_Table {
 				$now
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**
@@ -189,9 +191,9 @@ class System_Email_Recipients_Table {
 			return array();
 		}
 
-		$table      = self::table_name();
-		$clauses    = array();
-		$prepare    = array();
+		$table   = self::table_name();
+		$clauses = array();
+		$prepare = array();
 
 		foreach ( $filters as $filter ) {
 			if ( 'prefix' === ( $filter['type'] ?? '' ) ) {
@@ -226,5 +228,35 @@ class System_Email_Recipients_Table {
 		}
 
 		return array_values( $emails );
+	}
+
+	/**
+	 * Distinct recipient count for one system-email post.
+	 *
+	 * @param int $post_id Newsletter post ID.
+	 */
+	public static function count_for_post( int $post_id ): int {
+		if ( $post_id <= 0 ) {
+			return 0;
+		}
+
+		self::maybe_create_table();
+		if ( ! self::table_exists() ) {
+			return 0;
+		}
+
+		global $wpdb;
+		$table = self::table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name cannot be a placeholder.
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(DISTINCT email) FROM {$table} WHERE post_id = %d",
+				$post_id
+			)
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return (int) $count;
 	}
 }

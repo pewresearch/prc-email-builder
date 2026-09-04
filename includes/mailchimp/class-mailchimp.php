@@ -54,12 +54,32 @@ class Mailchimp {
 	 */
 	const CACHE_GENERATION_OPTION = 'prc_email_mailchimp_cache_generation';
 
+	/**
+	 * Options-table lock serializing create+send for one campaign post.
+	 *
+	 * Without this, overlapping auto-dispatch and recovery can each mint a
+	 * Mailchimp campaign and/or call send, producing duplicate audience sends.
+	 */
+	const SEND_LOCK_OPTION_PREFIX = 'prc_email_mailchimp_send_lock_';
+	const SEND_LOCK_TTL           = 180;
+
+	/**
+	 * Campaign post IDs that transitioned to `publish` during the current REST
+	 * request. Send is deferred to `rest_after_insert` so taxonomy/targeting
+	 * from the same request is applied first. Also gates auto-send so ordinary
+	 * updates of an already-published (or unlinked) campaign do not dispatch.
+	 *
+	 * @var array<int, true>
+	 */
+	private array $pending_publish_dispatch = [];
+
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
 			return;
 		}
 		$loader->add_action( 'rest_after_insert_' . Post_Type::CAMPAIGN_POST_TYPE, $this, 'on_rest_publish', 10, 1 );
 		$loader->add_action( 'prc_email_builder_campaign_ready', $this, 'on_campaign_ready', 10, 2 );
+		$loader->add_action( 'transition_post_status', $this, 'on_status_transition', 10, 3 );
 	}
 
 	// -------------------------------------------------------------------------
@@ -319,9 +339,13 @@ class Mailchimp {
 		$targeting    = Newsletter_List::sync_mailchimp_targeting_meta( $post_id );
 		$audience_id  = $targeting['audience_id'];
 		$segment_id   = (int) $targeting['segment_id'];
-		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
+		$ready        = Email_Subject::require_for_send( $post_id );
 		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
 		$from         = self::resolve_from_for_post( $post_id );
+
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
 
 		if ( empty( $audience_id ) ) {
 			return new WP_Error( 'missing_audience', 'No Mailchimp audience selected for this newsletter.' );
@@ -340,7 +364,7 @@ class Mailchimp {
 				'recipients' => $recipients,
 				'settings'   => [
 					'title'        => get_the_title( $post_id ),
-					'subject_line' => $subject,
+					'subject_line' => $ready->line(),
 					'preview_text' => $preview_text,
 					'from_name'    => $from['from_name'],
 					'reply_to'     => $from['from_email'],
@@ -429,9 +453,13 @@ class Mailchimp {
 			);
 		}
 
-		$subject      = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
+		$ready        = Email_Subject::require_for_send( $post_id );
 		$preview_text = get_post_meta( $post_id, 'prc_email_preview_text', true );
 		$from         = self::resolve_from_for_post( $post_id );
+
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
 
 		$client = $this->get_client();
 		if ( is_wp_error( $client ) ) {
@@ -445,7 +473,7 @@ class Mailchimp {
 					'recipients' => self::build_recipients( $audience_id, $segment_id, true ),
 					'settings'   => [
 						'title'        => get_the_title( $post_id ),
-						'subject_line' => $subject,
+						'subject_line' => $ready->line(),
 						'preview_text' => $preview_text,
 						'from_name'    => $from['from_name'],
 						'reply_to'     => $from['from_email'],
@@ -523,16 +551,160 @@ class Mailchimp {
 	}
 
 	/**
-	 * Persists Mailchimp campaign ID and admin URL on a newsletter post.
+	 * Persists Mailchimp campaign ID, admin URL, and cached status on a newsletter post.
 	 *
 	 * @param int    $post_id     Newsletter post ID.
 	 * @param string $campaign_id Mailchimp campaign ID.
 	 * @param string $admin_url   Mailchimp admin edit URL.
+	 * @param string $status      Cached Mailchimp status (`save`, `sending`, …).
 	 */
-	public static function persist_campaign_meta( int $post_id, string $campaign_id, string $admin_url ): void {
+	public static function persist_campaign_meta(
+		int $post_id,
+		string $campaign_id,
+		string $admin_url,
+		string $status = 'save'
+	): void {
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', $campaign_id );
-		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', 'save' );
+		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', sanitize_text_field( $status ) );
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', esc_url_raw( $admin_url ) );
+	}
+
+	/**
+	 * Create a Mailchimp campaign (when unlinked) and send it to the configured segment.
+	 *
+	 * Idempotent pipeline:
+	 * 1. Guards (campaign CPT, published, not migrated, connected).
+	 * 2. Acquire a per-post send lock; re-read meta under the lock.
+	 * 3. Ensure a Mailchimp campaign exists (create when unlinked).
+	 * 4. Send when status is empty/`save`. Never re-send `sending`/`sent`/`schedule`.
+	 * 5. Persist meta with status `sending` on success.
+	 *
+	 * Auto hooks pass `$retry_existing_draft = false` so a failed send is not
+	 * retried on every subsequent REST update (autosave). Recovery REST passes
+	 * true to send an existing draft. Concurrent callers receive `send_locked`.
+	 *
+	 * @param int  $post_id              Campaign post ID.
+	 * @param bool $retry_existing_draft When true, send an already-linked draft (`save`).
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	public function create_and_send_campaign( int $post_id, bool $retry_existing_draft = false ): array|WP_Error {
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return new WP_Error(
+				'invalid_post_type',
+				'Mailchimp send applies only to campaign newsletters.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post || 'publish' !== $post->post_status ) {
+			return new WP_Error(
+				'not_published',
+				'Publish the campaign before sending to Mailchimp.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( Migration::is_migrated( $post_id ) ) {
+			return new WP_Error(
+				'migrated_campaign',
+				'Migrated campaigns cannot be sent to Mailchimp from this panel.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		if ( ! $this->is_connected() ) {
+			return new WP_Error(
+				'mailchimp_not_connected',
+				'Mailchimp is not connected.',
+				[ 'status' => 400 ]
+			);
+		}
+
+		$lock  = new Option_Lock( self::SEND_LOCK_OPTION_PREFIX, self::SEND_LOCK_TTL, 'mc_send_' );
+		$token = $lock->acquire( $post_id );
+		if ( '' === $token ) {
+			return new WP_Error(
+				'send_locked',
+				'A Mailchimp send is already in progress for this campaign.',
+				[ 'status' => 409 ]
+			);
+		}
+
+		try {
+			return $this->create_and_send_campaign_locked( $post_id, $retry_existing_draft );
+		} finally {
+			$lock->release( $post_id, $token );
+		}
+	}
+
+	/**
+	 * Create/send pipeline. Caller must hold the per-post send lock.
+	 *
+	 * Meta is read here so a loser of the race cannot create or send from a
+	 * stale empty/`save` snapshot taken before the lock was acquired.
+	 *
+	 * @param int  $post_id              Campaign post ID.
+	 * @param bool $retry_existing_draft When true, send an already-linked draft (`save`).
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	private function create_and_send_campaign_locked( int $post_id, bool $retry_existing_draft ): array|WP_Error {
+		$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
+		$admin_url   = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
+		$status      = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', true );
+
+		if ( '' !== $campaign_id && ! in_array( $status, [ '', 'save' ], true ) ) {
+			return [
+				'campaign_id' => $campaign_id,
+				'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
+				'status'      => $status,
+			];
+		}
+
+		if ( '' !== $campaign_id && ! $retry_existing_draft ) {
+			return [
+				'campaign_id' => $campaign_id,
+				'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
+				'status'      => $status ?: 'save',
+			];
+		}
+
+		if ( '' === $campaign_id ) {
+			$html = Cached_Email_Html::resolve( $post_id );
+			if ( is_wp_error( $html ) ) {
+				return $html;
+			}
+			if ( '' === $html ) {
+				return new WP_Error(
+					'missing_email_html',
+					'Email HTML is not ready. Generate email content before sending to Mailchimp.',
+					[ 'status' => 400 ]
+				);
+			}
+
+			$result = $this->create_campaign_draft( $post_id, $html );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+
+			$campaign_id = $result['campaign_id'];
+			$admin_url   = $result['admin_url'];
+			self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'save' );
+		}
+
+		$send = $this->send_campaign( $campaign_id );
+		if ( is_wp_error( $send ) ) {
+			return $send;
+		}
+
+		$admin_url = $admin_url ?: 'https://admin.mailchimp.com/campaigns/';
+		self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'sending' );
+
+		return [
+			'campaign_id' => $campaign_id,
+			'admin_url'   => $admin_url,
+			'status'      => 'sending',
+		];
 	}
 
 	/**
@@ -710,17 +882,22 @@ class Mailchimp {
 	 */
 	public static function get_settings(): array {
 		$defaults = [
-			'mailchimp_api_key'   => '',
-			'from_name'           => '',
-			'from_email'          => '',
-			'track_opens'         => true,
-			'track_clicks'        => true,
-			'reply_to'            => '',
-			'mandrill_subaccount' => '',
-			'mandrill_tags'       => [ 'prc-newsletter' ],
+			'mailchimp_api_key'    => '',
+			'from_name'            => '',
+			'from_email'           => '',
+			'track_opens'          => true,
+			'track_clicks'         => true,
+			'reply_to'             => '',
+			'mandrill_subaccount'  => '',
+			'mandrill_tags'        => [ 'prc-newsletter' ],
+			'auto_send_on_publish' => true,
 		];
 		$saved = get_option( self::SETTINGS_KEY, [] );
 		return wp_parse_args( $saved, $defaults );
+	}
+
+	public static function is_auto_send_on_publish_enabled(): bool {
+		return (bool) self::get_settings()['auto_send_on_publish'];
 	}
 
 	/**
@@ -741,14 +918,20 @@ class Mailchimp {
 		);
 
 		$sanitized = [
-			'mailchimp_api_key'   => defined( self::API_KEY_CONSTANT ) ? '' : sanitize_text_field( $settings['mailchimp_api_key'] ?? '' ),
-			'from_name'           => sanitize_text_field( $settings['from_name'] ?? '' ),
-			'from_email'          => sanitize_email( $settings['from_email'] ?? '' ),
-			'track_opens'         => filter_var( $settings['track_opens'] ?? true, FILTER_VALIDATE_BOOLEAN ),
-			'track_clicks'        => filter_var( $settings['track_clicks'] ?? true, FILTER_VALIDATE_BOOLEAN ),
-			'reply_to'            => sanitize_email( $settings['reply_to'] ?? '' ),
-			'mandrill_subaccount' => sanitize_text_field( $settings['mandrill_subaccount'] ?? '' ),
-			'mandrill_tags'       => $tags ?: [ 'prc-newsletter' ],
+			'mailchimp_api_key'    => defined( self::API_KEY_CONSTANT ) ? '' : sanitize_text_field( $settings['mailchimp_api_key'] ?? '' ),
+			'from_name'            => sanitize_text_field( $settings['from_name'] ?? '' ),
+			'from_email'           => sanitize_email( $settings['from_email'] ?? '' ),
+			'track_opens'          => filter_var( $settings['track_opens'] ?? true, FILTER_VALIDATE_BOOLEAN ),
+			'track_clicks'         => filter_var( $settings['track_clicks'] ?? true, FILTER_VALIDATE_BOOLEAN ),
+			'reply_to'             => sanitize_email( $settings['reply_to'] ?? '' ),
+			'mandrill_subaccount'  => sanitize_text_field( $settings['mandrill_subaccount'] ?? '' ),
+			'mandrill_tags'        => $tags ?: [ 'prc-newsletter' ],
+			'auto_send_on_publish' => filter_var(
+				array_key_exists( 'auto_send_on_publish', $settings )
+					? $settings['auto_send_on_publish']
+					: self::get_settings()['auto_send_on_publish'],
+				FILTER_VALIDATE_BOOLEAN
+			),
 		];
 		update_option( self::SETTINGS_KEY, $sanitized, false );
 		self::invalidate_mailchimp_caches();
@@ -1061,86 +1244,100 @@ class Mailchimp {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * When a newsletter is published via REST, create a Mailchimp campaign draft.
+	 * When a campaign transitions to publish via REST, create and send after
+	 * `rest_after_insert` (taxonomies + newsletter-list targeting sync first).
+	 *
+	 * Only runs when `on_status_transition` marked this post for the current
+	 * request — not on ordinary updates of an already-published campaign.
 	 *
 	 * @hook rest_after_insert_{post_type}
 	 */
 	public function on_rest_publish( \WP_Post $post ): void {
+		if ( ! isset( $this->pending_publish_dispatch[ $post->ID ] ) ) {
+			return;
+		}
+		unset( $this->pending_publish_dispatch[ $post->ID ] );
+
 		if ( ! Post_Type::is_campaign_post( $post ) ) {
 			return;
 		}
 		if ( 'publish' !== $post->post_status ) {
 			return;
 		}
-		if ( Migration::is_migrated( $post->ID ) ) {
-			return;
-		}
 
-		// Skip if a campaign draft already exists for this post.
-		$existing = get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_id', true );
-		if ( ! empty( $existing ) ) {
-			return;
-		}
-
-		$html = Cached_Email_Html::resolve( $post->ID );
-
-		if ( is_wp_error( $html ) || '' === $html || ! $this->is_connected() ) {
-			return;
-		}
-
-		$result = $this->create_campaign_draft( $post->ID, $html );
-		if ( is_wp_error( $result ) ) {
-			error_log( sprintf( '[prc-email-builder] Mailchimp draft creation failed for post %d: %s', $post->ID, $result->get_error_message() ) );
-			return;
-		}
-
-		self::persist_campaign_meta(
-			$post->ID,
-			$result['campaign_id'],
-			$result['admin_url']
-		);
+		$this->dispatch_auto_send( $post->ID, 'post' );
 	}
 
 	/**
-	 * Creates a Mailchimp campaign draft when email HTML is supplied externally.
+	 * Create and send a Mailchimp campaign when email HTML is supplied externally.
 	 *
 	 * @action prc_email_builder_campaign_ready
 	 *
 	 * @param int    $post_id Newsletter post ID.
-	 * @param string $html    Full email HTML document.
+	 * @param string $html    Full email HTML document (unused; resolved from the post).
 	 */
 	public function on_campaign_ready( int $post_id, string $html ): void {
-		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
-			return;
-		}
-		if ( Migration::is_migrated( $post_id ) ) {
-			return;
-		}
-		if ( empty( $html ) || ! $this->is_connected() ) {
-			return;
-		}
+		unset( $html );
 
-		$existing = get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
-		if ( ! empty( $existing ) ) {
-			return;
-		}
-
-		$result = $this->create_campaign_draft( $post_id, $html );
-		if ( is_wp_error( $result ) ) {
-			error_log( sprintf( '[prc-email-builder] Mailchimp draft creation failed for post %d: %s', $post_id, $result->get_error_message() ) );
-			return;
-		}
-
-		self::persist_campaign_meta(
-			$post_id,
-			$result['campaign_id'],
-			$result['admin_url']
-		);
+		$this->dispatch_auto_send( $post_id, 'post' );
 	}
 
-	// -------------------------------------------------------------------------
-	// Private helpers
-	// -------------------------------------------------------------------------
+	/**
+	 * Track or dispatch Mailchimp send when a campaign becomes published.
+	 *
+	 * REST: mark for `on_rest_publish` so targeting from the same request is
+	 * applied before create/send (covers draft→publish and future→publish now).
+	 * Non-REST: only `future` → `publish` (cron) sends immediately — terms were
+	 * already stored when the post was scheduled.
+	 *
+	 * @hook transition_post_status
+	 *
+	 * @param string   $new_status New post status.
+	 * @param string   $old_status Previous post status.
+	 * @param \WP_Post $post       Post object.
+	 */
+	public function on_status_transition( string $new_status, string $old_status, \WP_Post $post ): void {
+		if ( 'publish' !== $new_status || 'publish' === $old_status ) {
+			return;
+		}
+		if ( ! Post_Type::is_campaign_post( $post ) ) {
+			return;
+		}
+
+		// REST applies taxonomies after transition_post_status. Defer send until
+		// rest_after_insert (priority 10; list targeting sync runs at 9).
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			if ( self::is_auto_send_on_publish_enabled() ) {
+				$this->pending_publish_dispatch[ $post->ID ] = true;
+			}
+			return;
+		}
+
+		// Non-REST auto-dispatch is limited to scheduled publish (wp_cron).
+		if ( 'future' !== $old_status ) {
+			return;
+		}
+
+		$this->dispatch_auto_send( $post->ID, 'scheduled post' );
+	}
+
+	private function dispatch_auto_send( int $post_id, string $log_context ): void {
+		if ( ! self::is_auto_send_on_publish_enabled() ) {
+			return;
+		}
+
+		$result = $this->create_and_send_campaign( $post_id );
+		if ( is_wp_error( $result ) ) {
+			error_log(
+				sprintf(
+					'[prc-email-builder] Mailchimp create-and-send failed for %s %d: %s',
+					$log_context,
+					$post_id,
+					$result->get_error_message()
+				)
+			);
+		}
+	}
 
 	/**
 	 * Build Mailchimp recipients payload for an audience, optionally scoped to a segment.

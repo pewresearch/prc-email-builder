@@ -310,7 +310,11 @@ function PatternPicker({
 			</BlockEditorProvider>
 
 			<div className="prc-email-pattern-selector__actions">
-				<Button variant="tertiary" onClick={onDismiss}>
+				<Button
+					variant="tertiary"
+					onClick={onDismiss}
+					data-prc-tour="email-pattern-selector-dismiss"
+				>
 					{dismissLabel}
 				</Button>
 			</div>
@@ -372,29 +376,39 @@ export function EmailPatternPickerModal({
 			shouldCloseOnClickOutside={shouldCloseOnClickOutside}
 			shouldCloseOnEsc={shouldCloseOnEsc}
 		>
-			{externalError && (
-				<Notice status="error" isDismissible={false}>
-					{externalError}
-				</Notice>
-			)}
-			{isBusy ? (
-				<div className="prc-email-pattern-selector__loading">
-					<Spinner />
-					<p>{busyLabel}</p>
-				</div>
-			) : (
-				<PatternPicker
-					patterns={patterns}
-					isLoading={isLoading}
-					error={error}
-					editorKind={editorKind}
-					patternCategorySlug={patternCategorySlug}
-					onSelect={onSelect}
-					onDismiss={onClose}
-					dismissLabel={dismissLabel}
-					includeBlank={includeBlank}
-				/>
-			)}
+			<div data-prc-tour="email-pattern-selector">
+				<button
+					type="button"
+					hidden
+					data-prc-tour="email-pattern-selector-dismiss"
+					onClick={handleRequestClose}
+				>
+					{dismissLabel}
+				</button>
+				{externalError && (
+					<Notice status="error" isDismissible={false}>
+						{externalError}
+					</Notice>
+				)}
+				{isBusy ? (
+					<div className="prc-email-pattern-selector__loading">
+						<Spinner />
+						<p>{busyLabel}</p>
+					</div>
+				) : (
+					<PatternPicker
+						patterns={patterns}
+						isLoading={isLoading}
+						error={error}
+						editorKind={editorKind}
+						patternCategorySlug={patternCategorySlug}
+						onSelect={onSelect}
+						onDismiss={onClose}
+						dismissLabel={dismissLabel}
+						includeBlank={includeBlank}
+					/>
+				)}
+			</div>
 		</Modal>
 	);
 }

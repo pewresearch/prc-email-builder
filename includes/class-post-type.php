@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Post type and taxonomy registration.
  *
- * @package    PRC\Platform\Email_Builder
+ * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -16,10 +17,10 @@ class Post_Type {
 	const CAMPAIGN_POST_TYPE      = 'prc_email_campaign';
 	const TRANSACTIONAL_POST_TYPE = 'prc_email_txn';
 
-	const POST_TYPES = [
+	const POST_TYPES = array(
 		self::CAMPAIGN_POST_TYPE,
 		self::TRANSACTIONAL_POST_TYPE,
-	];
+	);
 
 	const TAXONOMY = 'prc_newsletter_list';
 
@@ -29,7 +30,7 @@ class Post_Type {
 	 * Restricted to blocks the email pipeline can convert cleanly to email-safe
 	 * table HTML. Extend via `prc_email_builder_allowed_blocks`.
 	 */
-	const NEWSLETTER_ALLOWED_BLOCKS = [
+	const NEWSLETTER_ALLOWED_BLOCKS = array(
 		'core/paragraph',
 		'core/heading',
 		'core/post-date',
@@ -50,33 +51,38 @@ class Post_Type {
 		'core/html',
 		'prc-chart-builder/synced-chart',
 		'prc-block/story-item',
-	];
+	);
 
 	/** Meta shared by campaign and transactional posts. */
-	const SHARED_META_KEYS = [
-		'prc_email_subject'      => 'Email subject line.',
-		'prc_email_preview_text' => 'Email preview text (preheader).',
+	const SHARED_META_KEYS = array(
+		'prc_email_subject'       => 'Email subject line.',
+		'prc_email_preview_text'  => 'Email preview text (preheader).',
 		'prc_email_template_slug' => 'Slug of the PHP body template file in templates/; empty = auto-match by audience + segment, then default.',
-	];
+	);
 
 	/** Meta registered only on campaign (Mailchimp) posts. */
-	const CAMPAIGN_META_KEYS = [
+	const CAMPAIGN_META_KEYS = array(
 		'prc_email_mailchimp_audience_id'        => 'Mailchimp audience (list) ID.',
 		'prc_email_mailchimp_segment_id'         => 'Mailchimp saved-segment ID; restricts recipients within the audience.',
-		'prc_email_mailchimp_campaign_id'        => 'Mailchimp campaign ID created on publish.',
-		'prc_email_mailchimp_campaign_admin_url' => 'Mailchimp admin URL to edit the campaign draft.',
-		'prc_email_mailchimp_campaign_status'    => 'Cached Mailchimp campaign status: "save" (draft), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
-	];
+		'prc_email_mailchimp_campaign_id'        => 'Mailchimp campaign ID created and sent on publish.',
+		'prc_email_mailchimp_campaign_admin_url' => 'Mailchimp admin URL for the campaign.',
+		'prc_email_mailchimp_campaign_status'    => 'Cached Mailchimp campaign status: "save" (draft / send failed), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
+	);
 
 	/** Meta registered only on transactional (Mandrill) posts. */
-	const TRANSACTIONAL_META_KEYS = [
+	const TRANSACTIONAL_META_KEYS = array(
 		'prc_email_delivery_mode'         => 'Transactional sub-mode: "mandrill" (fixed recipient list) or "dynamic" (per-recipient template).',
 		'prc_email_audience_option_key'   => 'wp_options key holding the resolved [email,...] recipient list (mandrill sub-mode).',
 		'prc_email_mandrill_template'     => 'Mandrill template slug (optional).',
 		'prc_email_mandrill_send_status'  => 'Last Mandrill send result: "sent", "queued", "failed", "active" (dynamic templates after first send), or "" (not sent / waiting).',
 		'prc_email_mandrill_send_summary' => 'JSON summary of last Mandrill send (batches, sent, queued, rejected, invalid, failed_batches, sent_at).',
-	];
+	);
 
+	/**
+	 * Wire CPT, taxonomy, and editor hooks.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		// Taxonomy must register before the campaign CPT so pagination rules
 		// precede the two-segment single rule in the rewrite stack.
@@ -99,7 +105,7 @@ class Post_Type {
 	/**
 	 * Opt the email CPTs into the post-publish pipeline.
 	 *
-	 * prc-post-publish-pipeline gates on its own allowlist (not the
+	 * The post-publish pipeline gates on its own allowlist (not the
 	 * `prc-post-publish-pipeline` post-type-support flag), so the email CPTs
 	 * must opt in via this filter.
 	 *
@@ -153,7 +159,7 @@ class Post_Type {
 			return $defaults;
 		}
 
-		$defaults[ self::CAMPAIGN_POST_TYPE ] = [ 'hidden-on-index' ];
+		$defaults[ self::CAMPAIGN_POST_TYPE ] = array( 'hidden-on-index' );
 		return $defaults;
 	}
 
@@ -193,6 +199,8 @@ class Post_Type {
 
 	/**
 	 * Whether the given post type is a newsletter-builder email CPT.
+	 *
+	 * @param string $post_type Post type slug.
 	 */
 	public static function is_email_post_type( string $post_type ): bool {
 		return in_array( $post_type, self::POST_TYPES, true );
@@ -245,23 +253,23 @@ class Post_Type {
 	 * @return array<string, mixed>
 	 */
 	public static function dynamic_delivery_mode_meta_query(): array {
-		return [
+		return array(
 			'relation' => 'OR',
-			[
+			array(
 				'key'     => 'prc_email_delivery_mode',
 				'compare' => 'NOT EXISTS',
-			],
-			[
+			),
+			array(
 				'key'     => 'prc_email_delivery_mode',
 				'value'   => '',
 				'compare' => '=',
-			],
-			[
+			),
+			array(
 				'key'     => 'prc_email_delivery_mode',
 				'value'   => 'dynamic',
 				'compare' => '=',
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -271,7 +279,7 @@ class Post_Type {
 	 */
 	public static function post_type_for_delivery_mode( string $delivery_mode ): string {
 		$delivery_mode = sanitize_text_field( $delivery_mode );
-		if ( in_array( $delivery_mode, [ 'mandrill', 'dynamic' ], true ) ) {
+		if ( in_array( $delivery_mode, array( 'mandrill', 'dynamic' ), true ) ) {
 			return self::TRANSACTIONAL_POST_TYPE;
 		}
 		return self::CAMPAIGN_POST_TYPE;
@@ -299,10 +307,13 @@ class Post_Type {
 		return apply_filters( 'prc_email_builder_allowed_blocks', self::NEWSLETTER_ALLOWED_BLOCKS );
 	}
 
+	/**
+	 * Register campaign and transactional email post types.
+	 */
 	public function register_post_types(): void {
-		$campaign_supports = [
+		$campaign_supports = array(
 			'title',
-			'editor' => [ 'notes' => true ],
+			'editor' => array( 'notes' => true ),
 			'excerpt',
 			'thumbnail',
 			'custom-fields',
@@ -314,18 +325,18 @@ class Post_Type {
 			'prc-art-direction',
 			'prc-publish-workflows',
 			'presence',
-		];
+		);
 
 		// Transactional emails are not public web content; exclude pub-listing and SEO.
 		$transactional_supports = array_filter(
 			$campaign_supports,
-			static fn( $support ) => ! in_array( $support, [ 'prc-publication-listing', 'prc-schema-seo' ], true )
+			static fn( $support ) => ! in_array( $support, array( 'prc-publication-listing', 'prc-schema-seo' ), true )
 		);
 
 		register_post_type(
 			self::CAMPAIGN_POST_TYPE,
-			[
-				'labels'            => [
+			array(
+				'labels'          => array(
 					'name'               => 'Email Campaigns',
 					'singular_name'      => 'Email Campaign',
 					'add_new_item'       => 'Add New Campaign',
@@ -337,33 +348,34 @@ class Post_Type {
 					'not_found_in_trash' => 'No campaigns found in Trash',
 					'menu_name'          => 'Emails',
 					'all_items'          => 'Campaigns',
-				],
-				'public'            => true,
-				'show_ui'           => true,
-				'show_in_menu'      => true,
-				'show_in_rest'      => true,
-				'menu_icon'         => 'dashicons-email-alt',
-				'menu_position'     => 25,
-				'supports'          => $campaign_supports,
-				'has_archive'       => false,
-				'rewrite'           => [
+				),
+				'public'          => true,
+				'show_ui'         => true,
+				'show_in_menu'    => true,
+				'show_in_rest'    => true,
+				'menu_icon'       => 'dashicons-email-alt',
+				'menu_position'   => 25,
+				'supports'        => $campaign_supports,
+				'has_archive'     => false,
+				'rewrite'         => array(
 					'slug'       => Rewrites::NEWSLETTER_URL_PREFIX . '/%' . self::TAXONOMY . '%',
 					'with_front' => false,
-				],
-				'capability_type'   => 'post',
-				// `_post_visibility` must be listed here: the campaign CPT registers
-				// at init/20, after prc-publication-listing binds that taxonomy to
-				// get_post_types_by_support( 'prc-publication-listing' ) at init/10.
-				// Without this, Hide on Publications Archive toggles look saved in
-				// the editor but are dropped by REST on reload.
-				'taxonomies'        => [ self::TAXONOMY, 'category', '_post_visibility' ],
-			]
+				),
+				'capability_type' => 'post',
+				// `_post_visibility` and `workflow-status` must be listed here:
+				// the campaign CPT registers at init/20, after those taxonomies
+				// bind to get_post_types_by_support() (publication-listing at
+				// init/10, workflow-status at init/11). Without this, Hide on
+				// Publications Archive and workflow status look saved in the
+				// editor but are dropped by REST on reload.
+				'taxonomies'      => array( self::TAXONOMY, 'category', '_post_visibility', 'workflow-status' ),
+			)
 		);
 
 		register_post_type(
 			self::TRANSACTIONAL_POST_TYPE,
-			[
-				'labels'            => [
+			array(
+				'labels'          => array(
 					'name'               => 'Transactional Emails',
 					'singular_name'      => 'Transactional Email',
 					'add_new_item'       => 'Add New Transactional Email',
@@ -374,17 +386,17 @@ class Post_Type {
 					'not_found'          => 'No transactional emails found',
 					'not_found_in_trash' => 'No transactional emails found in Trash',
 					'menu_name'          => 'Transactional',
-				],
-				'public'            => false,
-				'show_ui'           => true,
-				'show_in_menu'      => 'edit.php?post_type=' . self::CAMPAIGN_POST_TYPE,
-				'show_in_rest'      => true,
-				'supports'          => $transactional_supports,
-				'has_archive'       => false,
-				'rewrite'           => false,
-				'capability_type'   => 'post',
-				'taxonomies'        => [ 'category' ],
-			]
+				),
+				'public'          => false,
+				'show_ui'         => true,
+				'show_in_menu'    => 'edit.php?post_type=' . self::CAMPAIGN_POST_TYPE,
+				'show_in_rest'    => true,
+				'supports'        => $transactional_supports,
+				'has_archive'     => false,
+				'rewrite'         => false,
+				'capability_type' => 'post',
+				'taxonomies'      => array( 'category', 'workflow-status' ),
+			)
 		);
 	}
 
@@ -418,16 +430,16 @@ class Post_Type {
 		$campaign_new = 'post-new.php?post_type=' . self::CAMPAIGN_POST_TYPE;
 
 		// Pull the transactional entries out of their current positions.
-		$extracted = [];
+		$extracted = array();
 		foreach ( $submenu[ $parent ] as $key => $item ) {
-			if ( in_array( $item[2], [ $txn_list, $txn_new ], true ) ) {
+			if ( in_array( $item[2], array( $txn_list, $txn_new ), true ) ) {
 				$extracted[ $item[2] ] = $item;
 				unset( $submenu[ $parent ][ $key ] );
 			}
 		}
 
 		// Reinsert them immediately after "Add New Campaign".
-		$reordered = [];
+		$reordered = array();
 		foreach ( $submenu[ $parent ] as $item ) {
 			$reordered[] = $item;
 			if ( $campaign_new === $item[2] ) {
@@ -440,15 +452,20 @@ class Post_Type {
 			}
 		}
 
+		// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- reorder CPT submenu items under the parent menu.
 		$submenu[ $parent ] = array_values( $reordered );
 	}
 
+	/**
+	 * Register the newsletter-list taxonomy on campaign posts and block modules.
+	 */
 	public function register_taxonomy(): void {
+		// register_taxonomy() overwrites object types, so block_module must be listed here.
 		register_taxonomy(
 			self::TAXONOMY,
-			self::CAMPAIGN_POST_TYPE,
-			[
-				'labels'            => [
+			array( self::CAMPAIGN_POST_TYPE, 'block_module' ),
+			array(
+				'labels'             => array(
 					'name'          => 'Newsletter Lists',
 					'singular_name' => 'Newsletter List',
 					'add_new_item'  => 'Add New Newsletter List',
@@ -456,20 +473,20 @@ class Post_Type {
 					'search_items'  => 'Search Newsletter Lists',
 					'not_found'     => 'No newsletter lists found',
 					'menu_name'     => 'Newsletter Lists',
-				],
-				'hierarchical'      => false,
-				'public'            => false,
+				),
+				'hierarchical'       => false,
+				'public'             => false,
 				'publicly_queryable' => true,
-				'show_ui'           => true,
-				'show_in_rest'      => true,
-				'show_in_nav_menus' => false,
-				'show_admin_column' => true,
-				'rewrite'           => [
+				'show_ui'            => true,
+				'show_in_rest'       => true,
+				'show_in_nav_menus'  => false,
+				'show_admin_column'  => true,
+				'rewrite'            => array(
 					'slug'       => Rewrites::NEWSLETTER_URL_PREFIX,
 					'with_front' => false,
-				],
-				'meta_box_cb'       => false,
-			]
+				),
+				'meta_box_cb'        => false,
+			)
 		);
 	}
 
@@ -486,7 +503,7 @@ class Post_Type {
 		}
 
 		$query = new \WP_Query(
-			[
+			array(
 				'post_type'              => self::TRANSACTIONAL_POST_TYPE,
 				'post_status'            => 'publish',
 				'name'                   => $key,
@@ -495,10 +512,10 @@ class Post_Type {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+				'meta_query'             => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 					self::dynamic_delivery_mode_meta_query(),
-				],
-			]
+				),
+			)
 		);
 
 		$ids = $query->posts;
@@ -507,7 +524,7 @@ class Post_Type {
 		}
 		// @TODO: once the migration has been run, we can remove this legacy query
 		$legacy_query = new \WP_Query(
-			[
+			array(
 				'post_type'              => self::TRANSACTIONAL_POST_TYPE,
 				'post_status'            => 'publish',
 				'posts_per_page'         => 1,
@@ -515,15 +532,15 @@ class Post_Type {
 				'no_found_rows'          => true,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
-				'meta_query'             => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+				'meta_query'             => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 					'relation' => 'AND',
-					[
+					array(
 						'key'   => 'prc_email_system_email_key',
 						'value' => $key,
-					],
+					),
 					self::dynamic_delivery_mode_meta_query(),
-				],
-			]
+				),
+			)
 		);
 
 		$legacy_ids = $legacy_query->posts;
@@ -531,21 +548,25 @@ class Post_Type {
 	}
 
 	/** Term meta on prc_newsletter_list (Mailchimp list + segment + default From). */
-	const TERM_META_KEYS = [
-		'prc_newsletter_list_audience_id'      => 'Mailchimp audience (list) ID for this newsletter list.',
-		'prc_newsletter_list_segment_id'       => 'Mailchimp saved-segment ID; empty = entire audience.',
-		'prc_newsletter_list_from_name'        => 'Default From name for campaigns using this list.',
-		'prc_newsletter_list_from_email'       => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
-		'prc_newsletter_list_campaign_pattern' => 'Default campaign pattern name used when creating a draft from this list.',
-	];
+	const TERM_META_KEYS = array(
+		'prc_newsletter_list_audience_id'         => 'Mailchimp audience (list) ID for this newsletter list.',
+		'prc_newsletter_list_segment_id'          => 'Mailchimp saved-segment ID; empty = entire audience.',
+		'prc_newsletter_list_from_name'           => 'Default From name for campaigns using this list.',
+		'prc_newsletter_list_from_email'          => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
+		'prc_newsletter_list_campaign_pattern'    => 'Default campaign pattern name used when creating a draft from this list.',
+		'prc_newsletter_list_preview_campaign_id' => 'Campaign post ID shown by Latest Newsletter Preview on this list archive. Empty = latest published.',
+	);
 
+	/**
+	 * Register post and term meta for both email CPTs.
+	 */
 	public function register_meta(): void {
 		$this->register_meta_for_post_type( self::CAMPAIGN_POST_TYPE, array_merge( self::SHARED_META_KEYS, self::CAMPAIGN_META_KEYS ) );
 		$this->register_report_meta();
 		$this->register_meta_for_post_type(
 			self::TRANSACTIONAL_POST_TYPE,
 			array_merge( self::SHARED_META_KEYS, self::TRANSACTIONAL_META_KEYS ),
-			[ 'prc_email_delivery_mode' => 'dynamic' ]
+			array( 'prc_email_delivery_mode' => 'dynamic' )
 		);
 		$this->register_term_meta();
 	}
@@ -554,19 +575,23 @@ class Post_Type {
 	 * Register term meta for prc_newsletter_list (exposed to REST for the editor sidebar).
 	 */
 	private function register_term_meta(): void {
-		$sanitizers = [
-			'prc_newsletter_list_from_email'       => 'sanitize_email',
-			'prc_newsletter_list_campaign_pattern' => [
+		$sanitizers = array(
+			'prc_newsletter_list_from_email'          => 'sanitize_email',
+			'prc_newsletter_list_campaign_pattern'    => array(
 				Newsletter_List::class,
 				'sanitize_campaign_pattern',
-			],
-		];
+			),
+			'prc_newsletter_list_preview_campaign_id' => array(
+				Newsletter_List::class,
+				'sanitize_preview_campaign_id',
+			),
+		);
 
 		foreach ( self::TERM_META_KEYS as $key => $description ) {
 			register_term_meta(
 				self::TAXONOMY,
 				$key,
-				[
+				array(
 					'type'              => 'string',
 					'description'       => $description,
 					'single'            => true,
@@ -574,47 +599,50 @@ class Post_Type {
 					'default'           => '',
 					'sanitize_callback' => $sanitizers[ $key ] ?? 'sanitize_text_field',
 					'auth_callback'     => fn() => current_user_can( 'edit_posts' ),
-				]
+				)
 			);
 		}
 	}
 
 	/**
-	 * @param array<string, string> $meta_keys
-	 * @param array<string, string> $defaults   Per-key REST defaults.
+	 * Register string post meta for one email CPT.
+	 *
+	 * @param string                $post_type Post type slug.
+	 * @param array<string, string> $meta_keys Key => description map.
+	 * @param array<string, string> $defaults  Per-key REST defaults.
 	 */
-	private function register_meta_for_post_type( string $post_type, array $meta_keys, array $defaults = [] ): void {
+	private function register_meta_for_post_type( string $post_type, array $meta_keys, array $defaults = array() ): void {
 		foreach ( $meta_keys as $key => $description ) {
+			$is_linkage = Campaign_Linkage::is_key( $key );
 			register_post_meta(
 				$post_type,
 				$key,
-				[
+				array(
 					'single'            => true,
 					'type'              => 'string',
 					'description'       => $description,
 					'show_in_rest'      => true,
-					'revisions_enabled' => true,
+					// Linkage is server-written on publish. Revisions must not
+					// snapshot an empty ID and restore it over a live campaign.
+					'revisions_enabled' => ! $is_linkage,
 					'default'           => $defaults[ $key ] ?? '',
 					'sanitize_callback' => 'sanitize_text_field',
 					'auth_callback'     => fn() => current_user_can( 'edit_posts' ),
-				]
+				)
 			);
 		}
 	}
 
 	/**
-	 * Engagement report meta (campaign posts only). Per-post auth; not exposed on generic post REST.
+	 * Engagement report meta on campaign and transactional posts. Per-post auth; not on generic post REST.
 	 */
 	private function register_report_meta(): void {
-		$post_type = self::CAMPAIGN_POST_TYPE;
-		$can_edit  = static function ( bool $allowed, string $meta_key, int $post_id ): bool {
+		$can_edit = static function ( bool $allowed, string $meta_key, int $post_id ): bool {
 			return current_user_can( 'edit_post', $post_id );
 		};
 
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_REPORT,
-			[
+		$args_by_key = array(
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_REPORT      => array(
 				'type'              => 'string',
 				'description'       => 'Normalized JSON engagement report.',
 				'single'            => true,
@@ -624,55 +652,33 @@ class Post_Type {
 					return is_string( $value ) ? $value : '';
 				},
 				'auth_callback'     => $can_edit,
-			]
-		);
-
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_OPEN_RATE,
-			[
+			),
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_OPEN_RATE   => array(
 				'type'              => 'number',
 				'description'       => 'Denormalized open rate for library sorting.',
 				'single'            => true,
 				'show_in_rest'      => false,
-				'default'           => 0,
-				'sanitize_callback' => static fn( $value ): float => (float) $value,
+				'sanitize_callback' => static fn( $value ) => null === $value || '' === $value ? null : (float) $value,
 				'auth_callback'     => $can_edit,
-			]
-		);
-
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_CLICK_RATE,
-			[
+			),
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_CLICK_RATE  => array(
 				'type'              => 'number',
 				'description'       => 'Denormalized click rate for library sorting.',
 				'single'            => true,
 				'show_in_rest'      => false,
-				'default'           => 0,
-				'sanitize_callback' => static fn( $value ): float => (float) $value,
+				'sanitize_callback' => static fn( $value ) => null === $value || '' === $value ? null : (float) $value,
 				'auth_callback'     => $can_edit,
-			]
-		);
-
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_SEND_TIME,
-			[
+			),
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_SEND_TIME   => array(
 				'type'              => 'string',
-				'description'       => 'Mailchimp send time anchor for refresh window.',
+				'description'       => 'Send time anchor for refresh window.',
 				'single'            => true,
 				'show_in_rest'      => false,
 				'default'           => '',
 				'sanitize_callback' => 'sanitize_text_field',
 				'auth_callback'     => $can_edit,
-			]
-		);
-
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_LAST_SYNCED,
-			[
+			),
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_LAST_SYNCED => array(
 				'type'              => 'string',
 				'description'       => 'UTC timestamp of last successful report sync.',
 				'single'            => true,
@@ -680,13 +686,8 @@ class Post_Type {
 				'default'           => '',
 				'sanitize_callback' => 'sanitize_text_field',
 				'auth_callback'     => $can_edit,
-			]
-		);
-
-		register_post_meta(
-			$post_type,
-			\PRC\Platform\Email_Builder\Reports\Report_Store::META_SYNC_STATE,
-			[
+			),
+			\PRC\Platform\Email_Builder\Reports\Report_Store::META_SYNC_STATE  => array(
 				'type'              => 'string',
 				'description'       => 'Report sync state: ok, unavailable, error, pending.',
 				'single'            => true,
@@ -694,7 +695,27 @@ class Post_Type {
 				'default'           => '',
 				'sanitize_callback' => 'sanitize_text_field',
 				'auth_callback'     => $can_edit,
-			]
+			),
+		);
+
+		foreach ( self::POST_TYPES as $post_type ) {
+			foreach ( $args_by_key as $key => $args ) {
+				register_post_meta( $post_type, $key, $args );
+			}
+		}
+
+		register_post_meta(
+			self::TRANSACTIONAL_POST_TYPE,
+			Mandrill_Send_Key::META_SINCE,
+			array(
+				'type'              => 'string',
+				'description'       => 'ISO-8601 UTC timestamp of the first Mandrill identity stamp.',
+				'single'            => true,
+				'show_in_rest'      => false,
+				'default'           => '',
+				'sanitize_callback' => 'sanitize_text_field',
+				'auth_callback'     => $can_edit,
+			)
 		);
 	}
 
@@ -747,6 +768,8 @@ class Post_Type {
 	 * Enqueue traffic-light styling for classic email list tables.
 	 *
 	 * @hook admin_enqueue_scripts
+	 *
+	 * @param string $hook_suffix Current admin page hook.
 	 */
 	public function enqueue_list_table_assets( string $hook_suffix ): void {
 		if ( 'edit.php' !== $hook_suffix ) {
@@ -761,7 +784,7 @@ class Post_Type {
 		wp_enqueue_style(
 			'prc-email-builder-post-states',
 			plugins_url( 'assets/admin-post-states.css', PRC_EMAIL_BUILDER_FILE ),
-			[],
+			array(),
 			PRC_EMAIL_BUILDER_VERSION
 		);
 	}

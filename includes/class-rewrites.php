@@ -27,6 +27,7 @@ class Rewrites {
 		$loader->add_filter( 'post_type_link', $this, 'filter_campaign_permalink', 10, 2 );
 		$loader->add_action( 'template_redirect', $this, 'redirect_canonical_list_segment' );
 		$loader->add_filter( 'prc_research_teams_excluded_url_slugs', $this, 'exclude_newsletter_slug' );
+		$loader->add_action( 'pre_get_posts', $this, 'restrict_list_archive_to_campaigns' );
 		$loader->add_action( 'admin_init', $this, 'maybe_flush_rewrite_rules', 99999 );
 	}
 
@@ -96,6 +97,24 @@ class Rewrites {
 	public function exclude_newsletter_slug( array $excluded ): array {
 		$excluded[] = self::NEWSLETTER_URL_PREFIX;
 		return array_values( array_unique( $excluded ) );
+	}
+
+	/**
+	 * Keep list archives on campaigns after block_module also uses this taxonomy.
+	 *
+	 * Taxonomy archives query every attached public post type. Without this,
+	 * Block Modules assigned to a list appear in the campaign listing.
+	 *
+	 * @param \WP_Query $query Main or secondary query.
+	 */
+	public function restrict_list_archive_to_campaigns( \WP_Query $query ): void {
+		if ( is_admin() || ! $query->is_main_query() ) {
+			return;
+		}
+		if ( ! $query->is_tax( Post_Type::TAXONOMY ) ) {
+			return;
+		}
+		$query->set( 'post_type', Post_Type::CAMPAIGN_POST_TYPE );
 	}
 
 	/**

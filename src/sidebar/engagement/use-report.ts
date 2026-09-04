@@ -2,22 +2,24 @@ import apiFetch from '@wordpress/api-fetch';
 import { useCallback, useEffect, useState } from '@wordpress/element';
 
 export interface ReportSummary {
-	emails_sent?: number;
-	opens_total?: number;
-	opens_unique?: number;
-	open_rate?: number;
-	clicks_total?: number;
-	clicks_unique?: number;
-	click_rate?: number;
-	bounces_hard?: number;
-	bounces_soft?: number;
-	unsubscribes?: number;
-	abuse_reports?: number;
+	emails_sent?: number | null;
+	opens_total?: number | null;
+	opens_unique?: number | null;
+	open_rate?: number | null;
+	clicks_total?: number | null;
+	clicks_unique?: number | null;
+	click_rate?: number | null;
+	bounces_hard?: number | null;
+	bounces_soft?: number | null;
+	unsubscribes?: number | null;
+	abuse_reports?: number | null;
+	completions?: number | null;
 }
 
 export interface ReportClickRow {
 	url: string;
 	clicks: number;
+	unique?: number;
 }
 
 export interface NormalizedReport {
@@ -27,17 +29,29 @@ export interface NormalizedReport {
 	send_time?: string;
 }
 
+export interface Coverage {
+	volume: 'complete' | 'none' | string;
+	engagement: 'full' | 'forward_only' | 'none' | string;
+	audience: 'full' | 'crm_contacts' | string;
+	engagement_since?: string | null;
+	tracked_emails_sent?: number | null;
+}
+
 export interface ReportEnvelope {
 	report: NormalizedReport | null;
 	sync_state: string;
 	last_synced: string;
-	open_rate: number;
-	click_rate: number;
+	open_rate: number | null;
+	click_rate: number | null;
 	mailchimp_status: string;
+	delivery_status?: string;
+	channel?: string;
+	stats_available?: boolean;
+	coverage?: Coverage;
 }
 
-export function formatRate(rate: number | undefined): string {
-	if (rate === undefined || Number.isNaN(rate)) {
+export function formatRate(rate: number | null | undefined): string {
+	if (rate === undefined || rate === null || Number.isNaN(rate)) {
 		return '—';
 	}
 	return `${(rate * 100).toFixed(1)}%`;

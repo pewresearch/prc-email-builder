@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Query Loop hardening for the Latest Newsletter Preview variation.
  *
- * @package    PRC\Platform\Email_Builder
+ * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -16,12 +17,25 @@ class Latest_Campaign_Query {
 
 	const NAMESPACE = 'prc-email-builder/latest-campaign-preview';
 
-	/** @var int Nesting depth of matching query blocks currently rendering. */
+	/**
+	 * Nesting depth of matching query blocks currently rendering.
+	 *
+	 * @var int
+	 */
 	private int $query_block_depth = 0;
 
-	/** @var callable|null Active query_loop_block_query_vars callback. */
+	/**
+	 * Active query_loop_block_query_vars callback.
+	 *
+	 * @var callable|null
+	 */
 	private $query_loop_filter_callback = null;
 
+	/**
+	 * Wire Query Loop filters.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_filter( 'pre_render_block', $this, 'maybe_add_query_loop_filter', 10, 3 );
 		$loader->add_filter( 'render_block', $this, 'maybe_remove_query_loop_filter', 10, 2 );
@@ -121,6 +135,22 @@ class Latest_Campaign_Query {
 			$query['meta_query'][] = $exclude_migrated;
 		} else {
 			$query['meta_query'] = array( $exclude_migrated );
+		}
+
+		$archive_term = Newsletter_List::get_queried_archive_term();
+		if ( $archive_term instanceof \WP_Term ) {
+			$query['tax_query'] = array(
+				array(
+					'taxonomy' => Post_Type::TAXONOMY,
+					'field'    => 'term_id',
+					'terms'    => array( (int) $archive_term->term_id ),
+				),
+			);
+
+			$pinned_id = Newsletter_List::resolve_preview_campaign_id( (int) $archive_term->term_id );
+			if ( $pinned_id > 0 ) {
+				$query['p'] = $pinned_id;
+			}
 		}
 
 		return $query;

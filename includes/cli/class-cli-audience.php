@@ -804,34 +804,20 @@ class CLI_Audience {
 		string $post_title,
 		string $post_subject
 	): void {
-		if ( ! post_type_exists( Post_Type::TRANSACTIONAL_POST_TYPE ) ) {
-			WP_CLI::warning(
-				'The "prc_email_txn" post type is not registered. Skipping draft post creation.'
-			);
-			return;
-		}
-
-		$post_id = wp_insert_post(
+		$result = Transactional_Draft::create_from_audience(
+			$audience_key,
 			array(
-				'post_type'   => Post_Type::TRANSACTIONAL_POST_TYPE,
-				'post_status' => 'draft',
-				'post_title'  => $post_title,
-				'meta_input'  => array(
-					'prc_email_delivery_mode'       => 'mandrill',
-					'prc_email_audience_option_key' => $audience_key,
-					'prc_email_subject'             => $post_subject,
-				),
-			),
-			true
+				'title'   => $post_title,
+				'subject' => $post_subject,
+			)
 		);
 
-		if ( is_wp_error( $post_id ) ) {
-			WP_CLI::warning( 'Could not create newsletter draft: ' . $post_id->get_error_message() );
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::warning( 'Could not create newsletter draft: ' . $result->get_error_message() );
 			return;
 		}
 
-		$edit_url = admin_url( "post.php?post={$post_id}&action=edit" );
-		WP_CLI::line( sprintf( 'Newsletter draft created → %s', $edit_url ) );
+		WP_CLI::line( sprintf( 'Newsletter draft created → %s', $result['edit_url'] ) );
 	}
 
 	/**

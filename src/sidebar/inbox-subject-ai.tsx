@@ -6,6 +6,7 @@ import { __ } from '@wordpress/i18n';
 import { useCallback } from '@wordpress/element';
 
 import { InboxAISuggest } from './inbox-ai-suggest';
+import { INBOX_FIELD_LIMITS } from './inbox-field-limits';
 import { InboxMetadataField } from './inbox-metadata-field';
 
 declare const prcEmailBuilderAI: {
@@ -40,6 +41,7 @@ export function InboxSubjectAI({
 			value={subject}
 			onChange={onChange}
 			placeholder={__('Enter email subject…', 'prc-email-builder')}
+			limit={INBOX_FIELD_LIMITS.subject}
 			aiControl={
 				aiConfig?.enabled ? (
 					<InboxAISuggest

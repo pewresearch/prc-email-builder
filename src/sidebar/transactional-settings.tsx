@@ -81,13 +81,14 @@ export function TransactionalSettings() {
 						<Spinner />
 					) : (
 						<SelectControl
+							__next40pxDefaultSize
 							__nextHasNoMarginBottom
 							label={__('Recipient list', 'prc-email-builder')}
 							value={audienceOptionKey}
 							options={systemAudienceOptions}
 							onChange={setAudienceOptionKey}
 							help={__(
-								'Built via `wp prc datasets build-audience`. Use a fresh list before sending.',
+								'Pick a list built from Emails → Transactional → Build audience, or from a quiz or dataset inspector. Use a fresh list before sending.',
 								'prc-email-builder'
 							)}
 						/>
@@ -98,6 +99,7 @@ export function TransactionalSettings() {
 			{deliveryMode === 'dynamic' && (
 				<>
 					<TextControl
+						__next40pxDefaultSize
 						__nextHasNoMarginBottom
 						label={__('System email slug', 'prc-email-builder')}
 						value={slug}

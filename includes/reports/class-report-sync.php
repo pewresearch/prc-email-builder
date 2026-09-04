@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Scheduled and on-demand Mailchimp engagement report sync.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder\Reports;
 
@@ -30,18 +31,22 @@ class Report_Sync {
 	 * Register hooks and ensure the recurring job is scheduled.
 	 */
 	public static function init(): void {
-		add_action( self::SYNC_HOOK, [ __CLASS__, 'sync' ] );
-		add_action( self::FETCH_HOOK, [ __CLASS__, 'fetch_one' ], 10, 1 );
-		add_action( 'init', [ __CLASS__, 'maybe_schedule' ] );
-		add_action( 'updated_post_meta', [ __CLASS__, 'maybe_enqueue_on_sent' ], 10, 4 );
+		add_action( self::SYNC_HOOK, array( __CLASS__, 'sync' ) );
+		add_action( self::FETCH_HOOK, array( __CLASS__, 'fetch_one' ), 10, 1 );
+		add_action( 'init', array( __CLASS__, 'maybe_schedule' ) );
+		add_action( 'updated_post_meta', array( __CLASS__, 'maybe_enqueue_on_sent' ), 10, 4 );
+		add_action( 'added_post_meta', array( __CLASS__, 'maybe_enqueue_on_sent' ), 10, 4 );
 	}
 
+	/**
+	 * Schedule the daily sync when Action Scheduler is available.
+	 */
 	public static function maybe_schedule(): void {
 		if ( ! function_exists( 'as_has_scheduled_action' ) ) {
 			return;
 		}
 
-		if ( as_has_scheduled_action( self::SYNC_HOOK, [], self::ACTION_GROUP ) ) {
+		if ( as_has_scheduled_action( self::SYNC_HOOK, array(), self::ACTION_GROUP ) ) {
 			return;
 		}
 
@@ -49,33 +54,50 @@ class Report_Sync {
 			time() + self::INTERVAL,
 			self::INTERVAL,
 			self::SYNC_HOOK,
-			[],
+			array(),
 			self::ACTION_GROUP
 		);
 	}
 
 	/**
-	 * Enumerate eligible sent campaigns and enqueue per-post fetches.
+	 * Enumerate eligible sent campaigns and transactional posts; enqueue per-post fetches.
 	 */
 	public static function sync(): void {
+		self::sync_post_type( Post_Type::CAMPAIGN_POST_TYPE, true );
+		self::sync_post_type( Post_Type::TRANSACTIONAL_POST_TYPE, false );
+	}
+
+	/**
+	 * Page through one post type and enqueue eligible fetches.
+	 *
+	 * @param string $post_type    Campaign or transactional CPT.
+	 * @param bool   $for_campaign Whether to use the Mailchimp eligibility query.
+	 */
+	private static function sync_post_type( string $post_type, bool $for_campaign ): void {
 		$page = 1;
 
 		do {
 			$query = new \WP_Query(
-				[
-					'post_type'      => Post_Type::CAMPAIGN_POST_TYPE,
+				array(
+					'post_type'      => $post_type,
 					'post_status'    => 'any',
 					'posts_per_page' => 100,
 					'paged'          => $page,
 					'fields'         => 'ids',
 					'no_found_rows'  => false,
-					'meta_query'     => self::eligibility_meta_query( true ),
-				]
+					'meta_query'     => $for_campaign
+						? self::eligibility_meta_query( true )
+						: self::txn_eligibility_meta_query( true ),
+				)
 			);
 
 			foreach ( $query->posts as $post_id ) {
 				$post_id = (int) $post_id;
-				if ( ! self::is_within_refresh_window( $post_id ) ) {
+				$post    = get_post( $post_id );
+				if ( ! $post instanceof \WP_Post || ! Channel::stats_available( $post ) ) {
+					continue;
+				}
+				if ( ! self::is_within_refresh_window( $post_id, $post ) ) {
 					continue;
 				}
 				self::enqueue_fetch( $post_id );
@@ -85,7 +107,7 @@ class Report_Sync {
 				vip_inmemory_cleanup();
 			}
 
-			$page++;
+			++$page;
 		} while ( $page <= (int) $query->max_num_pages );
 	}
 
@@ -107,14 +129,15 @@ class Report_Sync {
 	/**
 	 * On-demand refresh (ignores refresh window).
 	 *
+	 * @param int $post_id Email post ID.
 	 * @return array<string, mixed>|WP_Error Report envelope on success.
 	 */
 	public static function refresh_now( int $post_id ): array|WP_Error {
 		if ( ! self::is_eligible_post( $post_id, true ) ) {
 			return new WP_Error(
 				'report_refresh_not_eligible',
-				'This campaign is not eligible for report refresh.',
-				[ 'status' => 400 ]
+				'This email is not eligible for report refresh.',
+				array( 'status' => 400 )
 			);
 		}
 
@@ -125,7 +148,7 @@ class Report_Sync {
 				return new WP_Error(
 					'report_refresh_throttled',
 					'Report was refreshed recently. Please wait before refreshing again.',
-					[ 'status' => 429 ]
+					array( 'status' => 429 )
 				);
 			}
 		}
@@ -142,6 +165,10 @@ class Report_Sync {
 	}
 
 	/**
+	 * Fetch one report and persist it.
+	 *
+	 * @param int  $post_id Email post ID.
+	 * @param bool $force   When true, ignore the send-time refresh window.
 	 * @return true|WP_Error True on success.
 	 */
 	private static function pull_and_store( int $post_id, bool $force ): true|WP_Error {
@@ -154,11 +181,20 @@ class Report_Sync {
 			return new WP_Error(
 				'report_sync_in_progress',
 				'A report sync is already in progress for this campaign.',
-				[ 'status' => 409 ]
+				array( 'status' => 409 )
 			);
 		}
 
 		try {
+			$post = get_post( $post_id );
+			if ( $post instanceof \WP_Post && Channel::Mailchimp !== Channel::for_post( $post ) ) {
+				$result = Email_Reports::refresh( $post_id, true );
+				if ( is_wp_error( $result ) ) {
+					return $result;
+				}
+				return true;
+			}
+
 			$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
 			if ( '' === $campaign_id ) {
 				return new WP_Error( 'report_missing_campaign_id', 'No Mailchimp campaign ID on this post.' );
@@ -167,7 +203,7 @@ class Report_Sync {
 			$provider = new Mailchimp_Report_Provider();
 			$report   = $provider->fetch( $campaign_id );
 
-		if ( is_wp_error( $report ) ) {
+			if ( is_wp_error( $report ) ) {
 				$data   = $report->get_error_data();
 				$status = is_array( $data ) ? (int) ( $data['status'] ?? 0 ) : 0;
 				if ( 404 === $status ) {
@@ -186,7 +222,7 @@ class Report_Sync {
 						as_schedule_single_action(
 							time() + 60,
 							self::FETCH_HOOK,
-							[ $post_id ],
+							array( $post_id ),
 							self::ACTION_GROUP
 						);
 					}
@@ -210,22 +246,33 @@ class Report_Sync {
 	 * @param mixed  $meta_value New value.
 	 */
 	public static function maybe_enqueue_on_sent( $meta_id, $post_id, $meta_key, $meta_value ): void {
-		if ( 'prc_email_mailchimp_campaign_status' !== $meta_key || 'sent' !== (string) $meta_value ) {
+		unset( $meta_id, $meta_value );
+		$is_mailchimp = 'prc_email_mailchimp_campaign_status' === $meta_key;
+		$is_mandrill  = 'prc_email_mandrill_send_status' === $meta_key;
+		if ( ! $is_mailchimp && ! $is_mandrill ) {
 			return;
 		}
 
 		$post_id = (int) $post_id;
-		if ( $post_id <= 0 || ! Post_Type::is_campaign_post( $post_id ) ) {
+		$post    = get_post( $post_id );
+		if ( ! $post instanceof \WP_Post ) {
 			return;
 		}
-
 		if ( Migration::is_migrated( $post_id ) ) {
+			return;
+		}
+		if ( ! Channel::stats_available( $post ) ) {
 			return;
 		}
 
 		self::enqueue_fetch( $post_id );
 	}
 
+	/**
+	 * Enqueue a per-post fetch, or run it inline when Action Scheduler is absent.
+	 *
+	 * @param int $post_id Email post ID.
+	 */
 	private static function enqueue_fetch( int $post_id ): void {
 		if ( ! function_exists( 'as_enqueue_async_action' ) ) {
 			self::fetch_one( $post_id );
@@ -234,76 +281,138 @@ class Report_Sync {
 
 		as_enqueue_async_action(
 			self::FETCH_HOOK,
-			[ $post_id ],
+			array( $post_id ),
 			self::ACTION_GROUP,
 			true
 		);
 	}
 
 	/**
+	 * Mailchimp campaign eligibility meta query.
+	 *
 	 * @param bool $for_scheduled When true, exclude unavailable terminal state.
 	 * @return array<int|string, mixed>
 	 */
 	private static function eligibility_meta_query( bool $for_scheduled ): array {
-		$clauses = [
+		$clauses = array(
 			'relation' => 'AND',
-			[
+			array(
 				'key'     => 'prc_email_mailchimp_campaign_id',
 				'compare' => '!=',
 				'value'   => '',
-			],
-			[
+			),
+			array(
 				'key'     => 'prc_email_mailchimp_campaign_status',
 				'value'   => 'sent',
 				'compare' => '=',
-			],
-			[
+			),
+			array(
 				'key'     => Migration::MIGRATED_META_KEY,
 				'compare' => 'NOT EXISTS',
-			],
-		];
+			),
+		);
 
 		if ( $for_scheduled ) {
-			$clauses[] = [
+			$clauses[] = array(
 				'relation' => 'OR',
-				[
+				array(
 					'key'     => Report_Store::META_SYNC_STATE,
 					'compare' => 'NOT EXISTS',
-				],
-				[
+				),
+				array(
 					'key'     => Report_Store::META_SYNC_STATE,
 					'value'   => Report_Store::STATE_UNAVAILABLE,
 					'compare' => '!=',
-				],
-			];
+				),
+			);
 		}
 
 		return $clauses;
 	}
 
+	/**
+	 * Transactional Mandrill/system eligibility meta query.
+	 *
+	 * @param bool $for_scheduled When true, exclude unavailable terminal state.
+	 * @return array<int|string, mixed>
+	 */
+	private static function txn_eligibility_meta_query( bool $for_scheduled ): array {
+		$clauses = array(
+			'relation' => 'AND',
+			array(
+				'key'     => 'prc_email_mandrill_send_status',
+				'value'   => array( 'sent', 'partial', 'active' ),
+				'compare' => 'IN',
+			),
+			array(
+				'key'     => Migration::MIGRATED_META_KEY,
+				'compare' => 'NOT EXISTS',
+			),
+		);
+
+		if ( $for_scheduled ) {
+			$clauses[] = array(
+				'relation' => 'OR',
+				array(
+					'key'     => Report_Store::META_SYNC_STATE,
+					'compare' => 'NOT EXISTS',
+				),
+				array(
+					'key'     => Report_Store::META_SYNC_STATE,
+					'value'   => Report_Store::STATE_UNAVAILABLE,
+					'compare' => '!=',
+				),
+			);
+		}
+
+		return $clauses;
+	}
+
+	/**
+	 * Whether a post may be synced or refreshed.
+	 *
+	 * @param int  $post_id        Email post ID.
+	 * @param bool $ignore_window  When true, skip the send-time refresh window.
+	 */
 	private static function is_eligible_post( int $post_id, bool $ignore_window ): bool {
-		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+		$post = get_post( $post_id );
+		if ( ! $post instanceof \WP_Post ) {
+			return false;
+		}
+		if ( ! Post_Type::is_campaign_post( $post ) && ! Post_Type::is_transactional_post( $post ) ) {
 			return false;
 		}
 		if ( Migration::is_migrated( $post_id ) ) {
 			return false;
 		}
-		if ( 'sent' !== (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', true ) ) {
+		if ( ! Channel::stats_available( $post ) ) {
 			return false;
 		}
-		if ( '' === (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true ) ) {
+		if ( Channel::Mailchimp === Channel::for_post( $post )
+			&& '' === (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true ) ) {
 			return false;
 		}
 		if ( Report_Store::STATE_UNAVAILABLE === Report_Store::get_sync_state( $post_id ) ) {
 			return false;
 		}
-		if ( ! $ignore_window && ! self::is_within_refresh_window( $post_id ) ) {
+		if ( ! $ignore_window && ! self::is_within_refresh_window( $post_id, $post ) ) {
 			return false;
 		}
 		return true;
 	}
 
-	private static function is_within_refresh_window( int $post_id ): bool {
+	/**
+	 * System emails keep syncing (no send-time window). Campaigns and bulk Mandrill age out.
+	 *
+	 * @param int           $post_id Email post ID.
+	 * @param \WP_Post|null $post    Post object when already loaded.
+	 */
+	private static function is_within_refresh_window( int $post_id, ?\WP_Post $post = null ): bool {
+		$post = $post ?? get_post( $post_id );
+		if ( $post instanceof \WP_Post && Channel::System === Channel::for_post( $post ) ) {
+			return true;
+		}
+
 		$send_time = (string) get_post_meta( $post_id, Report_Store::META_SEND_TIME, true );
 		if ( '' === $send_time ) {
 			return true;

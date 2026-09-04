@@ -101,7 +101,7 @@ class Preview {
 		$meta     = [
 			'from_name'    => $settings['from_name'] ?? '',
 			'from_email'   => $settings['from_email'] ?? '',
-			'subject'      => get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id ),
+			'subject'      => Email_Subject::display( $post_id ),
 			'preview_text' => get_post_meta( $post_id, 'prc_email_preview_text', true ),
 		];
 
@@ -158,8 +158,12 @@ class Preview {
 			return $html;
 		}
 
-		$subject = get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id );
-		$result  = $this->dispatch_test_email( $emails, '[TEST] ' . $subject, $html );
+		$ready = Email_Subject::require_for_send( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$result = $this->dispatch_test_email( $emails, '[TEST] ' . $ready->line(), $html );
 
 		if ( is_wp_error( $result ) ) {
 			return $result;

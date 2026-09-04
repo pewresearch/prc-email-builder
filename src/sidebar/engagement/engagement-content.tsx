@@ -9,6 +9,7 @@ import {
 } from '@wordpress/components';
 
 import { EngagementReport } from './engagement-report';
+import { CoverageNotice } from './coverage-notice';
 import type { ReportEnvelope } from './use-report';
 
 function formatLastSynced(utcIso: string): string {
@@ -35,7 +36,7 @@ export interface EngagementContentProps {
 	className?: string;
 }
 
-// Shared Mailchimp engagement report body used by the editor panel and library modal.
+// Shared engagement report body used by the editor panel and library modal.
 export function EngagementContent({
 	data,
 	isLoading,
@@ -45,23 +46,41 @@ export function EngagementContent({
 	className = 'prc-email-engagement',
 }: EngagementContentProps) {
 	const mailchimpStatus = data?.mailchimp_status ?? '';
+	const deliveryStatus = data?.delivery_status ?? '';
 	const syncState = data?.sync_state ?? '';
 	const report = data?.report;
-	const isSent = mailchimpStatus === 'sent';
+	const channel = data?.channel ?? report?.channel ?? '';
+	const coverage = data?.coverage;
+	const isSent =
+		typeof data?.stats_available === 'boolean'
+			? data.stats_available
+			: mailchimpStatus === 'sent' ||
+				deliveryStatus === 'sent' ||
+				deliveryStatus === 'partial' ||
+				deliveryStatus === 'active';
+
+	let notSentCopy = __(
+		'Engagement reporting is available after this campaign is sent in Mailchimp.',
+		'prc-email-builder'
+	);
+	if (channel === 'mandrill' || channel === 'crm') {
+		notSentCopy = __(
+			'Engagement reporting is available after this email is sent via Mandrill.',
+			'prc-email-builder'
+		);
+	} else if (channel === 'system') {
+		notSentCopy = __(
+			'Engagement reporting is available after this system email has sent at least once.',
+			'prc-email-builder'
+		);
+	}
 
 	let body: ReactNode = null;
 
 	if (isLoading && !data) {
 		body = <Spinner />;
 	} else if (!isSent) {
-		body = (
-			<Text>
-				{__(
-					'Engagement reporting is available after this campaign is sent in Mailchimp.',
-					'prc-email-builder'
-				)}
-			</Text>
-		);
+		body = <Text>{notSentCopy}</Text>;
 	} else if (syncState === 'unavailable') {
 		body = (
 			<Text>
@@ -74,6 +93,7 @@ export function EngagementContent({
 	} else if (!report) {
 		body = (
 			<VStack spacing={2}>
+				<CoverageNotice coverage={coverage} />
 				<Text>
 					{__(
 						'Report pending — no engagement data synced yet.',
@@ -95,6 +115,7 @@ export function EngagementContent({
 	} else {
 		body = (
 			<VStack spacing={3}>
+				<CoverageNotice coverage={coverage} />
 				<EngagementReport
 					summary={report.summary ?? {}}
 					clicks={report.clicks_by_url ?? []}

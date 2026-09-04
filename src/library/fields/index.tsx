@@ -12,6 +12,20 @@ import {
 	resolveSendStatus,
 } from '../utils/send-status';
 
+function rowStatsAvailable(item: EmailLibraryRow): boolean {
+	if (typeof item.stats_available === 'boolean') {
+		return item.stats_available;
+	}
+	if (item.type === 'campaign') {
+		return item.mailchimp_status === 'sent';
+	}
+	return (
+		item.mandrill_status === 'sent' ||
+		item.mandrill_status === 'partial' ||
+		item.mandrill_status === 'active'
+	);
+}
+
 function formatEngagementRate(rate: number | null | undefined): string {
 	if (rate === null || rate === undefined || Number.isNaN(rate)) {
 		return '—';
@@ -36,7 +50,14 @@ function getNewsletterListLabels(item: EmailLibraryRow) {
 
 export function getDefaultVisibleFields(scope: EmailListScope): string[] {
 	if (scope === 'txn') {
-		return ['sendStatus', 'status', 'date'];
+		return [
+			'sendStatus',
+			'openRate',
+			'clickRate',
+			'stats',
+			'status',
+			'date',
+		];
 	}
 	return [
 		'newsletterLists',
@@ -131,20 +152,20 @@ export function getFieldsForScope(
 			id: 'stats',
 			label: __('Stats', 'prc-email-builder'),
 			getValue: ({ item }: { item: EmailLibraryRow }) =>
-				item?.mailchimp_status === 'sent'
+				rowStatsAvailable(item)
 					? __('Available', 'prc-email-builder')
 					: __('Unavailable', 'prc-email-builder'),
 			render: ({ item }: { item: EmailLibraryRow }) => {
-				const isSent = item?.mailchimp_status === 'sent';
+				const isAvailable = rowStatsAvailable(item);
 				return (
 					<Button
 						icon={chartBar}
 						label={__('View stats', 'prc-email-builder')}
 						size="compact"
-						disabled={!isSent}
+						disabled={!isAvailable}
 						onClick={(event) => {
 							event.stopPropagation();
-							if (!isSent || !onOpenStats) {
+							if (!isAvailable || !onOpenStats) {
 								return;
 							}
 							onOpenStats(item);
@@ -211,9 +232,6 @@ export function getFieldsForScope(
 			(field) =>
 				field.id !== 'title' &&
 				field.id !== 'newsletterLists' &&
-				field.id !== 'openRate' &&
-				field.id !== 'clickRate' &&
-				field.id !== 'stats' &&
 				field.id !== 'date' &&
 				field.id !== 'status'
 		);

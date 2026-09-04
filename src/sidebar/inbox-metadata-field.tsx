@@ -10,6 +10,8 @@ import {
 	FlexBlock,
 	FlexItem,
 } from '@wordpress/components';
+import { useInstanceId } from '@wordpress/compose';
+import { CharacterCounter } from '@prc/components';
 
 interface InboxMetadataFieldProps {
 	label: string;
@@ -17,6 +19,7 @@ interface InboxMetadataFieldProps {
 	onChange: (value: string) => void;
 	placeholder: string;
 	help?: string;
+	limit?: number;
 	aiControl?: ReactNode;
 }
 
@@ -26,19 +29,56 @@ export function InboxMetadataField({
 	onChange,
 	placeholder,
 	help,
+	limit,
 	aiControl,
 }: InboxMetadataFieldProps) {
+	const fieldId = useInstanceId(
+		InboxMetadataField,
+		'prc-email-inbox-metadata'
+	);
+
+	function handleChange(next: string) {
+		if (typeof limit === 'number') {
+			onChange(next.slice(0, limit));
+			return;
+		}
+
+		onChange(next);
+	}
+
+	let composedHelp: ReactNode = help;
+	if (typeof limit === 'number') {
+		composedHelp = (
+			<>
+				<CharacterCounter current={value.length} limit={limit} />
+				{help ? (
+					<>
+						<br />
+						{help}
+					</>
+				) : null}
+			</>
+		);
+	}
+
 	return (
-		<BaseControl __nextHasNoMarginBottom label={label} help={help}>
+		<BaseControl
+			__nextHasNoMarginBottom
+			id={fieldId}
+			label={label}
+			help={composedHelp}
+		>
 			<Flex align="center" gap={2}>
 				<FlexBlock>
 					<TextControl
 						__nextHasNoMarginBottom
-						hideLabelFromVision
-						label={label}
+						id={fieldId}
 						value={value}
-						onChange={onChange}
+						onChange={handleChange}
 						placeholder={placeholder}
+						aria-describedby={
+							composedHelp ? `${fieldId}__help` : undefined
+						}
 					/>
 				</FlexBlock>
 				{aiControl && <FlexItem>{aiControl}</FlexItem>}

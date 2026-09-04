@@ -142,23 +142,28 @@ class Assets {
 			)
 		);
 
-		wp_localize_script(
+		// wp_localize_script() stringifies top-level scalars (true → "1", false → ""),
+		// so a boolean flag cannot be read with `!== false` in the editor. Encode JSON.
+		wp_add_inline_script(
 			self::SCRIPT_HANDLE,
-			'prcEmailBuilderConfig',
-			[
-				'restNamespace'         => REST_API::NAMESPACE,
-				'postTypes'             => Post_Type::POST_TYPES,
-				'campaignPostType'      => Post_Type::CAMPAIGN_POST_TYPE,
-				'transactionalPostType' => Post_Type::TRANSACTIONAL_POST_TYPE,
-				'campaignPatternCategorySlug'      => Patterns::CAMPAIGN_CATEGORY_SLUG,
-				'transactionalPatternCategorySlug' => Patterns::TRANSACTIONAL_CATEGORY_SLUG,
-				'templates'            => $templates,
-				'nonce'                => wp_create_nonce( 'wp_rest' ),
-				'defaults'             => [
-					'from_name'  => $settings['from_name'] ?? '',
-					'from_email' => $settings['from_email'] ?? '',
-				],
-			]
+			'window.prcEmailBuilderConfig = ' . wp_json_encode(
+				[
+					'restNamespace'                    => REST_API::NAMESPACE,
+					'postTypes'                        => Post_Type::POST_TYPES,
+					'campaignPostType'                 => Post_Type::CAMPAIGN_POST_TYPE,
+					'transactionalPostType'            => Post_Type::TRANSACTIONAL_POST_TYPE,
+					'campaignPatternCategorySlug'      => Patterns::CAMPAIGN_CATEGORY_SLUG,
+					'transactionalPatternCategorySlug' => Patterns::TRANSACTIONAL_CATEGORY_SLUG,
+					'templates'                        => $templates,
+					'nonce'                            => wp_create_nonce( 'wp_rest' ),
+					'autoSendOnPublish'                => Mailchimp::is_auto_send_on_publish_enabled(),
+					'defaults'                         => [
+						'from_name'  => $settings['from_name'] ?? '',
+						'from_email' => $settings['from_email'] ?? '',
+					],
+				]
+			) . ';',
+			'before'
 		);
 	}
 

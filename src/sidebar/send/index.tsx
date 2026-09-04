@@ -32,6 +32,7 @@ import {
 } from '../use-newsletter-data';
 import { AutomationsSettings } from '../automations';
 import { CampaignAdvancedSettings } from '../campaign-mailchimp-settings';
+import { parseEmailSubject } from '../subject-readiness';
 import { TransactionalSettings } from '../transactional-settings';
 
 const PLUGIN_NAME = 'prc-email-builder';
@@ -97,7 +98,9 @@ export function SendSidebar() {
 				{title}
 			</PluginSidebarMoreMenuItem>
 			<PluginSidebar name={SIDEBAR_NAME} title={title} icon={send}>
-				<SendPanel postId={postId} />
+				<div data-prc-tour="email-send">
+					<SendPanel postId={postId} />
+				</div>
 			</PluginSidebar>
 		</>
 	);
@@ -133,19 +136,23 @@ function SendPanel({ postId }: SendPanelProps) {
 
 	const isCampaign = isCampaignPostType(postType);
 	const isTransactional = isTransactionalPostType(postType);
+	const parsed = parseEmailSubject(subject);
+	const subjectReady = parsed.status === 'ready';
 
 	const { audiences: systemAudiences } = useSystemAudiences();
 	const { status: transformStatus } = useTransformStatus(postId);
 	const [unlinkedThisSession, setUnlinkedThisSession] = useState(false);
-	const shouldSyncMailchimpCampaign =
+	const autoSendOnPublish = config.autoSendOnPublish;
+	const shouldPollAutoSendMeta =
 		isCampaign &&
 		isPublished &&
 		transformStatus === 'complete' &&
 		!campaignId &&
-		!unlinkedThisSession;
+		!unlinkedThisSession &&
+		autoSendOnPublish;
 	const { syncTimedOut } = useSyncMailchimpCampaignMeta(
 		postId,
-		shouldSyncMailchimpCampaign
+		shouldPollAutoSendMeta
 	);
 	const shouldSyncMandrillSend =
 		isTransactional &&
@@ -158,6 +165,7 @@ function SendPanel({ postId }: SendPanelProps) {
 
 	const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 	const [isUnlinkConfirmOpen, setIsUnlinkConfirmOpen] = useState(false);
+	const [isSendConfirmOpen, setIsSendConfirmOpen] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 	const [isUpdatingDraft, setIsUpdatingDraft] = useState(false);
 	const [isUnlinking, setIsUnlinking] = useState(false);
@@ -329,12 +337,13 @@ function SendPanel({ postId }: SendPanelProps) {
 		}
 	}, [postId, isUnlinking, editPost, createSuccessNotice, createErrorNotice]);
 
-	const handleCreateMailchimpDraft = useCallback(async () => {
+	const handleSendToMailchimp = useCallback(async () => {
 		if (!postId || isCreatingDraft) {
 			return;
 		}
 
 		setIsCreatingDraft(true);
+		setIsSendConfirmOpen(false);
 
 		try {
 			const response = await apiFetch<CreateDraftResponse>({
@@ -352,14 +361,19 @@ function SendPanel({ postId }: SendPanelProps) {
 			});
 			setUnlinkedThisSession(false);
 			createSuccessNotice(
-				__('Mailchimp draft created.', 'prc-email-builder'),
+				response.status === 'sending' || response.status === 'sent'
+					? __('Campaign sent to Mailchimp.', 'prc-email-builder')
+					: __(
+							'Mailchimp campaign created. Send may still be in progress.',
+							'prc-email-builder'
+						),
 				{ type: 'snackbar' }
 			);
 		} catch (err: unknown) {
 			const message =
 				(err as { message?: string })?.message ??
 				__(
-					'Could not create Mailchimp draft. Try again.',
+					'Could not send to Mailchimp. Try again.',
 					'prc-email-builder'
 				);
 			createErrorNotice(message, { type: 'snackbar' });
@@ -409,16 +423,30 @@ function SendPanel({ postId }: SendPanelProps) {
 			htmlReady &&
 			!draftReady &&
 			!syncTimedOut &&
-			!unlinkedThisSession;
-		const showCreateDraft =
+			!unlinkedThisSession &&
+			autoSendOnPublish;
+		const showManualSend =
 			isPublished &&
 			htmlReady &&
 			!draftReady &&
-			(unlinkedThisSession || syncTimedOut);
+			(unlinkedThisSession || syncTimedOut || !autoSendOnPublish);
 		const draftEditable = !campaignStatus || campaignStatus === 'save';
+		const needsSendRetry = draftReady && draftEditable;
 		const unlinkConfirmIsStrong = ['sent', 'schedule', 'sending'].includes(
 			campaignStatus
 		);
+		const mailchimpPrimaryLabel = (() => {
+			if (campaignStatus === 'sent') {
+				return __('Sent to Mailchimp', 'prc-email-builder');
+			}
+			if (campaignStatus === 'sending') {
+				return __('Sending in Mailchimp…', 'prc-email-builder');
+			}
+			if (campaignStatus === 'schedule') {
+				return __('Scheduled in Mailchimp', 'prc-email-builder');
+			}
+			return __('Open in Mailchimp', 'prc-email-builder');
+		})();
 
 		return (
 			<PanelBody
@@ -428,10 +456,15 @@ function SendPanel({ postId }: SendPanelProps) {
 				<VStack spacing={3}>
 					<CampaignAdvancedSettings />
 					<Text>
-						{__(
-							'Mailchimp sends happen in the Mailchimp app. This newsletter creates a draft campaign when email HTML is ready.',
-							'prc-email-builder'
-						)}
+						{autoSendOnPublish
+							? __(
+									'Publishing or scheduling this campaign in WordPress creates the Mailchimp campaign and sends it to the configured segment.',
+									'prc-email-builder'
+								)
+							: __(
+									'Publishing or scheduling this campaign saves the WordPress post. Send from this panel.',
+									'prc-email-builder'
+								)}
 					</Text>
 					{preparing ? (
 						<Button
@@ -439,44 +472,58 @@ function SendPanel({ postId }: SendPanelProps) {
 							disabled
 							style={{ width: '100%', justifyContent: 'center' }}
 						>
-							{__(
-								'Preparing Mailchimp draft…',
-								'prc-email-builder'
-							)}
+							{__('Sending to Mailchimp…', 'prc-email-builder')}
 							<Spinner />
 						</Button>
 					) : draftReady ? (
 						<>
-							<Button
-								variant="primary"
-								href={mailchimpUrl}
-								target="_blank"
-								rel="noreferrer"
-								style={{
-									width: '100%',
-									justifyContent: 'center',
-								}}
-							>
-								{__(
-									'Draft sent to Mailchimp',
-									'prc-email-builder'
-								)}
-							</Button>
-							<Button
-								variant="secondary"
-								onClick={handleUpdateMailchimpDraft}
-								disabled={!draftEditable || !htmlReady}
-								isBusy={isUpdatingDraft}
-								style={{
-									width: '100%',
-									justifyContent: 'center',
-								}}
-							>
-								{__(
-									'Update Mailchimp draft',
-									'prc-email-builder'
-								)}
-							</Button>
+							{needsSendRetry ? (
+								<Button
+									variant="primary"
+									onClick={() => setIsSendConfirmOpen(true)}
+									disabled={isCreatingDraft}
+									isBusy={isCreatingDraft}
+									style={{
+										width: '100%',
+										justifyContent: 'center',
+									}}
+								>
+									{__(
+										'Send to Mailchimp',
+										'prc-email-builder'
+									)}
+								</Button>
+							) : (
+								<Button
+									variant="primary"
+									href={mailchimpUrl}
+									target="_blank"
+									rel="noreferrer"
+									style={{
+										width: '100%',
+										justifyContent: 'center',
+									}}
+								>
+									{mailchimpPrimaryLabel}
+								</Button>
+							)}
+							{draftEditable && (
+								<Button
+									variant="secondary"
+									onClick={handleUpdateMailchimpDraft}
+									disabled={!htmlReady}
+									isBusy={isUpdatingDraft}
+									style={{
+										width: '100%',
+										justifyContent: 'center',
+									}}
+								>
+									{__(
+										'Update Mailchimp draft',
+										'prc-email-builder'
+									)}
+								</Button>
+							)}
 							<Button
 								variant="tertiary"
 								isDestructive
@@ -496,12 +543,20 @@ function SendPanel({ postId }: SendPanelProps) {
 							{campaignStatus === 'unavailable' && (
 								<Notice status="warning" isDismissible={false}>
 									{__(
-										'The linked Mailchimp campaign is missing. Unlink to create a new draft.',
+										'The linked Mailchimp campaign is missing. Unlink to send a new campaign.',
 										'prc-email-builder'
 									)}
 								</Notice>
 							)}
-							{!htmlReady && (
+							{needsSendRetry && (
+								<Notice status="warning" isDismissible={false}>
+									{__(
+										'Mailchimp campaign exists as a draft. Send to deliver it to the segment, or update the draft first.',
+										'prc-email-builder'
+									)}
+								</Notice>
+							)}
+							{!htmlReady && draftEditable && (
 								<Notice status="warning" isDismissible={false}>
 									{__(
 										'Generate email HTML in Email Content before updating the Mailchimp draft.',
@@ -532,6 +587,16 @@ function SendPanel({ postId }: SendPanelProps) {
 									</Notice>
 								)}
 							<ConfirmDialog
+								isOpen={isSendConfirmOpen}
+								onConfirm={handleSendToMailchimp}
+								onCancel={() => setIsSendConfirmOpen(false)}
+							>
+								{__(
+									'Send this campaign to the Mailchimp segment now? This cannot be undone.',
+									'prc-email-builder'
+								)}
+							</ConfirmDialog>
+							<ConfirmDialog
 								isOpen={isUnlinkConfirmOpen}
 								onConfirm={handleUnlinkMailchimpCampaign}
 								onCancel={() => setIsUnlinkConfirmOpen(false)}
@@ -547,19 +612,32 @@ function SendPanel({ postId }: SendPanelProps) {
 										)}
 							</ConfirmDialog>
 						</>
-					) : showCreateDraft ? (
+					) : showManualSend ? (
 						<>
-							{syncTimedOut && !unlinkedThisSession && (
-								<Notice status="error" isDismissible={false}>
+							{syncTimedOut &&
+								!unlinkedThisSession &&
+								autoSendOnPublish && (
+									<Notice
+										status="error"
+										isDismissible={false}
+									>
+										{__(
+											'Mailchimp send did not complete automatically. Send below, or check that Mailchimp is connected.',
+											'prc-email-builder'
+										)}
+									</Notice>
+								)}
+							{!autoSendOnPublish && (
+								<Notice status="info" isDismissible={false}>
 									{__(
-										'Mailchimp draft was not created automatically. Create one below, or check that Mailchimp is connected.',
+										'Automatic Mailchimp send on publish is off. Use Send to Mailchimp to deliver this campaign.',
 										'prc-email-builder'
 									)}
 								</Notice>
 							)}
 							<Button
 								variant="primary"
-								onClick={handleCreateMailchimpDraft}
+								onClick={() => setIsSendConfirmOpen(true)}
 								disabled={isCreatingDraft}
 								isBusy={isCreatingDraft}
 								style={{
@@ -567,18 +645,30 @@ function SendPanel({ postId }: SendPanelProps) {
 									justifyContent: 'center',
 								}}
 							>
+								{__('Send to Mailchimp', 'prc-email-builder')}
+							</Button>
+							<ConfirmDialog
+								isOpen={isSendConfirmOpen}
+								onConfirm={handleSendToMailchimp}
+								onCancel={() => setIsSendConfirmOpen(false)}
+							>
 								{__(
-									'Create Mailchimp draft',
+									'Send this campaign to the Mailchimp segment now? This cannot be undone.',
 									'prc-email-builder'
 								)}
-							</Button>
+							</ConfirmDialog>
 						</>
 					) : (
 						<Notice status="warning" isDismissible={false}>
-							{__(
-								'Publish the campaign and wait for the Mailchimp draft to be created.',
-								'prc-email-builder'
-							)}
+							{autoSendOnPublish
+								? __(
+										'Publish or schedule the campaign to send it to Mailchimp.',
+										'prc-email-builder'
+									)
+								: __(
+										'Publish the campaign, then send from this panel.',
+										'prc-email-builder'
+									)}
 						</Notice>
 					)}
 				</VStack>
@@ -594,6 +684,7 @@ function SendPanel({ postId }: SendPanelProps) {
 	const mandrillSendInProgress = mandrillSendStatus === 'sending';
 	const canSend =
 		htmlReady &&
+		subjectReady &&
 		!isSending &&
 		!mandrillSendInProgress &&
 		mandrillSendStatus !== 'sent' &&
@@ -604,11 +695,19 @@ function SendPanel({ postId }: SendPanelProps) {
 		<PanelBody title={__('Dispatch Info', 'prc-email-builder')} initialOpen>
 			<VStack spacing={3}>
 				<TransactionalSettings />
-				{subject && (
+				{subjectReady && (
 					<Text>
 						<strong>{__('Subject:', 'prc-email-builder')}</strong>{' '}
 						{subject}
 					</Text>
+				)}
+				{!subjectReady && (
+					<Notice status="warning" isDismissible={false}>
+						{__(
+							'Add a subject line before sending.',
+							'prc-email-builder'
+						)}
+					</Notice>
 				)}
 				{selectedAudience && (
 					<Text>

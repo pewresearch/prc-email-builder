@@ -8,6 +8,7 @@ export interface Settings {
 	mailchimp_api_key: string;
 	from_name: string;
 	from_email: string;
+	auto_send_on_publish: boolean;
 	track_opens: boolean;
 	track_clicks: boolean;
 	reply_to: string;

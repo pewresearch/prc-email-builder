@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Normalized engagement report schema and Mailchimp mapping.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder\Reports;
 
@@ -14,6 +15,7 @@ namespace PRC\Platform\Email_Builder\Reports;
 class Report_Schema {
 
 	public const CHANNEL_MAILCHIMP = 'mailchimp';
+	public const CHANNEL_CRM       = 'crm';
 
 	/**
 	 * Default cap on click-by-URL rows persisted in meta.
@@ -31,7 +33,9 @@ class Report_Schema {
 	public const DEFAULT_REFRESH_MIN_INTERVAL = 300;
 
 	/**
-	 * @return int Max click URLs to store.
+	 * Max click URLs to store.
+	 *
+	 * @return int
 	 */
 	public static function click_url_cap(): int {
 		$cap = (int) apply_filters( 'prc_email_builder_report_click_url_cap', self::DEFAULT_CLICK_URL_CAP );
@@ -39,7 +43,9 @@ class Report_Schema {
 	}
 
 	/**
-	 * @return int Days after send_time the scheduled sync keeps re-pulling.
+	 * Days after send_time the scheduled sync keeps re-pulling.
+	 *
+	 * @return int
 	 */
 	public static function refresh_window_days(): int {
 		$days = (int) apply_filters( 'prc_email_builder_report_refresh_window_days', self::DEFAULT_REFRESH_WINDOW_DAYS );
@@ -47,7 +53,9 @@ class Report_Schema {
 	}
 
 	/**
-	 * @return int Minimum seconds between manual refresh requests.
+	 * Minimum seconds between manual refresh requests.
+	 *
+	 * @return int
 	 */
 	public static function refresh_min_interval(): int {
 		$seconds = (int) apply_filters( 'prc_email_builder_report_refresh_min_interval', self::DEFAULT_REFRESH_MIN_INTERVAL );
@@ -64,8 +72,8 @@ class Report_Schema {
 	 * @return array<string, mixed>
 	 */
 	public static function normalize_mailchimp( array $report, array $click_details ): array {
-		$opens  = self::arrayish( $report['opens'] ?? null );
-		$clicks = self::arrayish( $report['clicks'] ?? null );
+		$opens   = self::arrayish( $report['opens'] ?? null );
+		$clicks  = self::arrayish( $report['clicks'] ?? null );
 		$bounces = self::arrayish( $report['bounces'] ?? null );
 
 		$emails_sent = (int) ( $report['emails_sent'] ?? 0 );
@@ -80,9 +88,9 @@ class Report_Schema {
 
 		$urls = self::normalize_click_urls( $click_details );
 
-		return [
+		return array(
 			'channel'       => self::CHANNEL_MAILCHIMP,
-			'summary'       => [
+			'summary'       => array(
 				'emails_sent'   => $emails_sent,
 				'opens_total'   => (int) ( $opens['opens_total'] ?? $report['opens_total'] ?? 0 ),
 				'opens_unique'  => (int) ( $opens['unique_opens'] ?? $report['unique_opens'] ?? 0 ),
@@ -94,13 +102,15 @@ class Report_Schema {
 				'bounces_soft'  => (int) ( $bounces['soft_bounces'] ?? $report['soft_bounces'] ?? 0 ),
 				'unsubscribes'  => (int) ( $report['unsubscribed'] ?? 0 ),
 				'abuse_reports' => (int) ( $report['abuse_reports'] ?? 0 ),
-			],
+			),
 			'clicks_by_url' => $urls,
 			'send_time'     => $send_time,
-		];
+		);
 	}
 
 	/**
+	 * Coerce an SDK value into an array.
+	 *
 	 * @param mixed $value Object or array from SDK.
 	 * @return array<string, mixed>
 	 */
@@ -111,11 +121,14 @@ class Report_Schema {
 		if ( is_object( $value ) ) {
 			return (array) $value;
 		}
-		return [];
+		return array();
 	}
 
 	/**
+	 * Normalize a provider rate to 0–1.
+	 *
 	 * @param mixed $rate Provider rate (may be 0–1 or 0–100).
+	 * @return float
 	 */
 	private static function normalize_rate( mixed $rate ): float {
 		$value = (float) $rate;
@@ -126,16 +139,18 @@ class Report_Schema {
 	}
 
 	/**
+	 * Cap and sort click-by-URL rows from a provider payload.
+	 *
 	 * @param array<string, mixed> $click_details Click-details API payload.
 	 * @return array<int, array{url: string, clicks: int}>
 	 */
 	private static function normalize_click_urls( array $click_details ): array {
-		$raw = $click_details['urls_clicked'] ?? $click_details['urls'] ?? [];
+		$raw = $click_details['urls_clicked'] ?? $click_details['urls'] ?? array();
 		if ( ! is_array( $raw ) ) {
-			return [];
+			return array();
 		}
 
-		$rows = [];
+		$rows = array();
 		foreach ( $raw as $row ) {
 			$item = is_object( $row ) ? (array) $row : $row;
 			if ( ! is_array( $item ) ) {
@@ -146,10 +161,10 @@ class Report_Schema {
 				continue;
 			}
 			$clicks = (int) ( $item['total_clicks'] ?? $item['clicks'] ?? 0 );
-			$rows[] = [
+			$rows[] = array(
 				'url'    => $url,
 				'clicks' => $clicks,
-			];
+			);
 		}
 
 		usort(

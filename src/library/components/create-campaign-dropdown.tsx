@@ -12,6 +12,7 @@ import {
 	Spinner,
 } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
+import { decodeEntities } from '@wordpress/html-entities';
 import { useEmailPatterns } from '../../sidebar/pattern-selector/use-email-patterns';
 import { getEmailConfig } from '../types';
 
@@ -73,7 +74,7 @@ export default function CreateCampaignDropdown() {
 				term,
 				availability: 'ready' as const,
 				content: pattern.content,
-				info: pattern.title,
+				info: decodeEntities(pattern.title),
 			};
 		});
 	}, [config?.newsletterLists, patterns]);
@@ -140,7 +141,10 @@ export default function CreateCampaignDropdown() {
 
 	if (isCreating) {
 		return (
-			<div className="prc-email-library-create-campaign is-busy">
+			<div
+				className="prc-email-library-create-campaign is-busy"
+				data-prc-tour="email-create-campaign"
+			>
 				<Spinner />
 				<span>{__('Creating draft…', 'prc-email-builder')}</span>
 			</div>
@@ -152,7 +156,10 @@ export default function CreateCampaignDropdown() {
 		: __('Create new', 'prc-email-builder');
 
 	return (
-		<div className="prc-email-library-create-campaign">
+		<div
+			className="prc-email-library-create-campaign"
+			data-prc-tour="email-create-campaign"
+		>
 			{error ? (
 				<Notice
 					status="error"

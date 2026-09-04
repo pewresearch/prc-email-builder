@@ -5,7 +5,10 @@ import {
 } from '@wordpress/editor';
 import { __ } from '@wordpress/i18n';
 
-import { isCampaignPostType } from '../use-newsletter-data';
+import {
+	isCampaignPostType,
+	isTransactionalPostType,
+} from '../use-newsletter-data';
 import { EngagementContent } from './engagement-content';
 import { useCampaignReport } from './use-report';
 import './style.scss';
@@ -19,11 +22,14 @@ export function EngagementPanel() {
 		(select) => select(editorStore).getCurrentPostId(),
 		[]
 	);
+	const isTxn = isTransactionalPostType(postType);
+	const showPanel = isCampaignPostType(postType) || isTxn;
+	const reportPostId = showPanel ? postId : undefined;
 
 	const { data, isLoading, isRefreshing, error, refresh } =
-		useCampaignReport(postId);
+		useCampaignReport(reportPostId);
 
-	if (!isCampaignPostType(postType)) {
+	if (!showPanel) {
 		return null;
 	}
 

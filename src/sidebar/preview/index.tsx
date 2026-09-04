@@ -26,6 +26,7 @@ export function EmailPreviewMenuItem() {
 			<PluginPreviewMenuItem
 				icon={atSymbol}
 				onClick={() => setIsOpen(true)}
+				data-prc-tour="email-preview-menu"
 			>
 				{__('Email Preview', 'prc-email-builder')}
 			</PluginPreviewMenuItem>

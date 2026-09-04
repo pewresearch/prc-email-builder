@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Newsletter list taxonomy: Mailchimp audience/segment on terms and campaign override.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -13,8 +14,8 @@ namespace PRC\Platform\Email_Builder;
  * when a campaign has an assigned list term.
  */
 class Newsletter_List {
-	const NONCE_ACTION = 'prc_newsletter_list_term_meta';
-	const NONCE_FIELD  = 'prc_newsletter_list_term_meta_nonce';
+	const NONCE_ACTION  = 'prc_newsletter_list_term_meta';
+	const NONCE_FIELD   = 'prc_newsletter_list_term_meta_nonce';
 	const SCRIPT_HANDLE = 'prc-email-builder-term-admin';
 
 	/** Term meta: hex accent color for the campaign email shell top bar. */
@@ -23,6 +24,14 @@ class Newsletter_List {
 	/** Term meta: default campaign pattern name (EmailPatternItem.name). */
 	const CAMPAIGN_PATTERN_META_KEY = 'prc_newsletter_list_campaign_pattern';
 
+	/** Term meta: campaign post ID pinned on this list's archive preview. Empty = latest. */
+	const PREVIEW_CAMPAIGN_META_KEY = 'prc_newsletter_list_preview_campaign_id';
+
+	/**
+	 * Wire taxonomy admin hooks.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$taxonomy = Post_Type::TAXONOMY;
 
@@ -33,6 +42,25 @@ class Newsletter_List {
 		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_term_admin_assets' );
 		$loader->add_filter( "manage_edit-{$taxonomy}_columns", $this, 'add_term_list_columns' );
 		$loader->add_filter( "manage_{$taxonomy}_custom_column", $this, 'render_term_list_column', 10, 3 );
+		$loader->add_filter(
+			'rest_' . Post_Type::CAMPAIGN_POST_TYPE . '_collection_params',
+			$this,
+			'register_previewable_list_query_param'
+		);
+		$loader->add_filter(
+			'rest_' . Post_Type::CAMPAIGN_POST_TYPE . '_query',
+			$this,
+			'filter_rest_previewable_list_query',
+			10,
+			2
+		);
+		$loader->add_filter(
+			'prc_wp_entity_search_posts_query',
+			$this,
+			'constrain_entity_search_to_previewable_list',
+			10,
+			6
+		);
 		$loader->add_action(
 			'rest_after_insert_' . Post_Type::CAMPAIGN_POST_TYPE,
 			$this,
@@ -73,6 +101,7 @@ class Newsletter_List {
 		$audience_id      = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_audience_id', true );
 		$segment_id       = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
 		$campaign_pattern = (string) get_term_meta( $term->term_id, self::CAMPAIGN_PATTERN_META_KEY, true );
+		$preview_campaign = (string) get_term_meta( $term->term_id, self::PREVIEW_CAMPAIGN_META_KEY, true );
 
 		echo '<tr class="form-field">';
 		echo '<th scope="row"><label>' . esc_html__( 'Default From', 'prc-email-builder' ) . '</label></th>';
@@ -92,6 +121,13 @@ class Newsletter_List {
 		echo '<th scope="row"><label>' . esc_html__( 'Campaign pattern', 'prc-email-builder' ) . '</label></th>';
 		echo '<td>';
 		$this->render_campaign_pattern_field( $campaign_pattern );
+		echo '</td>';
+		echo '</tr>';
+
+		echo '<tr class="form-field">';
+		echo '<th scope="row"><label>' . esc_html__( 'Preview newsletter', 'prc-email-builder' ) . '</label></th>';
+		echo '<td>';
+		$this->render_preview_campaign_field( $preview_campaign );
 		echo '</td>';
 		echo '</tr>';
 
@@ -124,6 +160,39 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Mount point + hidden input for the archive preview campaign search.
+	 *
+	 * @param string $preview_campaign Saved campaign post ID (edit form).
+	 */
+	private function render_preview_campaign_field( string $preview_campaign = '' ): void {
+		$saved    = self::sanitize_preview_campaign_id( $preview_campaign );
+		$saved_id = absint( $saved );
+		$title    = '';
+		if ( $saved_id > 0 ) {
+			$post  = get_post( $saved_id );
+			$title = $post instanceof \WP_Post && '' !== $post->post_title
+				? $post->post_title
+				: sprintf(
+					/* translators: %d: campaign post ID */
+					__( 'Campaign #%d', 'prc-email-builder' ),
+					$saved_id
+				);
+		}
+
+		printf(
+			'<input type="hidden" name="%1$s" id="%1$s" value="%2$s" data-title="%3$s" />',
+			esc_attr( self::PREVIEW_CAMPAIGN_META_KEY ),
+			esc_attr( $saved ),
+			esc_attr( $title )
+		);
+		echo '<div id="prc-newsletter-list-preview-campaign-root"></div>';
+		echo '<p class="description">' . esc_html__(
+			'Optional. Search by title or paste a campaign URL to pin this list\'s Latest Newsletter Preview. Leave empty to show the most recent published newsletter for this list. The campaign must belong to this list.',
+			'prc-email-builder'
+		) . '</p>';
+	}
+
+	/**
 	 * Sanitize a campaign pattern name; invalid values become empty string.
 	 *
 	 * @param string $pattern Raw pattern name.
@@ -140,6 +209,169 @@ class Newsletter_List {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Sanitize a preview campaign post ID; empty or non-positive becomes ''.
+	 *
+	 * @param mixed $raw Raw meta value.
+	 */
+	public static function sanitize_preview_campaign_id( mixed $raw ): string {
+		$id = absint( $raw );
+		return $id > 0 ? (string) $id : '';
+	}
+
+	/**
+	 * Whether a campaign is assigned to a newsletter list term.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @param int $term_id Newsletter list term ID.
+	 */
+	public static function campaign_belongs_to_list( int $post_id, int $term_id ): bool {
+		if ( $post_id <= 0 || $term_id <= 0 ) {
+			return false;
+		}
+
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return false;
+		}
+
+		return has_term( $term_id, Post_Type::TAXONOMY, $post_id );
+	}
+
+	/**
+	 * Stored preview campaign ID when it is still previewable for this list.
+	 *
+	 * Returns 0 when unset or when the stored campaign is not a public preview
+	 * (draft, migrated, password-protected, deleted, or unassigned from the list).
+	 *
+	 * @param int $term_id Newsletter list term ID.
+	 */
+	public static function resolve_preview_campaign_id( int $term_id ): int {
+		if ( $term_id <= 0 ) {
+			return 0;
+		}
+
+		$post_id = absint(
+			self::sanitize_preview_campaign_id(
+				(string) get_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, true )
+			)
+		);
+		if ( $post_id <= 0 ) {
+			return 0;
+		}
+
+		if ( true !== Public_Email_Preview::validate_previewable( $post_id ) ) {
+			return 0;
+		}
+
+		if ( ! self::campaign_belongs_to_list( $post_id, $term_id ) ) {
+			return 0;
+		}
+
+		return $post_id;
+	}
+
+	/**
+	 * WP_Query args for published, previewable campaigns assigned to a list.
+	 *
+	 * Excludes password-protected and NGL-migrated campaigns so search matches
+	 * what Latest Newsletter Preview can actually resolve.
+	 *
+	 * @param int $term_id Newsletter list term ID.
+	 * @return array<string, mixed>
+	 */
+	public static function get_previewable_campaign_query_args( int $term_id ): array {
+		return array(
+			'post_type'    => Post_Type::CAMPAIGN_POST_TYPE,
+			'post_status'  => 'publish',
+			'has_password' => false,
+			'tax_query'    => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+				array(
+					'taxonomy' => Post_Type::TAXONOMY,
+					'field'    => 'term_id',
+					'terms'    => array( $term_id ),
+				),
+			),
+			'meta_query'   => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+				array(
+					'key'     => Migration::MIGRATED_META_KEY,
+					'compare' => 'NOT EXISTS',
+				),
+			),
+		);
+	}
+
+	/**
+	 * Overlay list-scoped previewable constraints onto WP_Query args.
+	 *
+	 * Leaves paging and search from the caller intact. Term ID 0 is a no-op.
+	 *
+	 * @param array<string, mixed> $args    WP_Query args.
+	 * @param int                  $term_id Newsletter list term ID.
+	 * @return array<string, mixed>
+	 */
+	public static function constrain_query_to_previewable_list( array $args, int $term_id ): array {
+		if ( $term_id <= 0 ) {
+			return $args;
+		}
+
+		return array_merge( $args, self::get_previewable_campaign_query_args( $term_id ) );
+	}
+
+	/**
+	 * REST collection param so campaign search can pin only this list's previewable posts.
+	 *
+	 * @param array<string, mixed> $query_params Collection params.
+	 * @return array<string, mixed>
+	 */
+	public function register_previewable_list_query_param( array $query_params ): array {
+		$query_params['previewable_for_list'] = array(
+			'description' => __( 'Limit results to previewable campaigns assigned to this newsletter list term.', 'prc-email-builder' ),
+			'type'        => 'integer',
+			'minimum'     => 1,
+		);
+
+		return $query_params;
+	}
+
+	/**
+	 * Scope campaign REST collection queries when previewable_for_list is set.
+	 *
+	 * @param array<string, mixed> $args    WP_Query args.
+	 * @param \WP_REST_Request     $request Request.
+	 * @return array<string, mixed>
+	 */
+	public function filter_rest_previewable_list_query( array $args, \WP_REST_Request $request ): array {
+		return self::constrain_query_to_previewable_list(
+			$args,
+			absint( $request->get_param( 'previewable_for_list' ) )
+		);
+	}
+
+	/**
+	 * Scope WPEntitySearch campaign lookups to previewable posts on the given list.
+	 *
+	 * @param array<string, mixed> $args           WP_Query args.
+	 * @param string               $search_value   Search string.
+	 * @param array<int, string>   $post_types     Post types.
+	 * @param array<int, string>   $entity_status  Post statuses.
+	 * @param string               $taxonomy       Taxonomy slug or empty.
+	 * @param int                  $term_id        Term ID or 0.
+	 * @return array<string, mixed>
+	 */
+	public function constrain_entity_search_to_previewable_list( array $args, string $search_value, array $post_types, array $entity_status, string $taxonomy, int $term_id ): array {
+		unset( $search_value, $entity_status );
+
+		if ( Post_Type::TAXONOMY !== $taxonomy || $term_id <= 0 ) {
+			return $args;
+		}
+
+		if ( ! in_array( Post_Type::CAMPAIGN_POST_TYPE, $post_types, true ) ) {
+			return $args;
+		}
+
+		return self::constrain_query_to_previewable_list( $args, $term_id );
 	}
 
 	/**
@@ -171,6 +403,8 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Render default From name and email fields.
+	 *
 	 * @param string $from_name  Saved From name (edit form).
 	 * @param string $from_email Saved From email (edit form).
 	 */
@@ -190,13 +424,15 @@ class Newsletter_List {
 			esc_attr( $from_email )
 		);
 		echo '<p class="description">' . esc_html__(
-			'Optional. Campaigns using this list send with these values when set; otherwise the global default from Newsletter Builder Settings is used. On Mailchimp sends, the email address is used as the reply-to.',
+			'Optional. Campaigns using this list send with these values when set; otherwise the global default from Email Builder Settings is used. On Mailchimp sends, the email address is used as the reply-to.',
 			'prc-email-builder'
 		) . '</p>';
 		echo '</p>';
 	}
 
 	/**
+	 * Render Mailchimp audience and segment selectors.
+	 *
 	 * @param string $audience_id Saved audience ID (edit form).
 	 * @param string $segment_id  Saved segment ID (edit form).
 	 */
@@ -211,7 +447,7 @@ class Newsletter_List {
 
 		if ( ! $mailchimp->is_connected() || empty( $audiences ) ) {
 			echo '<p class="description">' . esc_html__(
-				'Mailchimp is not connected or has no audiences. Configure the API key in Newsletter Builder Settings.',
+				'Mailchimp is not connected or has no audiences. Configure the API key in Email Builder Settings.',
 				'prc-email-builder'
 			) . '</p>';
 			return;
@@ -232,7 +468,7 @@ class Newsletter_List {
 		echo '</select>';
 		echo '</p>';
 
-		$segments = [];
+		$segments = array();
 		if ( '' !== $audience_id ) {
 			$fetched = $mailchimp->get_segments( $audience_id );
 			if ( ! is_wp_error( $fetched ) ) {
@@ -289,7 +525,7 @@ class Newsletter_List {
 		if ( '' === $audience_id ) {
 			printf(
 				'<p class="description prc-newsletter-list-subscriber-stat"><strong>%1$s:</strong> <span id="prc_newsletter_list_subscriber_count" data-scope="audience">—</span></p>',
-				$label
+				esc_html( $label )
 			);
 			return;
 		}
@@ -300,13 +536,15 @@ class Newsletter_List {
 
 		printf(
 			'<p class="description prc-newsletter-list-subscriber-stat"><strong>%1$s:</strong> <span id="prc_newsletter_list_subscriber_count" data-scope="%2$s">%3$s</span></p>',
-			$label,
+			esc_html( $label ),
 			esc_attr( $scope ),
 			esc_html( $display )
 		);
 	}
 
 	/**
+	 * Add subscriber count column to the list table.
+	 *
 	 * @param array<string, string> $columns Term list table columns.
 	 * @return array<string, string>
 	 */
@@ -316,6 +554,8 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Render custom term list columns.
+	 *
 	 * @param string $content     Column output.
 	 * @param string $column_name Column key.
 	 * @param int    $term_id     Term ID.
@@ -374,7 +614,7 @@ class Newsletter_List {
 			$segment_id = '';
 		}
 
-		$from_name = isset( $_POST['prc_newsletter_list_from_name'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$from_name      = isset( $_POST['prc_newsletter_list_from_name'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			? sanitize_text_field( wp_unslash( (string) $_POST['prc_newsletter_list_from_name'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			: '';
 		$from_email_raw = isset( $_POST['prc_newsletter_list_from_email'] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
@@ -395,12 +635,22 @@ class Newsletter_List {
 			: '';
 		$campaign_pattern     = self::sanitize_campaign_pattern( $campaign_pattern_raw );
 
+		$preview_campaign_raw = isset( $_POST[ self::PREVIEW_CAMPAIGN_META_KEY ] ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			? sanitize_text_field( wp_unslash( (string) $_POST[ self::PREVIEW_CAMPAIGN_META_KEY ] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			: '';
+		$preview_campaign     = self::sanitize_preview_campaign_id( $preview_campaign_raw );
+		$preview_campaign_id  = absint( $preview_campaign );
+		if ( $preview_campaign_id > 0 && ! self::campaign_belongs_to_list( $preview_campaign_id, $term_id ) ) {
+			$preview_campaign = '';
+		}
+
 		update_term_meta( $term_id, 'prc_newsletter_list_audience_id', $audience_id );
 		update_term_meta( $term_id, 'prc_newsletter_list_segment_id', $segment_id );
 		update_term_meta( $term_id, 'prc_newsletter_list_from_name', $from_name );
 		update_term_meta( $term_id, 'prc_newsletter_list_from_email', $from_email );
 		update_term_meta( $term_id, self::ACCENT_COLOR_META_KEY, $accent_color );
 		update_term_meta( $term_id, self::CAMPAIGN_PATTERN_META_KEY, $campaign_pattern );
+		update_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, $preview_campaign );
 	}
 
 	/**
@@ -409,7 +659,7 @@ class Newsletter_List {
 	 * @param string $hook_suffix Current admin page hook.
 	 */
 	public function enqueue_term_admin_assets( string $hook_suffix ): void {
-		if ( ! in_array( $hook_suffix, [ 'edit-tags.php', 'term.php' ], true ) ) {
+		if ( ! in_array( $hook_suffix, array( 'edit-tags.php', 'term.php' ), true ) ) {
 			return;
 		}
 
@@ -438,7 +688,7 @@ class Newsletter_List {
 		}
 
 		$asset = require $asset_file;
-		$deps  = is_array( $asset['dependencies'] ?? null ) ? $asset['dependencies'] : [];
+		$deps  = is_array( $asset['dependencies'] ?? null ) ? $asset['dependencies'] : array();
 		if ( ! in_array( 'wp-color-picker', $deps, true ) ) {
 			$deps[] = 'wp-color-picker';
 		}
@@ -455,23 +705,38 @@ class Newsletter_List {
 			$is_edit_screen &&
 			file_exists( PRC_EMAIL_BUILDER_DIR . '/build/term-admin/style-index.css' )
 		) {
+			$style_deps = array( 'wp-components', 'wp-block-editor', 'wp-block-library' );
+			if ( in_array( 'prc-components', $deps, true ) ) {
+				$style_deps[] = 'prc-components';
+			}
 			wp_enqueue_style(
 				self::SCRIPT_HANDLE,
 				plugins_url( 'build/term-admin/style-index.css', PRC_EMAIL_BUILDER_FILE ),
-				[ 'wp-components', 'wp-block-editor', 'wp-block-library' ],
+				$style_deps,
 				$asset['version']
 			);
+		}
+
+		$term_id = 0;
+		if ( $is_edit_screen ) {
+			$term_id = isset( $_GET['tag_ID'] ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				? absint( wp_unslash( (string) $_GET['tag_ID'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				: 0;
 		}
 
 		wp_localize_script(
 			self::SCRIPT_HANDLE,
 			'prcEmailBuilderTermAdmin',
-			[
+			array(
 				'restNamespace'               => REST_API::NAMESPACE,
 				'nonce'                       => wp_create_nonce( 'wp_rest' ),
 				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
 				'campaignPatternMetaKey'      => self::CAMPAIGN_PATTERN_META_KEY,
-			]
+				'previewCampaignMetaKey'      => self::PREVIEW_CAMPAIGN_META_KEY,
+				'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
+				'listTaxonomy'                => Post_Type::TAXONOMY,
+				'termId'                      => $term_id,
+			)
 		);
 	}
 
@@ -492,6 +757,50 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Current newsletter list term on a list archive, or null elsewhere.
+	 */
+	public static function get_queried_archive_term(): ?\WP_Term {
+		if ( ! is_tax( Post_Type::TAXONOMY ) ) {
+			return null;
+		}
+
+		$term = get_queried_object();
+		if ( ! $term instanceof \WP_Term ) {
+			return null;
+		}
+
+		if ( Post_Type::TAXONOMY !== $term->taxonomy ) {
+			return null;
+		}
+
+		return $term;
+	}
+
+	/**
+	 * Mailchimp targeting for the queried newsletter list archive.
+	 *
+	 * @return array{audience_id: string, segment_id: string, term_id: int}|null
+	 */
+	public static function resolve_queried_archive_targeting(): ?array {
+		$term = self::get_queried_archive_term();
+		if ( null === $term ) {
+			return null;
+		}
+
+		$audience_id = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_audience_id', true );
+		$segment_id  = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
+		if ( '' === $audience_id && '' === $segment_id ) {
+			return null;
+		}
+
+		return array(
+			'audience_id' => $audience_id,
+			'segment_id'  => $segment_id,
+			'term_id'     => (int) $term->term_id,
+		);
+	}
+
+	/**
 	 * Resolve Mailchimp audience/segment for a campaign post.
 	 *
 	 * When a newsletter list term is assigned, targeting comes from term meta.
@@ -504,27 +813,27 @@ class Newsletter_List {
 		$term_ids = wp_get_object_terms(
 			$post_id,
 			Post_Type::TAXONOMY,
-			[
+			array(
 				'fields' => 'ids',
-			]
+			)
 		);
 
 		if ( ! is_wp_error( $term_ids ) && ! empty( $term_ids ) ) {
 			$term_ids = array_values( array_map( 'intval', $term_ids ) );
 			$term_id  = (int) $term_ids[0];
 
-			return [
+			return array(
 				'audience_id' => (string) get_term_meta( $term_id, 'prc_newsletter_list_audience_id', true ),
 				'segment_id'  => (string) get_term_meta( $term_id, 'prc_newsletter_list_segment_id', true ),
 				'term_id'     => $term_id,
-			];
+			);
 		}
 
-		return [
+		return array(
 			'audience_id' => (string) get_post_meta( $post_id, 'prc_email_mailchimp_audience_id', true ),
 			'segment_id'  => (string) get_post_meta( $post_id, 'prc_email_mailchimp_segment_id', true ),
 			'term_id'     => 0,
-		];
+		);
 	}
 
 	/**
@@ -558,9 +867,9 @@ class Newsletter_List {
 		$term_ids = wp_get_object_terms(
 			$post->ID,
 			Post_Type::TAXONOMY,
-			[
+			array(
 				'fields' => 'ids',
-			]
+			)
 		);
 
 		if ( is_wp_error( $term_ids ) || empty( $term_ids ) ) {
@@ -571,7 +880,7 @@ class Newsletter_List {
 		$term_id  = (int) $term_ids[0];
 
 		if ( count( $term_ids ) > 1 ) {
-			wp_set_object_terms( $post->ID, [ $term_id ], Post_Type::TAXONOMY, false );
+			wp_set_object_terms( $post->ID, array( $term_id ), Post_Type::TAXONOMY, false );
 		}
 
 		self::sync_mailchimp_targeting_meta( $post->ID );

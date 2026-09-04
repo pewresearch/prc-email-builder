@@ -54,6 +54,7 @@ function activate() {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-loader.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-post-type.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/system-email/class-system-email-recipients-table.php';
+	require_once plugin_dir_path( __FILE__ ) . 'includes/mandrill/class-mandrill-event-ledger.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-enrollment.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/automations/class-automation-scheduler.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-plugin-activator.php';

@@ -176,7 +176,7 @@ export function CampaignListControl() {
 	}
 
 	return (
-		<>
+		<div data-prc-tour="email-newsletter-list">
 			<SelectControl
 				__nextHasNoMarginBottom
 				label={__('Newsletter list', 'prc-email-builder')}
@@ -198,7 +198,7 @@ export function CampaignListControl() {
 					)}
 				</p>
 			)}
-		</>
+		</div>
 	);
 }
 

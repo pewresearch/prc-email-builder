@@ -1,12 +1,15 @@
 <?php
-declare( strict_types=1 );
 /**
  * Scoped Campaign / Transactional DataViews admin list pages.
  *
  * @package    PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
+
+use function PRC\Platform\Wp_Admin_Dataview\plain_text;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -17,10 +20,15 @@ if ( ! defined( 'ABSPATH' ) ) {
  * destinations, and redirects bare edit.php list URLs (with ?classic=1 escape).
  */
 class Email_Lists {
-	public const CAMPAIGNS_PAGE_SLUG      = 'prc-email-builder-campaigns';
+	public const CAMPAIGNS_PAGE_SLUG     = 'prc-email-builder-campaigns';
 	public const TRANSACTIONAL_PAGE_SLUG = 'prc-email-builder-transactional';
 	public const SCRIPT_HANDLE           = 'prc-email-builder-admin-dataview';
 
+	/**
+	 * Bind list registration, assets, and provider localization.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'prc_wp_admin_dataview_register_lists', $this, 'register_lists' );
 		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_provider_assets', 20 );
@@ -29,6 +37,8 @@ class Email_Lists {
 
 	/**
 	 * Admin URL for a scoped DataViews page.
+	 *
+	 * @param string $scope campaign or txn.
 	 */
 	public static function get_page_url( string $scope ): string {
 		$page = 'txn' === $scope
@@ -42,6 +52,8 @@ class Email_Lists {
 
 	/**
 	 * Resolve scope from an admin page slug.
+	 *
+	 * @param string $page_slug Admin page slug.
 	 */
 	public static function scope_from_page_slug( string $page_slug ): ?string {
 		return match ( $page_slug ) {
@@ -75,7 +87,7 @@ class Email_Lists {
 			),
 		);
 		$lists->register(
-			[
+			array(
 				'postType'             => Post_Type::CAMPAIGN_POST_TYPE,
 				'pageSlug'             => self::CAMPAIGNS_PAGE_SLUG,
 				'menuTitle'            => __( 'Campaigns', 'prc-email-builder' ),
@@ -85,11 +97,11 @@ class Email_Lists {
 				'hideDefaultNewButton' => true,
 				'postTypeScope'        => 'campaign',
 				'duplicate'            => $duplicate,
-			]
+			)
 		);
 
 		$lists->register(
-			[
+			array(
 				'postType'             => Post_Type::TRANSACTIONAL_POST_TYPE,
 				'pageSlug'             => self::TRANSACTIONAL_PAGE_SLUG,
 				'menuTitle'            => __( 'Transactional', 'prc-email-builder' ),
@@ -99,7 +111,7 @@ class Email_Lists {
 				'hideDefaultNewButton' => true,
 				'postTypeScope'        => 'txn',
 				'duplicate'            => $duplicate,
-			]
+			)
 		);
 	}
 
@@ -115,22 +127,22 @@ class Email_Lists {
 			return $localize;
 		}
 
-		$scope = Post_Type::TRANSACTIONAL_POST_TYPE === $post_type ? 'txn' : 'campaign';
-		$localize['statuses'] = [
-			[
+		$scope                = Post_Type::TRANSACTIONAL_POST_TYPE === $post_type ? 'txn' : 'campaign';
+		$localize['statuses'] = array(
+			array(
 				'value' => 'publish',
 				'label' => __( 'Published', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'draft',
 				'label' => __( 'Draft', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'private',
 				'label' => __( 'Private', 'prc-email-builder' ),
-			],
-		];
-		$localize['email'] = [
+			),
+		);
+		$localize['email']    = array(
 			'postEditUrl'                 => esc_url_raw( admin_url( 'post.php' ) ),
 			'campaignNewUrl'              => esc_url_raw( admin_url( 'post-new.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE ) ),
 			'transactionalNewUrl'         => esc_url_raw( admin_url( 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE ) ),
@@ -142,7 +154,10 @@ class Email_Lists {
 			'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
 			'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
 			'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
-		];
+			'audienceBuilders'            => 'txn' === $scope
+				? Audience_Builder_Registry::to_js()
+				: array(),
+		);
 
 		return $localize;
 	}
@@ -168,16 +183,21 @@ class Email_Lists {
 		wp_enqueue_script(
 			self::SCRIPT_HANDLE,
 			plugins_url( 'build/admin-dataview/index.js', PRC_EMAIL_BUILDER_FILE ),
-			array_merge( $asset['dependencies'], [ 'prc-wp-admin-dataview' ] ),
+			array_merge( $asset['dependencies'], array( 'prc-wp-admin-dataview' ) ),
 			$asset['version'],
 			true
 		);
 
 		if ( file_exists( PRC_EMAIL_BUILDER_DIR . '/build/admin-dataview/style-index.css' ) ) {
+			$style_deps = array( 'wp-components' );
+			if ( in_array( 'prc-components', $asset['dependencies'], true ) ) {
+				$style_deps[] = 'prc-components';
+			}
+
 			wp_enqueue_style(
 				self::SCRIPT_HANDLE,
 				plugins_url( 'build/admin-dataview/style-index.css', PRC_EMAIL_BUILDER_FILE ),
-				[ 'wp-components' ],
+				$style_deps,
 				$asset['version']
 			);
 		}
@@ -190,14 +210,14 @@ class Email_Lists {
 	 */
 	private function get_newsletter_list_terms(): array {
 		$terms = get_terms(
-			[
+			array(
 				'taxonomy'   => Post_Type::TAXONOMY,
 				'hide_empty' => false,
-			]
+			)
 		);
 
 		if ( is_wp_error( $terms ) || empty( $terms ) ) {
-			return [];
+			return array();
 		}
 
 		$formatted = array_map(
@@ -210,12 +230,12 @@ class Email_Lists {
 					)
 				);
 
-				return [
+				return array(
 					'termId'          => (int) $term->term_id,
 					'slug'            => $term->slug,
-					'label'           => $term->name,
+					'label'           => plain_text( (string) $term->name ),
 					'campaignPattern' => $pattern,
-				];
+				);
 			},
 			$terms
 		);
@@ -235,28 +255,28 @@ class Email_Lists {
 	 */
 	private function get_research_team_options(): array {
 		if ( ! taxonomy_exists( 'research-teams' ) ) {
-			return [];
+			return array();
 		}
 
 		$terms = get_terms(
-			[
+			array(
 				'taxonomy'   => 'research-teams',
 				'hide_empty' => false,
 				'orderby'    => 'name',
 				'order'      => 'ASC',
-			]
+			)
 		);
 
 		if ( is_wp_error( $terms ) || empty( $terms ) ) {
-			return [];
+			return array();
 		}
 
 		$formatted = array_map(
-			static fn( \WP_Term $term ) => [
+			static fn( \WP_Term $term ) => array(
 				'termId' => (int) $term->term_id,
 				'slug'   => $term->slug,
-				'label'  => $term->name,
-			],
+				'label'  => plain_text( (string) $term->name ),
+			),
 			$terms
 		);
 

@@ -29,8 +29,7 @@ class Email_Template {
 	 * @return string Full DOCTYPE HTML email document.
 	 */
 	public static function wrap( string $content, int $post_id ): string {
-		$subject      = get_post_meta( $post_id, 'prc_email_subject', true )
-						?: get_the_title( $post_id );
+		$subject      = (string) ( get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id ) );
 		$preview_text = (string) get_post_meta( $post_id, 'prc_email_preview_text', true );
 
 		$slug          = Template_Resolver::resolve( $post_id );

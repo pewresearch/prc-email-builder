@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Dynamic-recipient "system email" sender.
  *
- * @package    PRC\Platform\Email_Builder
+ * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -57,20 +58,20 @@ class System_Email_Sender {
 	 *                                        and to {{key}} subject tokens.
 	 * @return true|WP_Error
 	 */
-	public static function send( int $post_id, string $to_email, array $context = [] ): true|WP_Error {
+	public static function send( int $post_id, string $to_email, array $context = array() ): true|WP_Error {
 		$post = get_post( $post_id );
 
 		if ( ! $post instanceof WP_Post || ! Post_Type::is_transactional_post( $post ) ) {
-			return new WP_Error( 'invalid_post', 'Transactional email post not found.', [ 'status' => 404 ] );
+			return new WP_Error( 'invalid_post', 'Transactional email post not found.', array( 'status' => 404 ) );
 		}
 		if ( 'publish' !== $post->post_status ) {
-			return new WP_Error( 'not_published', 'Transactional email is not published.', [ 'status' => 409 ] );
+			return new WP_Error( 'not_published', 'Transactional email is not published.', array( 'status' => 409 ) );
 		}
 		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
-			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
+			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', array( 'status' => 409 ) );
 		}
 		if ( ! is_email( $to_email ) ) {
-			return new WP_Error( 'invalid_email', 'A valid recipient email address is required.', [ 'status' => 400 ] );
+			return new WP_Error( 'invalid_email', 'A valid recipient email address is required.', array( 'status' => 400 ) );
 		}
 
 		/**
@@ -88,7 +89,10 @@ class System_Email_Sender {
 		}
 
 		$subject = self::resolve_subject( $post_id, $context );
-		$result  = self::dispatch( [ $to_email ], $subject, $html );
+		if ( is_wp_error( $subject ) ) {
+			return $subject;
+		}
+		$result = self::dispatch( array( $to_email ), $subject, $html, $post_id );
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -99,7 +103,7 @@ class System_Email_Sender {
 			return new WP_Error(
 				'mandrill_send_rejected',
 				sprintf( 'Mandrill rejected the email: %s.', $reason ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -133,17 +137,17 @@ class System_Email_Sender {
 	 *         dispatched (invalid post, no valid recipients, render failure, or
 	 *         a whole-call API failure on the first chunk).
 	 */
-	public static function send_many( int $post_id, array $to_emails, array $context = [] ): array|WP_Error {
+	public static function send_many( int $post_id, array $to_emails, array $context = array() ): array|WP_Error {
 		$post = get_post( $post_id );
 
 		if ( ! $post instanceof WP_Post || ! Post_Type::is_transactional_post( $post ) ) {
-			return new WP_Error( 'invalid_post', 'Transactional email post not found.', [ 'status' => 404 ] );
+			return new WP_Error( 'invalid_post', 'Transactional email post not found.', array( 'status' => 404 ) );
 		}
 		if ( 'publish' !== $post->post_status ) {
-			return new WP_Error( 'not_published', 'Transactional email is not published.', [ 'status' => 409 ] );
+			return new WP_Error( 'not_published', 'Transactional email is not published.', array( 'status' => 409 ) );
 		}
 		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
-			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
+			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', array( 'status' => 409 ) );
 		}
 
 		$recipients = array_values(
@@ -155,7 +159,7 @@ class System_Email_Sender {
 			)
 		);
 		if ( empty( $recipients ) ) {
-			return new WP_Error( 'invalid_email', 'At least one valid recipient email address is required.', [ 'status' => 400 ] );
+			return new WP_Error( 'invalid_email', 'At least one valid recipient email address is required.', array( 'status' => 400 ) );
 		}
 
 		/** This filter is documented in {@see self::send()}; for batch sends the third argument is the recipient list. */
@@ -167,12 +171,15 @@ class System_Email_Sender {
 		}
 
 		$subject = self::resolve_subject( $post_id, $context );
+		if ( is_wp_error( $subject ) ) {
+			return $subject;
+		}
 
-		$sent   = [];
-		$failed = [];
+		$sent   = array();
+		$failed = array();
 
 		foreach ( array_chunk( $recipients, self::MAX_RECIPIENTS_PER_CALL ) as $chunk ) {
-			$result = self::dispatch( $chunk, $subject, $html );
+			$result = self::dispatch( $chunk, $subject, $html, $post_id );
 
 			if ( is_wp_error( $result ) ) {
 				// Whole-call failure: nothing in this chunk was dispatched. If
@@ -196,10 +203,10 @@ class System_Email_Sender {
 			do_action( 'prc_email_builder_system_email_sent', $post_id, $to_email, $context );
 		}
 
-		return [
+		return array(
 			'sent'   => $sent,
 			'failed' => $failed,
-		];
+		);
 	}
 
 	/**
@@ -213,14 +220,14 @@ class System_Email_Sender {
 	 * @param array<string, mixed> $context Merge-field data.
 	 * @return array{subject:string, html:string}|WP_Error
 	 */
-	public static function preview( int $post_id, array $context = [] ): array|WP_Error {
+	public static function preview( int $post_id, array $context = array() ): array|WP_Error {
 		$post = get_post( $post_id );
 
 		if ( ! $post instanceof WP_Post || ! Post_Type::is_transactional_post( $post ) ) {
-			return new WP_Error( 'invalid_post', 'Transactional email post not found.', [ 'status' => 404 ] );
+			return new WP_Error( 'invalid_post', 'Transactional email post not found.', array( 'status' => 404 ) );
 		}
 		if ( self::DELIVERY_MODE !== Post_Type::transactional_delivery_mode( $post ) ) {
-			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', [ 'status' => 409 ] );
+			return new WP_Error( 'wrong_delivery_mode', 'Transactional sub-mode is not "dynamic".', array( 'status' => 409 ) );
 		}
 
 		$html = self::render( $post, $context );
@@ -228,10 +235,15 @@ class System_Email_Sender {
 			return $html;
 		}
 
-		return [
-			'subject' => self::resolve_subject( $post_id, $context ),
+		$subject = self::resolve_subject( $post_id, $context );
+		if ( is_wp_error( $subject ) ) {
+			return $subject;
+		}
+
+		return array(
+			'subject' => $subject,
 			'html'    => $html,
-		];
+		);
 	}
 
 	/**
@@ -242,7 +254,7 @@ class System_Email_Sender {
 	 * @param array<string, mixed> $context Merge-field data.
 	 * @return string|WP_Error Full HTML email document, or error.
 	 */
-	public static function render( WP_Post $post, array $context = [] ): string|WP_Error {
+	public static function render( WP_Post $post, array $context = array() ): string|WP_Error {
 		$has_bits = class_exists( Bit_Render_Context::class );
 
 		if ( $has_bits ) {
@@ -265,7 +277,7 @@ class System_Email_Sender {
 		}
 
 		if ( '' === trim( $content ) ) {
-			return new WP_Error( 'empty_content', 'Newsletter rendered to empty content.', [ 'status' => 422 ] );
+			return new WP_Error( 'empty_content', 'Newsletter rendered to empty content.', array( 'status' => 422 ) );
 		}
 
 		return Email_Template::wrap( $content, $post->ID );
@@ -277,10 +289,10 @@ class System_Email_Sender {
 	 * @param int                  $post_id Newsletter post ID.
 	 * @param array<string, mixed> $context Merge-field data.
 	 */
-	private static function resolve_subject( int $post_id, array $context ): string {
-		$subject = (string) get_post_meta( $post_id, 'prc_email_subject', true );
-		if ( '' === $subject ) {
-			$subject = (string) get_the_title( $post_id );
+	private static function resolve_subject( int $post_id, array $context ): string|WP_Error {
+		$ready = Email_Subject::require_for_send( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
 		}
 
 		return (string) preg_replace_callback(
@@ -291,7 +303,7 @@ class System_Email_Sender {
 					? (string) $context[ $key ]
 					: '';
 			},
-			$subject
+			$ready->line()
 		);
 	}
 
@@ -306,20 +318,21 @@ class System_Email_Sender {
 	 * @param array<int, string> $to_emails Recipient addresses.
 	 * @param string             $subject   Resolved subject line.
 	 * @param string             $html      Rendered email document.
+	 * @param int                $post_id   Transactional post ID (0 in isolated tests).
 	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
 	 *         Per-recipient outcomes, or WP_Error when the whole call failed
 	 *         and nothing was dispatched.
 	 */
-	private static function dispatch( array $to_emails, string $subject, string $html ): array|WP_Error {
+	private static function dispatch( array $to_emails, string $subject, string $html, int $post_id = 0 ): array|WP_Error {
 		$api_key = self::get_api_key();
 		if ( '' === $api_key ) {
-			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', array( 'status' => 500 ) );
 		}
 
 		$settings   = Mailchimp::get_settings();
 		$from_email = (string) ( $settings['from_email'] ?? '' );
 		if ( ! is_email( $from_email ) ) {
-			return new WP_Error( 'missing_from_email', 'A valid from email address is required.', [ 'status' => 500 ] );
+			return new WP_Error( 'missing_from_email', 'A valid from email address is required.', array( 'status' => 500 ) );
 		}
 
 		$reply_to = (string) ( $settings['reply_to'] ?? '' );
@@ -327,60 +340,74 @@ class System_Email_Sender {
 			$reply_to = $from_email;
 		}
 
-		$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : [ 'prc-newsletter' ];
+		$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : array( 'prc-newsletter' );
 
-		$message = [
+		$message = array(
 			'html'                => $html,
 			'subject'             => $subject,
 			'from_email'          => $from_email,
 			'from_name'           => self::FROM_NAME,
 			'to'                  => array_map(
-				static fn( string $to_email ): array => [
+				static fn( string $to_email ): array => array(
 					'email' => $to_email,
 					'type'  => 'to',
-				],
+				),
 				$to_emails
 			),
-			'headers'             => [ 'Reply-To' => $reply_to ],
+			'headers'             => array( 'Reply-To' => $reply_to ),
 			'track_opens'         => (bool) ( $settings['track_opens'] ?? true ),
 			'track_clicks'        => (bool) ( $settings['track_clicks'] ?? true ),
-			'tags'                => array_merge( $base_tags, [ 'system-email' ] ),
+			'tags'                => array_merge( $base_tags, array( 'system-email' ) ),
 			'preserve_recipients' => false,
-		];
+		);
 
 		$subaccount = (string) ( $settings['mandrill_subaccount'] ?? '' );
 		if ( '' !== $subaccount ) {
 			$message['subaccount'] = $subaccount;
 		}
 
-		$payload = [
+		/**
+		 * Filter the Mandrill message array before messages/send.
+		 *
+		 * @param array $message Mandrill message payload.
+		 * @param int   $post_id Transactional post ID.
+		 */
+		$message = apply_filters( 'prc_email_mandrill_message', $message, $post_id );
+		if ( ! is_array( $message ) ) {
+			$message = array();
+		}
+		$message = Mandrill_Send_Key::stamp( $message, $post_id );
+
+		$payload = array(
 			'key'     => $api_key,
 			'message' => $message,
 			'async'   => false,
-		];
+		);
 
+		// phpcs:disable WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Mandrill batch send can exceed the VIP default.
 		$response = wp_remote_post(
 			self::API_URL . 'messages/send',
-			[
+			array(
 				'timeout' => 30,
-				'headers' => [ 'Content-Type' => 'application/json' ],
+				'headers' => array( 'Content-Type' => 'application/json' ),
 				'body'    => wp_json_encode( $payload ),
-			]
+			)
 		);
+		// phpcs:enable WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout
 
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error(
 				'mandrill_request_failed',
 				$response->get_error_message(),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
 		if ( $status_code >= 400 ) {
-			$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? [];
+			$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? array();
 			$detail = $body['message'] ?? $body['name'] ?? "HTTP {$status_code}";
-			return new WP_Error( 'mandrill_api_error', (string) $detail, [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_api_error', (string) $detail, array( 'status' => 500 ) );
 		}
 
 		return self::parse_batch_send_response( $response, $to_emails );
@@ -401,22 +428,22 @@ class System_Email_Sender {
 	private static function parse_batch_send_response( array $response, array $to_emails ): array|WP_Error {
 		$results = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $results ) || ! isset( $results[0]['status'] ) ) {
-			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', array( 'status' => 500 ) );
 		}
 
-		$statuses = [];
+		$statuses = array();
 		foreach ( $results as $result ) {
 			if ( ! is_array( $result ) || ! isset( $result['email'], $result['status'] ) ) {
 				continue;
 			}
-			$statuses[ strtolower( (string) $result['email'] ) ] = [
+			$statuses[ strtolower( (string) $result['email'] ) ] = array(
 				'status' => (string) $result['status'],
 				'reason' => (string) ( $result['reject_reason'] ?? $result['status'] ),
-			];
+			);
 		}
 
-		$sent   = [];
-		$failed = [];
+		$sent   = array();
+		$failed = array();
 
 		foreach ( $to_emails as $to_email ) {
 			$entry = $statuses[ strtolower( $to_email ) ] ?? null;
@@ -424,19 +451,22 @@ class System_Email_Sender {
 				$failed[ $to_email ] = 'no recipient status returned';
 				continue;
 			}
-			if ( in_array( $entry['status'], [ 'sent', 'queued', 'scheduled' ], true ) ) {
+			if ( in_array( $entry['status'], array( 'sent', 'queued', 'scheduled' ), true ) ) {
 				$sent[] = $to_email;
 			} else {
 				$failed[ $to_email ] = $entry['reason'];
 			}
 		}
 
-		return [
+		return array(
 			'sent'   => $sent,
 			'failed' => $failed,
-		];
+		);
 	}
 
+	/**
+	 * Mandrill API key from the platform constant, or empty.
+	 */
 	private static function get_api_key(): string {
 		if ( defined( self::API_KEY_CONSTANT ) ) {
 			return (string) constant( self::API_KEY_CONSTANT );
