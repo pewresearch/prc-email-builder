@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Query Loop hardening for the Newsletter Campaigns variation.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -16,12 +17,25 @@ class Campaign_Query {
 
 	const NAMESPACE = 'prc-email-builder/campaign-query';
 
-	/** @var int Nesting depth of matching query blocks currently rendering. */
+	/**
+	 * Nesting depth of matching query blocks currently rendering.
+	 *
+	 * @var int
+	 */
 	private int $query_block_depth = 0;
 
-	/** @var callable|null Active query_loop_block_query_vars callback. */
+	/**
+	 * Active query_loop_block_query_vars callback.
+	 *
+	 * @var callable|null
+	 */
 	private $query_loop_filter_callback = null;
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_filter( 'pre_render_block', $this, 'maybe_add_query_loop_filter', 10, 3 );
 		$loader->add_filter( 'render_block', $this, 'maybe_remove_query_loop_filter', 10, 2 );

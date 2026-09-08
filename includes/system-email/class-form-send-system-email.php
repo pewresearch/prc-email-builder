@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
- * prc-block/form action: send a dynamic-recipient system email.
+ * Form action: send a dynamic-recipient system email for prc-block/form.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -63,6 +64,11 @@ class Form_Send_System_Email {
 	const THROTTLE_EMAIL_LIMIT  = 5;
 	const THROTTLE_EMAIL_WINDOW = HOUR_IN_SECONDS;
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
 			return;
@@ -71,17 +77,19 @@ class Form_Send_System_Email {
 	}
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook rest_api_init
 	 */
 	public function register_rest_endpoints(): void {
 		register_rest_route(
 			'prc-api/v3',
 			self::ROUTE,
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'handle_submission' ],
+				'callback'            => array( $this, 'handle_submission' ),
 				'permission_callback' => '__return_true',
-			]
+			)
 		);
 	}
 
@@ -94,12 +102,12 @@ class Form_Send_System_Email {
 	public function handle_submission( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$form_data = json_decode( $request->get_body(), true );
 		if ( ! is_array( $form_data ) ) {
-			return new WP_Error( 'invalid_form_data', 'Invalid form data provided.', [ 'status' => 400 ] );
+			return new WP_Error( 'invalid_form_data', 'Invalid form data provided.', array( 'status' => 400 ) );
 		}
 
-		$form_fields = $form_data['formFields'] ?? [];
+		$form_fields = $form_data['formFields'] ?? array();
 		if ( ! is_array( $form_fields ) || empty( $form_fields ) ) {
-			return new WP_Error( 'empty_form_fields', 'No form fields provided.', [ 'status' => 400 ] );
+			return new WP_Error( 'empty_form_fields', 'No form fields provided.', array( 'status' => 400 ) );
 		}
 
 		// Resolve the recipient and the target newsletter up front so the
@@ -107,7 +115,7 @@ class Form_Send_System_Email {
 		// template rather than the generic edit_posts capability.
 		$email = $this->find_email( $form_fields );
 		if ( ! is_email( $email ) ) {
-			return new WP_Error( 'invalid_email', 'A valid email address is required.', [ 'status' => 400 ] );
+			return new WP_Error( 'invalid_email', 'A valid email address is required.', array( 'status' => 400 ) );
 		}
 
 		$post_id = $this->resolve_post_id( $form_fields );
@@ -115,7 +123,7 @@ class Form_Send_System_Email {
 			return new WP_Error(
 				'newsletter_not_found',
 				'Could not resolve a dynamic newsletter to send. Provide a newsletter_post_id or system_email_key field.',
-				[ 'status' => 422 ]
+				array( 'status' => 422 )
 			);
 		}
 
@@ -159,7 +167,12 @@ class Form_Send_System_Email {
 			}
 			return new WP_REST_Response(
 				array_merge(
-					[ 'status' => 'success', 'dry_run' => true, 'post_id' => $post_id, 'context' => $context ],
+					array(
+						'status'  => 'success',
+						'dry_run' => true,
+						'post_id' => $post_id,
+						'context' => $context,
+					),
 					$preview
 				),
 				200
@@ -188,10 +201,10 @@ class Form_Send_System_Email {
 
 		$this->log_response( $form_data, $form_fields, 'sent', $newsletter_signup );
 
-		$response = [
+		$response = array(
 			'status'  => 'success',
 			'message' => __( 'Check your inbox — your email is on its way.', 'prc-email-builder' ),
-		];
+		);
 		if ( null !== $newsletter_signup ) {
 			$response['newsletter_signup'] = $newsletter_signup;
 		}
@@ -218,22 +231,22 @@ class Form_Send_System_Email {
 		}
 
 		if ( null !== $newsletter_signup ) {
-			$form_fields[] = [
+			$form_fields[] = array(
 				'name'  => 'newsletter_signup_result',
 				'label' => 'Newsletter Signup',
 				'type'  => 'text',
 				'value' => $newsletter_signup,
-			];
+			);
 		}
 
 		\PRC\Platform\Block_Forms\Form_Response_Log::log(
-			[
+			array(
 				'form_post_id' => absint( $form_data['formPostId'] ?? 0 ),
 				'form_name'    => sanitize_text_field( (string) ( $form_data['formName'] ?? '' ) ),
 				'action'       => 'sendSystemEmail',
 				'status'       => $status,
 				'fields'       => $form_fields,
-			]
+			)
 		);
 	}
 
@@ -273,7 +286,7 @@ class Form_Send_System_Email {
 			: '';
 
 		if ( ! \PRC\Platform\verify_captcha( $token, '' !== $remote_ip ? $remote_ip : null ) ) {
-			return new WP_Error( 'captcha_failed', 'Captcha verification failed.', [ 'status' => 403 ] );
+			return new WP_Error( 'captcha_failed', 'Captcha verification failed.', array( 'status' => 403 ) );
 		}
 
 		return true;
@@ -302,10 +315,16 @@ class Form_Send_System_Email {
 		 */
 		$limits = apply_filters(
 			'prc_email_builder_system_email_throttle',
-			[
-				'ip'    => [ 'limit' => self::THROTTLE_IP_LIMIT, 'window' => self::THROTTLE_IP_WINDOW ],
-				'email' => [ 'limit' => self::THROTTLE_EMAIL_LIMIT, 'window' => self::THROTTLE_EMAIL_WINDOW ],
-			]
+			array(
+				'ip'    => array(
+					'limit'  => self::THROTTLE_IP_LIMIT,
+					'window' => self::THROTTLE_IP_WINDOW,
+				),
+				'email' => array(
+					'limit'  => self::THROTTLE_EMAIL_LIMIT,
+					'window' => self::THROTTLE_EMAIL_WINDOW,
+				),
+			)
 		);
 
 		$ip = function_exists( '\\PRC\\Platform\\get_client_ip' )
@@ -319,7 +338,7 @@ class Form_Send_System_Email {
 				(int) $limits['ip']['window'],
 				self::THROTTLE_CACHE_GROUP
 			) ) {
-				return new WP_Error( 'rate_limited', 'Too many requests. Please try again later.', [ 'status' => 429 ] );
+				return new WP_Error( 'rate_limited', 'Too many requests. Please try again later.', array( 'status' => 429 ) );
 			}
 		}
 
@@ -330,7 +349,7 @@ class Form_Send_System_Email {
 				(int) $limits['email']['window'],
 				self::THROTTLE_CACHE_GROUP
 			) ) {
-				return new WP_Error( 'rate_limited', 'This address has reached its send limit. Please try again later.', [ 'status' => 429 ] );
+				return new WP_Error( 'rate_limited', 'This address has reached its send limit. Please try again later.', array( 'status' => 429 ) );
 			}
 		}
 
@@ -392,7 +411,7 @@ class Form_Send_System_Email {
 	 * @return array<string, mixed>
 	 */
 	private function build_context( array $form_fields, int $post_id, bool $allow_client_merge = false ): array {
-		$context = [];
+		$context = array();
 		if ( $allow_client_merge ) {
 			foreach ( $form_fields as $field ) {
 				$name = isset( $field['name'] ) ? (string) $field['name'] : '';
@@ -493,7 +512,7 @@ class Form_Send_System_Email {
 			return 'skipped';
 		}
 
-		$validated_interests = [];
+		$validated_interests = array();
 		foreach ( $interests as $candidate ) {
 			$sanitized = $this->sanitize_interest_id( $candidate );
 			if ( null === $sanitized ) {
@@ -508,7 +527,9 @@ class Form_Send_System_Email {
 		}
 
 		if ( ! class_exists( '\PRC\Platform\Mailchimp_API' ) ) {
-			error_log( 'Form_Send_System_Email: Mailchimp_API is not available for newsletter signup.' );
+			error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist missing Mailchimp API for ops.
+				'Form_Send_System_Email: Mailchimp_API is not available for newsletter signup.'
+			);
 			return 'failed';
 		}
 
@@ -523,15 +544,20 @@ class Form_Send_System_Email {
 
 		$api    = new \PRC\Platform\Mailchimp_API(
 			$email,
-			[
+			array(
 				'api_key' => null,
 				'list_id' => $list_id,
-			]
+			)
 		);
-		$result = $api->subscribe_to_list( null, $validated_interests, $origin_url ?: false, $form_id ?: false );
+		$result = $api->subscribe_to_list(
+			null,
+			$validated_interests,
+			'' !== $origin_url ? $origin_url : false,
+			'' !== $form_id ? $form_id : false
+		);
 
 		if ( is_wp_error( $result ) ) {
-			error_log(
+			error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist Mailchimp signup failures for ops.
 				sprintf(
 					'Form_Send_System_Email: Mailchimp signup failed for %s: %s',
 					$email,
@@ -591,7 +617,7 @@ class Form_Send_System_Email {
 				continue;
 			}
 
-			$value = isset( $field['value'] ) ? (string) $field['value'] : '';
+			$value       = isset( $field['value'] ) ? (string) $field['value'] : '';
 			$audience_id = '';
 			if ( isset( $field['audienceId'] ) ) {
 				$audience_id = sanitize_text_field( (string) $field['audienceId'] );
@@ -600,24 +626,26 @@ class Form_Send_System_Email {
 			// Audience targeting: empty value = entire audience; digits = saved segment.
 			if ( '' !== $audience_id ) {
 				if ( '' === $value ) {
-					return [
+					return array(
 						'audience_id'  => $audience_id,
-						'interests'    => [],
+						'interests'    => array(),
 						'from_segment' => true,
-					];
+					);
 				}
 				if ( ctype_digit( $value ) ) {
 					if ( ! function_exists( '\PRC\Platform\Mailchimp\resolve_segment_interest_ids' ) ) {
-						error_log( 'Form_Send_System_Email: resolve_segment_interest_ids is unavailable.' );
+						error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist missing segment resolver for ops.
+							'Form_Send_System_Email: resolve_segment_interest_ids is unavailable.'
+						);
 						return null;
 					}
 					$resolved = \PRC\Platform\Mailchimp\resolve_segment_interest_ids(
 						$audience_id,
-						[ $value ],
+						array( $value ),
 						'mailchimp-form'
 					);
 					if ( is_wp_error( $resolved ) ) {
-						error_log(
+						error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist segment resolution failures for ops.
 							sprintf(
 								'Form_Send_System_Email: Mailchimp segment resolution failed: %s',
 								$resolved->get_error_message()
@@ -626,13 +654,13 @@ class Form_Send_System_Email {
 						return $resolved;
 					}
 					if ( ! is_array( $resolved ) ) {
-						$resolved = [];
+						$resolved = array();
 					}
-					return [
+					return array(
 						'audience_id'  => $audience_id,
 						'interests'    => array_values( array_map( 'strval', $resolved ) ),
 						'from_segment' => true,
-					];
+					);
 				}
 			}
 
@@ -643,11 +671,11 @@ class Form_Send_System_Email {
 			// Legacy interest-ID opt-in.
 			$interest_id = $this->sanitize_interest_id( $value );
 			if ( null !== $interest_id ) {
-				return [
+				return array(
 					'audience_id'  => $audience_id,
-					'interests'    => [ $interest_id ],
+					'interests'    => array( $interest_id ),
 					'from_segment' => false,
-				];
+				);
 			}
 		}
 		return null;
@@ -667,10 +695,10 @@ class Form_Send_System_Email {
 		}
 		if ( is_string( $checked ) ) {
 			$normalized = strtolower( trim( $checked ) );
-			if ( in_array( $normalized, [ 'false', '0', 'off', 'no' ], true ) ) {
+			if ( in_array( $normalized, array( 'false', '0', 'off', 'no' ), true ) ) {
 				return false;
 			}
-			if ( in_array( $normalized, [ 'true', '1', 'on', 'yes' ], true ) ) {
+			if ( in_array( $normalized, array( 'true', '1', 'on', 'yes' ), true ) ) {
 				return true;
 			}
 		}
@@ -679,6 +707,8 @@ class Form_Send_System_Email {
 
 	/**
 	 * Sanitize a Mailchimp interest ID from client input.
+	 *
+	 * @param string $raw Raw.
 	 */
 	private function sanitize_interest_id( string $raw ): ?string {
 		$sanitized = preg_replace( '/[^a-zA-Z0-9]/', '', $raw );
@@ -690,6 +720,8 @@ class Form_Send_System_Email {
 
 	/**
 	 * Validate an interest ID against the cached segment list when available.
+	 *
+	 * @param string $interest_id Interest id.
 	 */
 	private function is_interest_id_allowed( string $interest_id ): bool {
 		$cached = get_option( 'prc_mailchimp_segment_ids', false );
@@ -713,6 +745,7 @@ class Form_Send_System_Email {
 	 * Resolve the origin URL for Mailchimp merge fields.
 	 *
 	 * @param array<string, mixed> $form_data Parsed form envelope.
+	 * @param WP_REST_Request      $request Request.
 	 */
 	private function resolve_origin_url( array $form_data, WP_REST_Request $request ): string {
 		$action_config = $form_data['actionConfig'] ?? array();
@@ -740,7 +773,7 @@ class Form_Send_System_Email {
 	 * @return array<string, string>
 	 */
 	private function field_values( array $form_fields ): array {
-		$out = [];
+		$out = array();
 		foreach ( $form_fields as $field ) {
 			if ( ! isset( $field['name'] ) ) {
 				continue;

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Block editor asset registration.
  *
- * @package    PRC\Platform\Email_Builder
+ * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -19,6 +20,11 @@ class Assets {
 	const LATEST_CAMPAIGN_QUERY_HANDLE = 'prc-email-builder-latest-campaign-query';
 	const CAMPAIGN_QUERY_HANDLE        = 'prc-email-builder-campaign-query';
 
+	/**
+	 * Register editor enqueue hooks.
+	 *
+	 * @param Loader $loader Plugin loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_sidebar' );
 		$loader->add_action( 'enqueue_block_editor_assets', $this, 'enqueue_form_action' );
@@ -90,6 +96,9 @@ class Assets {
 		);
 	}
 
+	/**
+	 * Enqueue Campaign Setup / Transactional Setup on email edit screens.
+	 */
 	public function enqueue_sidebar(): void {
 		$screen = get_current_screen();
 		if ( ! $screen ) {
@@ -126,7 +135,7 @@ class Assets {
 			wp_enqueue_style(
 				self::SCRIPT_HANDLE,
 				plugins_url( 'build/sidebar/style-index.css', PRC_EMAIL_BUILDER_FILE ),
-				[],
+				array(),
 				$asset['version']
 			);
 		}
@@ -134,10 +143,10 @@ class Assets {
 		$settings  = Mailchimp::get_settings();
 		$templates = array_values(
 			array_map(
-				static fn( array $t ): array => [
+				static fn( array $t ): array => array(
 					'slug'  => $t['slug'],
 					'label' => $t['label'],
-				],
+				),
 				Template_Registry::all()
 			)
 		);
@@ -147,7 +156,7 @@ class Assets {
 		wp_add_inline_script(
 			self::SCRIPT_HANDLE,
 			'window.prcEmailBuilderConfig = ' . wp_json_encode(
-				[
+				array(
 					'restNamespace'                    => REST_API::NAMESPACE,
 					'postTypes'                        => Post_Type::POST_TYPES,
 					'campaignPostType'                 => Post_Type::CAMPAIGN_POST_TYPE,
@@ -157,11 +166,12 @@ class Assets {
 					'templates'                        => $templates,
 					'nonce'                            => wp_create_nonce( 'wp_rest' ),
 					'autoSendOnPublish'                => Mailchimp::is_auto_send_on_publish_enabled(),
-					'defaults'                         => [
+					'delayedSendSeconds'               => Mailchimp::DELAYED_SEND_DELAY,
+					'defaults'                         => array(
 						'from_name'  => $settings['from_name'] ?? '',
 						'from_email' => $settings['from_email'] ?? '',
-					],
-				]
+					),
+				)
 			) . ';',
 			'before'
 		);
@@ -173,6 +183,8 @@ class Assets {
 	 * `WP_Screen::$post_type` is not always populated during
 	 * `enqueue_block_editor_assets` (e.g. some CPT edit screens report `post`),
 	 * so fall back to the edited post or `post_type` query arg.
+	 *
+	 * @param string $screen_post_type Post type from the current WP_Screen.
 	 */
 	private function resolve_editor_post_type( string $screen_post_type ): string {
 		if ( Post_Type::is_email_post_type( $screen_post_type ) ) {

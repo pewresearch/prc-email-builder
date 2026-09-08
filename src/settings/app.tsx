@@ -127,7 +127,7 @@ const mailchimpFields: SettingsFieldConfig[] = [
 		type: 'boolean',
 		label: __('Automatically send on publish', TEXT_DOMAIN),
 		description: __(
-			'When enabled, publishing or scheduling a campaign creates the Mailchimp campaign and sends it. When disabled, publish only saves the WordPress post. Use Send to Mailchimp in Campaign Setup to deliver.',
+			'When enabled, publishing or scheduling a campaign queues a Mailchimp send. WordPress waits 10 minutes so you can cancel. When disabled, publish only saves the WordPress post. Use Create Mailchimp draft in Campaign Setup. Send now also queues a 10-minute send you can cancel.',
 			TEXT_DOMAIN
 		),
 	},

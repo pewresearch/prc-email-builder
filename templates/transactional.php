@@ -7,6 +7,8 @@
  *   string $content      Table-based HTML fragment from the content transformer.
  *   string $subject      Newsletter subject line.
  *   string $preview_text Preview / preheader text.
+ *
+ * @package PRC\Platform\Email_Builder
  */
 
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;

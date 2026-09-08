@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Enrollment store for scheduled email automations.
  *
@@ -11,6 +10,8 @@ declare(strict_types=1);
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -137,14 +138,14 @@ class Automation_Enrollment {
 		string $recipient_email,
 		array $context,
 		array $config,
-		array $source = []
+		array $source = array()
 	): ?int {
 		global $wpdb;
 
 		self::maybe_create_table();
 
 		$recipient_email = strtolower( trim( $recipient_email ) );
-		$steps           = is_array( $config['steps'] ?? null ) ? $config['steps'] : [];
+		$steps           = is_array( $config['steps'] ?? null ) ? $config['steps'] : array();
 
 		if ( $trigger_post_id <= 0 || ! is_email( $recipient_email ) || empty( $steps ) ) {
 			return null;
@@ -160,7 +161,7 @@ class Automation_Enrollment {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$inserted = $wpdb->insert(
 			self::table_name(),
-			[
+			array(
 				'trigger_post_id'      => $trigger_post_id,
 				'recipient_email'      => $recipient_email,
 				'context_json'         => (string) wp_json_encode( $context ),
@@ -174,11 +175,11 @@ class Automation_Enrollment {
 				'initial_sent_at'      => $now,
 				'last_step_sent_at'    => null,
 				'source'               => empty( $source ) ? null : (string) wp_json_encode( $source ),
-				'step_log'             => (string) wp_json_encode( [] ),
+				'step_log'             => (string) wp_json_encode( array() ),
 				'created_at'           => $now,
 				'updated_at'           => $now,
-			],
-			[ '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
+			),
+			array( '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 		);
 
 		return $inserted ? (int) $wpdb->insert_id : null;
@@ -195,7 +196,7 @@ class Automation_Enrollment {
 
 		self::maybe_create_table();
 		if ( ! self::table_exists() ) {
-			return [];
+			return array();
 		}
 
 		$limit = max( 1, $limit );
@@ -205,7 +206,7 @@ class Automation_Enrollment {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE status = %s AND due_at IS NOT NULL AND due_at <= %s ORDER BY due_at ASC LIMIT %d",
+				"SELECT * FROM {$table} WHERE status = %s AND due_at IS NOT NULL AND due_at <= %s ORDER BY due_at ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a known plugin table name.
 				self::STATUS_ACTIVE,
 				$now,
 				$limit
@@ -213,7 +214,7 @@ class Automation_Enrollment {
 			ARRAY_A
 		);
 
-		return is_array( $rows ) ? $rows : [];
+		return is_array( $rows ) ? $rows : array();
 	}
 
 	/**
@@ -229,21 +230,27 @@ class Automation_Enrollment {
 
 		$id           = (int) $row['id'];
 		$current_step = (int) $row['current_step'];
-		$steps        = is_array( $config['steps'] ?? null ) ? $config['steps'] : [];
+		$steps        = is_array( $config['steps'] ?? null ) ? $config['steps'] : array();
 		$now          = current_time( 'mysql', true );
 
 		$log   = self::decode_json_array( $row['step_log'] ?? '' );
-		$log[] = array_merge( [ 'step' => $current_step, 'sent_at' => $now ], $log_entry );
+		$log[] = array_merge(
+			array(
+				'step'    => $current_step,
+				'sent_at' => $now,
+			),
+			$log_entry 
+		);
 
 		$next_step = $current_step + 1;
 
-		$data    = [
+		$data    = array(
 			'last_step_sent_at' => $now,
 			'attempts'          => 0,
 			'step_log'          => (string) wp_json_encode( $log ),
 			'updated_at'        => $now,
-		];
-		$formats = [ '%s', '%d', '%s', '%s' ];
+		);
+		$formats = array( '%s', '%d', '%s', '%s' );
 
 		if ( isset( $steps[ $next_step ] ) ) {
 			$window = Automation_Window::resolve( $steps[ $next_step ], $config );
@@ -253,15 +260,15 @@ class Automation_Enrollment {
 			$data['follow_up_post_id']    = (int) ( $steps[ $next_step ]['follow_up_post_id'] ?? 0 );
 			$data['send_window_snapshot'] = (string) wp_json_encode( $window );
 			$data['due_at']               = $due_at;
-			$formats                      = array_merge( $formats, [ '%d', '%d', '%s', '%s' ] );
+			$formats                      = array_merge( $formats, array( '%d', '%d', '%s', '%s' ) );
 		} else {
 			$data['status'] = self::STATUS_COMPLETED;
 			$data['due_at'] = null;
-			$formats        = array_merge( $formats, [ '%s', '%s' ] );
+			$formats        = array_merge( $formats, array( '%s', '%s' ) );
 		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update( self::table_name(), $data, [ 'id' => $id ], $formats, [ '%d' ] );
+		$wpdb->update( self::table_name(), $data, array( 'id' => $id ), $formats, array( '%d' ) );
 	}
 
 	/**
@@ -279,33 +286,34 @@ class Automation_Enrollment {
 		$now      = current_time( 'mysql', true );
 
 		$log   = self::decode_json_array( $row['step_log'] ?? '' );
-		$log[] = [
-			'step'     => (int) $row['current_step'],
+		$log[] = array(
+			'step'      => (int) $row['current_step'],
 			'failed_at' => $now,
-			'error'    => $error,
-			'attempt'  => $attempts,
-		];
+			'error'     => $error,
+			'attempt'   => $attempts,
+		);
 
-		$data = [
+		$data    = array(
 			'attempts'   => $attempts,
 			'step_log'   => (string) wp_json_encode( $log ),
 			'updated_at' => $now,
-		];
-		$formats = [ '%d', '%s', '%s' ];
+		);
+		$formats = array( '%d', '%s', '%s' );
 
 		if ( $attempts >= self::MAX_ATTEMPTS ) {
 			$data['status'] = self::STATUS_CANCELLED;
 			$data['due_at'] = null;
-			$formats        = array_merge( $formats, [ '%s', '%s' ] );
+			$formats        = array_merge( $formats, array( '%s', '%s' ) );
 		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update( self::table_name(), $data, [ 'id' => $id ], $formats, [ '%d' ] );
+		$wpdb->update( self::table_name(), $data, array( 'id' => $id ), $formats, array( '%d' ) );
 	}
 
 	/**
 	 * Cancel a single enrollment by ID.
 	 *
+	 * @param int $id Id.
 	 * @return bool True when a row was updated.
 	 */
 	public static function cancel( int $id ): bool {
@@ -318,14 +326,17 @@ class Automation_Enrollment {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$updated = $wpdb->update(
 			self::table_name(),
-			[
+			array(
 				'status'     => self::STATUS_CANCELLED,
 				'due_at'     => null,
 				'updated_at' => current_time( 'mysql', true ),
-			],
-			[ 'id' => $id, 'status' => self::STATUS_ACTIVE ],
-			[ '%s', '%s', '%s' ],
-			[ '%d', '%s' ]
+			),
+			array(
+				'id'     => $id,
+				'status' => self::STATUS_ACTIVE,
+			),
+			array( '%s', '%s', '%s' ),
+			array( '%d', '%s' )
 		);
 
 		return (bool) $updated;
@@ -334,6 +345,8 @@ class Automation_Enrollment {
 	/**
 	 * Cancel all active enrollments for a recipient + trigger pair.
 	 *
+	 * @param int    $trigger_post_id Trigger post id.
+	 * @param string $recipient_email Recipient email.
 	 * @return int Number of rows cancelled.
 	 */
 	public static function cancel_active( int $trigger_post_id, string $recipient_email ): int {
@@ -348,18 +361,18 @@ class Automation_Enrollment {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$updated = $wpdb->update(
 			self::table_name(),
-			[
+			array(
 				'status'     => self::STATUS_CANCELLED,
 				'due_at'     => null,
 				'updated_at' => current_time( 'mysql', true ),
-			],
-			[
+			),
+			array(
 				'trigger_post_id' => $trigger_post_id,
 				'recipient_email' => $recipient_email,
 				'status'          => self::STATUS_ACTIVE,
-			],
-			[ '%s', '%s', '%s' ],
-			[ '%d', '%s', '%s' ]
+			),
+			array( '%s', '%s', '%s' ),
+			array( '%d', '%s', '%s' )
 		);
 
 		return (int) $updated;
@@ -368,6 +381,7 @@ class Automation_Enrollment {
 	/**
 	 * Fetch a single enrollment row by ID.
 	 *
+	 * @param int $id Id.
 	 * @return array<string, mixed>|null
 	 */
 	public static function get( int $id ): ?array {
@@ -381,7 +395,7 @@ class Automation_Enrollment {
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$row = $wpdb->get_row(
-			$wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ),
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a known plugin table name.
 			ARRAY_A
 		);
 
@@ -399,7 +413,7 @@ class Automation_Enrollment {
 		global $wpdb;
 
 		if ( ! self::table_exists() ) {
-			return [];
+			return array();
 		}
 
 		$limit = max( 1, $limit );
@@ -409,7 +423,7 @@ class Automation_Enrollment {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(
-					"SELECT * FROM {$table} WHERE status = %s ORDER BY id DESC LIMIT %d",
+					"SELECT * FROM {$table} WHERE status = %s ORDER BY id DESC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a known plugin table name.
 					$status,
 					$limit
 				),
@@ -418,12 +432,12 @@ class Automation_Enrollment {
 		} else {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results(
-				$wpdb->prepare( "SELECT * FROM {$table} ORDER BY id DESC LIMIT %d", $limit ),
+				$wpdb->prepare( "SELECT * FROM {$table} ORDER BY id DESC LIMIT %d", $limit ), // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a known plugin table name.
 				ARRAY_A
 			);
 		}
 
-		return is_array( $rows ) ? $rows : [];
+		return is_array( $rows ) ? $rows : array();
 	}
 
 	/**
@@ -437,9 +451,9 @@ class Automation_Enrollment {
 			return $value;
 		}
 		if ( ! is_string( $value ) || '' === $value ) {
-			return [];
+			return array();
 		}
 		$decoded = json_decode( $value, true );
-		return is_array( $decoded ) ? $decoded : [];
+		return is_array( $decoded ) ? $decoded : array();
 	}
 }

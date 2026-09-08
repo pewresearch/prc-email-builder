@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Mailchimp Reports API provider.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder\Reports;
 
@@ -16,11 +17,16 @@ use WP_Error;
  */
 class Mailchimp_Report_Provider implements Report_Provider {
 
+	/**
+	 * Channel.
+	 */
 	public function channel(): string {
 		return Report_Schema::CHANNEL_MAILCHIMP;
 	}
 
 	/**
+	 * Fetch.
+	 *
 	 * @param string $external_id Mailchimp campaign ID.
 	 */
 	public function fetch( string $external_id ): array|WP_Error {
@@ -35,7 +41,7 @@ class Mailchimp_Report_Provider implements Report_Provider {
 		}
 
 		$click_details = $mailchimp->get_campaign_click_details( $external_id );
-		$click_array   = [];
+		$click_array   = array();
 		if ( ! is_wp_error( $click_details ) ) {
 			$click_array = $click_details;
 		}

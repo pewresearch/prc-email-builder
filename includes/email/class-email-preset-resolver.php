@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email Preset Resolver — theme.json presets to email-safe literals.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -16,21 +17,29 @@ namespace PRC\Platform\Email_Builder;
 class Email_Preset_Resolver {
 
 	/**
+	 * Color map.
+	 *
 	 * @var array<string,array{light:string,dark:string}>|null
 	 */
 	private static ?array $color_map = null;
 
 	/**
+	 * Spacing map.
+	 *
 	 * @var array<string,string>|null slug => size value
 	 */
 	private static ?array $spacing_map = null;
 
 	/**
+	 * Font family map.
+	 *
 	 * @var array<string,string>|null slug => raw fontFamily stack
 	 */
 	private static ?array $font_family_map = null;
 
 	/**
+	 * Font size map.
+	 *
 	 * @var array<string,string>|null slug => px string
 	 */
 	private static ?array $font_size_map = null;
@@ -64,20 +73,30 @@ class Email_Preset_Resolver {
 	);
 
 	/**
+	 * Color pair.
+	 *
 	 * @param string $slug Color preset slug (e.g. ui-gray-very-light).
 	 * @return array{light:string,dark:string}
 	 */
 	public static function color_pair( string $slug ): array {
 		$slug = sanitize_key( $slug );
 		if ( '' === $slug ) {
-			return array( 'light' => '', 'dark' => '' );
+			return array(
+				'light' => '',
+				'dark'  => '',
+			);
 		}
 
 		self::load_color_map();
-		return self::$color_map[ $slug ] ?? array( 'light' => '', 'dark' => '' );
+		return self::$color_map[ $slug ] ?? array(
+			'light' => '',
+			'dark'  => '',
+		);
 	}
 
 	/**
+	 * Color hex.
+	 *
 	 * @param string $slug Color preset slug.
 	 * @return string Light-mode hex/color for inline CSS.
 	 */
@@ -95,20 +114,29 @@ class Email_Preset_Resolver {
 	public static function parse_light_dark( string $value ): array {
 		$value = trim( $value );
 		if ( '' === $value ) {
-			return array( 'light' => '', 'dark' => '' );
-		}
-
-		if ( preg_match( '/^light-dark\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)$/i', $value, $m ) ) {
-			$light = trim( $m[1] );
-			$dark  = trim( $m[2] );
 			return array(
-				'light' => Email_Style_Resolver::sanitize_css_value( $light ) ?: $light,
-				'dark'  => Email_Style_Resolver::sanitize_css_value( $dark ) ?: $dark,
+				'light' => '',
+				'dark'  => '',
 			);
 		}
 
-		$san = Email_Style_Resolver::sanitize_css_value( $value ) ?: $value;
-		return array( 'light' => $san, 'dark' => $san );
+		if ( preg_match( '/^light-dark\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)$/i', $value, $m ) ) {
+			$light     = trim( $m[1] );
+			$dark      = trim( $m[2] );
+			$light_san = Email_Style_Resolver::sanitize_css_value( $light );
+			$dark_san  = Email_Style_Resolver::sanitize_css_value( $dark );
+			return array(
+				'light' => '' !== $light_san ? $light_san : $light,
+				'dark'  => '' !== $dark_san ? $dark_san : $dark,
+			);
+		}
+
+		$sanitized = Email_Style_Resolver::sanitize_css_value( $value );
+		$san       = '' !== $sanitized ? $sanitized : $value;
+		return array(
+			'light' => $san,
+			'dark'  => $san,
+		);
 	}
 
 	/**
@@ -220,6 +248,8 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Rem to px.
+	 *
 	 * @param string $value Length value.
 	 * @return string
 	 */
@@ -231,7 +261,8 @@ class Email_Preset_Resolver {
 		if ( preg_match( '/^(\d+(?:\.\d+)?)\s*em$/i', $value, $m ) ) {
 			return ( (int) round( (float) $m[1] * 16 ) ) . 'px';
 		}
-		return Email_Style_Resolver::sanitize_css_value( $value ) ?: $value;
+		$sanitized = Email_Style_Resolver::sanitize_css_value( $value );
+		return '' !== $sanitized ? $sanitized : $value;
 	}
 
 	/**
@@ -276,6 +307,8 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Load color map.
+	 *
 	 * @return void
 	 */
 	private static function load_color_map(): void {
@@ -328,6 +361,8 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Load spacing map.
+	 *
 	 * @return void
 	 */
 	private static function load_spacing_map(): void {
@@ -358,6 +393,9 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Resolve font family slug.
+	 *
+	 * @param string             $slug Font family slug.
 	 * @param array<string,true> $seen Slugs already expanding (cycle guard).
 	 */
 	private static function resolve_font_family_slug( string $slug, array $seen ): string {
@@ -390,7 +428,8 @@ class Email_Preset_Resolver {
 	/**
 	 * Expand nested font-family preset refs inside a theme.json stack.
 	 *
-	 * @param array<string,true> $seen
+	 * @param string             $value Font-family CSS value.
+	 * @param array<string,true> $seen  Slugs already expanding (cycle guard).
 	 */
 	private static function flatten_nested_font_vars( string $value, array $seen ): string {
 		$replaced = preg_replace_callback(
@@ -406,6 +445,8 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Load font family map.
+	 *
 	 * @return void
 	 */
 	private static function load_font_family_map(): void {
@@ -436,6 +477,8 @@ class Email_Preset_Resolver {
 	}
 
 	/**
+	 * Load font size map.
+	 *
 	 * @return void
 	 */
 	private static function load_font_size_map(): void {

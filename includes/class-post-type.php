@@ -62,11 +62,13 @@ class Post_Type {
 
 	/** Meta registered only on campaign (Mailchimp) posts. */
 	const CAMPAIGN_META_KEYS = array(
-		'prc_email_mailchimp_audience_id'        => 'Mailchimp audience (list) ID.',
-		'prc_email_mailchimp_segment_id'         => 'Mailchimp saved-segment ID; restricts recipients within the audience.',
-		'prc_email_mailchimp_campaign_id'        => 'Mailchimp campaign ID created and sent on publish.',
-		'prc_email_mailchimp_campaign_admin_url' => 'Mailchimp admin URL for the campaign.',
-		'prc_email_mailchimp_campaign_status'    => 'Cached Mailchimp campaign status: "save" (draft / send failed), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
+		'prc_email_mailchimp_audience_id'            => 'Mailchimp audience (list) ID.',
+		'prc_email_mailchimp_segment_id'             => 'Mailchimp saved-segment ID; restricts recipients within the audience.',
+		'prc_email_mailchimp_campaign_id'            => 'Mailchimp campaign ID for the linked draft or send.',
+		'prc_email_mailchimp_campaign_admin_url'     => 'Mailchimp admin URL for the campaign.',
+		'prc_email_mailchimp_campaign_status'        => 'Cached Mailchimp campaign status: "save" (draft / send failed), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
+		'prc_email_mailchimp_pending_send_at'        => 'Unix timestamp when a queued Mailchimp send should run; empty when none is queued.',
+		'prc_email_mailchimp_delayed_send_cancelled' => '1 when the author cancelled a queued Mailchimp send and has not queued another.',
 	);
 
 	/** Meta registered only on transactional (Mandrill) posts. */

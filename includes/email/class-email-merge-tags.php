@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Resolves view-online merge tags to the website campaign permalink.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -17,11 +18,11 @@ namespace PRC\Platform\Email_Builder;
 class Email_Merge_Tags {
 
 	/** Tags replaced with the campaign website permalink. */
-	private const VIEW_ONLINE_TAGS = [
+	private const VIEW_ONLINE_TAGS = array(
 		'*|ARCHIVE|*',
 		'{{ blog_post }}',
 		'{{ webversion }}',
-	];
+	);
 
 	/**
 	 * Replace view-online merge tags with the post permalink.

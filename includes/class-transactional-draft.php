@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Create a transactional email draft that targets an audience option.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -25,13 +26,13 @@ class Transactional_Draft {
 	 * }
 	 * @return array{id: int, edit_url: string, title: string}|\WP_Error
 	 */
-	public static function create_from_audience( string $audience_key, array $args = [] ): array|\WP_Error {
+	public static function create_from_audience( string $audience_key, array $args = array() ): array|\WP_Error {
 		$audience_key = trim( $audience_key );
 		if ( ! self::is_audience_option_key( $audience_key ) ) {
 			return new \WP_Error(
 				'invalid_audience_key',
 				'A valid audience option key is required.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -39,7 +40,7 @@ class Transactional_Draft {
 			return new \WP_Error(
 				'missing_post_type',
 				'The transactional email post type is not registered.',
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
@@ -47,13 +48,13 @@ class Transactional_Draft {
 			return new \WP_Error(
 				'audience_not_found',
 				sprintf( 'Audience option "%s" does not exist.', $audience_key ),
-				[ 'status' => 404 ]
+				array( 'status' => 404 )
 			);
 		}
 
-		$meta = get_option( $audience_key . '_meta', [] );
+		$meta = get_option( $audience_key . '_meta', array() );
 		if ( ! is_array( $meta ) ) {
-			$meta = [];
+			$meta = array();
 		}
 
 		$quiz_id = isset( $args['quiz_id'] ) ? (int) $args['quiz_id'] : 0;
@@ -63,7 +64,7 @@ class Transactional_Draft {
 				return new \WP_Error(
 					'audience_quiz_mismatch',
 					'This audience does not belong to the requested quiz.',
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 		}
@@ -93,16 +94,16 @@ class Transactional_Draft {
 		}
 
 		$post_id = wp_insert_post(
-			[
+			array(
 				'post_type'   => Post_Type::TRANSACTIONAL_POST_TYPE,
 				'post_status' => 'draft',
 				'post_title'  => $title,
-				'meta_input'  => [
+				'meta_input'  => array(
 					'prc_email_delivery_mode'       => 'mandrill',
 					'prc_email_audience_option_key' => $audience_key,
 					'prc_email_subject'             => $subject,
-				],
-			],
+				),
+			),
 			true
 		);
 
@@ -115,11 +116,11 @@ class Transactional_Draft {
 			$edit_url = admin_url( sprintf( 'post.php?post=%d&action=edit', (int) $post_id ) );
 		}
 
-		return [
+		return array(
 			'id'       => (int) $post_id,
 			'edit_url' => $edit_url,
 			'title'    => $title,
-		];
+		);
 	}
 
 	/**

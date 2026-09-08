@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Recurring dispatcher for scheduled email automations.
  *
@@ -16,8 +15,13 @@ declare(strict_types=1);
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
+/**
+ * Automation Scheduler class.
+ */
 class Automation_Scheduler {
 
 	const DISPATCH_HOOK = 'prc_email_automation_process_due';
@@ -49,6 +53,8 @@ class Automation_Scheduler {
 	 * Re-entrancy guard: while the dispatcher is sending follow-ups it must not
 	 * auto-enroll off its own `system_email_sent` firings (that would loop /
 	 * double-enroll). Steps within a chain are advanced explicitly instead.
+	 *
+	 * @var bool
 	 */
 	private static bool $dispatching = false;
 
@@ -57,6 +63,8 @@ class Automation_Scheduler {
 	 * release/refresh so a run only ever touches the lock it still owns — if
 	 * the TTL lapsed and another dispatcher reclaimed the key, this run must
 	 * neither delete nor extend that new owner's lock.
+	 *
+	 * @var string
 	 */
 	private static string $lock_token = '';
 
@@ -64,14 +72,14 @@ class Automation_Scheduler {
 	 * Register hooks. Call once during plugin bootstrap.
 	 */
 	public static function init(): void {
-		add_action( self::DISPATCH_HOOK, [ __CLASS__, 'process_due' ] );
-		add_action( 'init', [ __CLASS__, 'maybe_schedule' ] );
+		add_action( self::DISPATCH_HOOK, array( __CLASS__, 'process_due' ) );
+		add_action( 'init', array( __CLASS__, 'maybe_schedule' ) );
 
 		// Enroll a recipient after a trigger email is successfully sent.
-		add_action( 'prc_email_builder_system_email_sent', [ __CLASS__, 'on_system_email_sent' ], 10, 3 );
+		add_action( 'prc_email_builder_system_email_sent', array( __CLASS__, 'on_system_email_sent' ), 10, 3 );
 
 		// Cancel in-flight enrollments whose follow-up template is no longer valid.
-		add_action( 'transition_post_status', [ __CLASS__, 'on_post_status_transition' ], 10, 3 );
+		add_action( 'transition_post_status', array( __CLASS__, 'on_post_status_transition' ), 10, 3 );
 	}
 
 	/**
@@ -84,7 +92,7 @@ class Automation_Scheduler {
 			return;
 		}
 
-		if ( as_has_scheduled_action( self::DISPATCH_HOOK, [], self::ACTION_GROUP ) ) {
+		if ( as_has_scheduled_action( self::DISPATCH_HOOK, array(), self::ACTION_GROUP ) ) {
 			return;
 		}
 
@@ -92,7 +100,7 @@ class Automation_Scheduler {
 			time() + self::INTERVAL,
 			self::INTERVAL,
 			self::DISPATCH_HOOK,
-			[],
+			array(),
 			self::ACTION_GROUP
 		);
 	}
@@ -104,14 +112,14 @@ class Automation_Scheduler {
 	 * @param string               $to_email Recipient address.
 	 * @param array<string, mixed> $context  Merge context used for the send.
 	 */
-	public static function on_system_email_sent( $post_id, $to_email, $context = [] ): void {
+	public static function on_system_email_sent( $post_id, $to_email, $context = array() ): void {
 		if ( self::$dispatching ) {
 			return;
 		}
 
 		$post_id  = (int) $post_id;
 		$to_email = (string) $to_email;
-		$context  = is_array( $context ) ? $context : [];
+		$context  = is_array( $context ) ? $context : array();
 
 		if ( $post_id <= 0 || ! is_email( $to_email ) ) {
 			return;
@@ -122,10 +130,10 @@ class Automation_Scheduler {
 			return;
 		}
 
-		$source = [
+		$source = array(
 			'trigger_post_id' => $post_id,
 			'system_key'      => (string) get_post_field( 'post_name', $post_id ),
-		];
+		);
 
 		Automation_Enrollment::enroll( $post_id, $to_email, $context, $config, $source );
 	}
@@ -138,7 +146,12 @@ class Automation_Scheduler {
 	 * @return array{due:int, sent:int, failed:int, groups:int} Run summary.
 	 */
 	public static function process_due( int $limit = 0 ): array {
-		$summary = [ 'due' => 0, 'sent' => 0, 'failed' => 0, 'groups' => 0 ];
+		$summary = array(
+			'due'    => 0,
+			'sent'   => 0,
+			'failed' => 0,
+			'groups' => 0,
+		);
 
 		// Claim the dispatcher lock so a concurrent run can't read and send the
 		// same due rows before we advance them. If another run holds it, bail.
@@ -155,10 +168,10 @@ class Automation_Scheduler {
 			$summary['due'] = count( $rows );
 
 			// Group by follow-up post + context hash so identical renders batch.
-			$groups = [];
+			$groups = array();
 			foreach ( $rows as $row ) {
-				$render_key            = (int) $row['follow_up_post_id'] . ':' . (string) $row['context_hash'];
-				$groups[ $render_key ] = $groups[ $render_key ] ?? [];
+				$render_key              = (int) $row['follow_up_post_id'] . ':' . (string) $row['context_hash'];
+				$groups[ $render_key ]   = $groups[ $render_key ] ?? array();
 				$groups[ $render_key ][] = $row;
 			}
 			$summary['groups'] = count( $groups );
@@ -172,7 +185,7 @@ class Automation_Scheduler {
 					if ( ! self::owns_lock() ) {
 						break;
 					}
-					$result = self::process_group( $group_rows );
+					$result             = self::process_group( $group_rows );
 					$summary['sent']   += $result['sent'];
 					$summary['failed'] += $result['failed'];
 
@@ -250,14 +263,17 @@ class Automation_Scheduler {
 	 * @return array{sent:int, failed:int}
 	 */
 	private static function process_group( array $rows ): array {
-		$out = [ 'sent' => 0, 'failed' => 0 ];
+		$out = array(
+			'sent'   => 0,
+			'failed' => 0,
+		);
 
 		$follow_up_post_id = (int) ( $rows[0]['follow_up_post_id'] ?? 0 );
 
 		if ( ! Automation_Config::is_eligible_follow_up( $follow_up_post_id ) ) {
 			foreach ( $rows as $row ) {
 				Automation_Enrollment::cancel( (int) $row['id'] );
-				$out['failed']++;
+				++$out['failed'];
 			}
 			return $out;
 		}
@@ -285,7 +301,7 @@ class Automation_Scheduler {
 		// every row per email and apply the send outcome to all of its siblings —
 		// otherwise the batched send deduplicates the address but only one row is
 		// advanced, leaving the rest due to fire again.
-		$by_email = [];
+		$by_email = array();
 		foreach ( $rows as $row ) {
 			$by_email[ strtolower( (string) $row['recipient_email'] ) ][] = $row;
 		}
@@ -298,21 +314,21 @@ class Automation_Scheduler {
 				// Whole-batch failure: retry every row next run.
 				foreach ( $rows as $row ) {
 					Automation_Enrollment::record_failure( $row, $result->get_error_message() );
-					$out['failed']++;
+					++$out['failed'];
 				}
 				return $out;
 			}
 
 			foreach ( $result['sent'] as $email ) {
-				foreach ( $by_email[ strtolower( $email ) ] ?? [] as $row ) {
-					self::advance_row( $row, [ 'mandrill_status' => 'sent' ] );
-					$out['sent']++;
+				foreach ( $by_email[ strtolower( $email ) ] ?? array() as $row ) {
+					self::advance_row( $row, array( 'mandrill_status' => 'sent' ) );
+					++$out['sent'];
 				}
 			}
 			foreach ( $result['failed'] as $email => $reason ) {
-				foreach ( $by_email[ strtolower( (string) $email ) ] ?? [] as $row ) {
+				foreach ( $by_email[ strtolower( (string) $email ) ] ?? array() as $row ) {
 					Automation_Enrollment::record_failure( $row, (string) $reason );
-					$out['failed']++;
+					++$out['failed'];
 				}
 			}
 
@@ -325,12 +341,12 @@ class Automation_Scheduler {
 		if ( is_wp_error( $result ) ) {
 			foreach ( $email_rows as $row ) {
 				Automation_Enrollment::record_failure( $row, $result->get_error_message() );
-				$out['failed']++;
+				++$out['failed'];
 			}
 		} else {
 			foreach ( $email_rows as $row ) {
-				self::advance_row( $row, [ 'mandrill_status' => 'sent' ] );
-				$out['sent']++;
+				self::advance_row( $row, array( 'mandrill_status' => 'sent' ) );
+				++$out['sent'];
 			}
 		}
 
@@ -390,7 +406,7 @@ class Automation_Scheduler {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$updated = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$table} SET status = %s, due_at = NULL, updated_at = %s WHERE follow_up_post_id = %d AND status = %s",
+				"UPDATE {$table} SET status = %s, due_at = NULL, updated_at = %s WHERE follow_up_post_id = %d AND status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is a known plugin table name.
 				Automation_Enrollment::STATUS_CANCELLED,
 				current_time( 'mysql', true ),
 				$follow_up_post_id,

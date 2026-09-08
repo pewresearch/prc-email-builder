@@ -1,10 +1,11 @@
 <?php
-declare( strict_types=1 );
 /**
  * Shared send-status labels and traffic-light tone mapping.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -12,6 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Send Status class.
+ */
 class Send_Status {
 	public const TONE_SUCCESS = 'success';
 	public const TONE_WARNING = 'warning';
@@ -35,35 +39,37 @@ class Send_Status {
 					? __( 'Waiting for first send', 'prc-email-builder' )
 					: __( 'Not Sent', 'prc-email-builder' );
 
-				return [
+				return array(
 					'label' => $label,
 					'tone'  => self::tone_for_mandrill( $raw ),
 					'raw'   => $raw,
-				];
+				);
 			}
 
 			$lookup = self::normalize_lookup_key( $raw );
 			$label  = self::mandrill_labels()[ $lookup ] ?? $raw;
 
-			return [
+			return array(
 				'label' => $label,
 				'tone'  => self::tone_for_mandrill( $raw ),
 				'raw'   => $raw,
-			];
+			);
 		}
 
 		$lookup = self::normalize_lookup_key( $raw );
 		$label  = self::mailchimp_labels()[ $lookup ] ?? ( '' === $raw ? self::mailchimp_labels()['__empty__'] : $raw );
 
-		return [
+		return array(
 			'label' => $label,
 			'tone'  => self::tone_for_mailchimp( $raw ),
 			'raw'   => $raw,
-		];
+		);
 	}
 
 	/**
 	 * Traffic-light tone for Mailchimp campaign status meta.
+	 *
+	 * @param string $status Status.
 	 */
 	public static function tone_for_mailchimp( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
@@ -76,6 +82,8 @@ class Send_Status {
 
 	/**
 	 * Traffic-light tone for Mandrill send status meta.
+	 *
+	 * @param string $status Status.
 	 */
 	public static function tone_for_mandrill( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
@@ -92,36 +100,36 @@ class Send_Status {
 	 * @return array<int, array{value: string, label: string}>
 	 */
 	public static function mailchimp_options(): array {
-		return [
-			[
+		return array(
+			array(
 				'value' => '__empty__',
 				'label' => __( 'No Campaign', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'save',
 				'label' => __( 'MC Draft', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'sent',
 				'label' => __( 'MC Sent', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'sending',
 				'label' => __( 'Sending', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'schedule',
 				'label' => __( 'Scheduled', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'paused',
 				'label' => __( 'Paused', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'unavailable',
 				'label' => __( 'MC Unavailable', 'prc-email-builder' ),
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -130,36 +138,36 @@ class Send_Status {
 	 * @return array<int, array{value: string, label: string}>
 	 */
 	public static function mandrill_options(): array {
-		return [
-			[
+		return array(
+			array(
 				'value' => '__empty__',
 				'label' => __( 'Not Sent / Waiting', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'active',
 				'label' => __( 'Active', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'sent',
 				'label' => __( 'Sent', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'queued',
 				'label' => __( 'Queued', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'sending',
 				'label' => __( 'Sending', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'failed',
 				'label' => __( 'Failed', 'prc-email-builder' ),
-			],
-			[
+			),
+			array(
 				'value' => 'partial',
 				'label' => __( 'Partial', 'prc-email-builder' ),
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -171,23 +179,23 @@ class Send_Status {
 	 * @return array<int, array{value: string, label: string}>
 	 */
 	public static function library_filter_options( ?string $scope = null ): array {
-		$options = [];
+		$options = array();
 
 		if ( null === $scope || 'campaign' === $scope ) {
 			foreach ( self::mailchimp_options() as $option ) {
-				$options[] = [
+				$options[] = array(
 					'value' => 'campaign:' . $option['value'],
 					'label' => $option['label'],
-				];
+				);
 			}
 		}
 
 		if ( null === $scope || 'txn' === $scope ) {
 			foreach ( self::mandrill_options() as $option ) {
-				$options[] = [
+				$options[] = array(
 					'value' => 'txn:' . $option['value'],
 					'label' => $option['label'],
-				];
+				);
 			}
 		}
 
@@ -197,6 +205,7 @@ class Send_Status {
 	/**
 	 * Post state key and label for Mailchimp campaign status (classic list table).
 	 *
+	 * @param string $status Status.
 	 * @return array{0: string, 1: string}|null [ state_key, label ] or null when no state.
 	 */
 	public static function mailchimp_post_state( string $status ): ?array {
@@ -211,15 +220,16 @@ class Send_Status {
 			return null;
 		}
 
-		return [
+		return array(
 			'prc_email_mc_' . $status,
 			$labels[ $status ],
-		];
+		);
 	}
 
 	/**
 	 * Post state key and label for Mandrill send status (classic list table).
 	 *
+	 * @param string $status Status.
 	 * @return array{0: string, 1: string}|null [ state_key, label ] or null when no state.
 	 */
 	public static function mandrill_post_state( string $status ): ?array {
@@ -233,17 +243,19 @@ class Send_Status {
 			return null;
 		}
 
-		return [
+		return array(
 			'prc_email_mandrill_' . $status,
 			$labels[ $status ],
-		];
+		);
 	}
 
 	/**
+	 * Mailchimp labels.
+	 *
 	 * @return array<string, string>
 	 */
 	private static function mailchimp_labels(): array {
-		$labels = [];
+		$labels = array();
 		foreach ( self::mailchimp_options() as $option ) {
 			$labels[ $option['value'] ] = $option['label'];
 		}
@@ -251,16 +263,23 @@ class Send_Status {
 	}
 
 	/**
+	 * Mandrill labels.
+	 *
 	 * @return array<string, string>
 	 */
 	private static function mandrill_labels(): array {
-		$labels = [];
+		$labels = array();
 		foreach ( self::mandrill_options() as $option ) {
 			$labels[ $option['value'] ] = $option['label'];
 		}
 		return $labels;
 	}
 
+	/**
+	 * Normalize lookup key.
+	 *
+	 * @param string $status Status.
+	 */
 	private static function normalize_lookup_key( string $status ): string {
 		return '' === sanitize_text_field( $status ) ? '__empty__' : sanitize_text_field( $status );
 	}

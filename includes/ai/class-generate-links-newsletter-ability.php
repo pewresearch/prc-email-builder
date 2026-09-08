@@ -69,11 +69,15 @@ class Generate_Links_Newsletter_Ability {
 	);
 
 	/**
+	 * Register ability.
+	 *
 	 * @var array<int, string>
 	 */
 	public static $allowed_blocks = array();
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook wp_abilities_api_init
 	 */
 	public function register_ability(): void {
@@ -86,32 +90,32 @@ class Generate_Links_Newsletter_Ability {
 				'input_schema'        => array(
 					'type'                 => 'object',
 					'properties'           => array(
-						'context'         => array(
+						'context'        => array(
 							'type'        => 'string',
 							'description' => 'Optional extra instructions for generation.',
 						),
-						'researchTeamId'  => array(
+						'researchTeamId' => array(
 							'type'        => 'number',
 							'description' => 'Optional research-teams term ID to scope source content.',
 						),
-						'lookbackDays'    => array(
+						'lookbackDays'   => array(
 							'type'        => 'number',
 							'minimum'     => self::MIN_LOOKBACK_DAYS,
 							'maximum'     => self::MAX_LOOKBACK_DAYS,
 							'description' => 'Number of days to look back for source content (default 7).',
 						),
-						'site_id'         => \PRC\Platform\AI\Utils\site_id_input_schema_property(),
+						'site_id'        => \PRC\Platform\AI\Utils\site_id_input_schema_property(),
 					),
 					'additionalProperties' => false,
 				),
 				'output_schema'       => array(
 					'type'       => 'object',
 					'properties' => array(
-						'error'        => array( 'type' => 'string' ),
-						'title'        => array( 'type' => 'string' ),
-						'subject'      => array( 'type' => 'string' ),
-						'previewText'  => array( 'type' => 'string' ),
-						'content'      => array( 'type' => 'string' ),
+						'error'         => array( 'type' => 'string' ),
+						'title'         => array( 'type' => 'string' ),
+						'subject'       => array( 'type' => 'string' ),
+						'previewText'   => array( 'type' => 'string' ),
+						'content'       => array( 'type' => 'string' ),
 						'sourcePostIds' => array(
 							'type'  => 'array',
 							'items' => array( 'type' => 'number' ),
@@ -153,6 +157,8 @@ class Generate_Links_Newsletter_Ability {
 	}
 
 	/**
+	 * Generate links newsletter.
+	 *
 	 * @param array<string, mixed> $input Input parameters.
 	 * @return array<string, mixed>|WP_Error
 	 */
@@ -213,6 +219,10 @@ class Generate_Links_Newsletter_Ability {
 	}
 
 	/**
+	 * Get recent published posts.
+	 *
+	 * @param int $research_team_id Research team id.
+	 * @param int $lookback_days Lookback days.
 	 * @return array<int, array{id: int, title: string, url: string, date: string, excerpt: string, researchTeams: array<int, string>}>
 	 */
 	private function get_recent_published_posts( int $research_team_id, int $lookback_days ): array {
@@ -290,6 +300,11 @@ class Generate_Links_Newsletter_Ability {
 		return $posts;
 	}
 
+	/**
+	 * Is valid research team.
+	 *
+	 * @param int $term_id Term id.
+	 */
 	private function is_valid_research_team( int $term_id ): bool {
 		if ( ! taxonomy_exists( self::RESEARCH_TEAMS_TAXONOMY ) ) {
 			return false;
@@ -299,6 +314,12 @@ class Generate_Links_Newsletter_Ability {
 		return $term instanceof \WP_Term && ! is_wp_error( $term );
 	}
 
+	/**
+	 * Build system instruction.
+	 *
+	 * @param string $extra_context Extra context.
+	 * @param int    $research_team_id Research team id.
+	 */
 	private function build_system_instruction( string $extra_context, int $research_team_id ): string {
 		$text = 'You are an email editor for Pew Research Center, a nonpartisan research organization. '
 			. 'Create a concise weekly links newsletter that highlights recently published research. '
@@ -330,7 +351,11 @@ class Generate_Links_Newsletter_Ability {
 	}
 
 	/**
+	 * Build generation prompt.
+	 *
 	 * @param array<int, array{id: int, title: string, url: string, date: string, excerpt: string, researchTeams: array<int, string>}> $source_posts Source posts.
+	 * @param int                                                                                                                      $research_team_id Research team id.
+	 * @param int                                                                                                                      $lookback_days Lookback days.
 	 */
 	private function build_generation_prompt( array $source_posts, int $research_team_id, int $lookback_days ): string {
 		$week_label = wp_date( 'F j, Y' );
@@ -358,6 +383,9 @@ class Generate_Links_Newsletter_Ability {
 	}
 
 	/**
+	 * Parse newsletter response.
+	 *
+	 * @param string $raw Raw.
 	 * @return array{title: string, subject: string, previewText: string, content: string}|WP_Error
 	 */
 	private function parse_newsletter_response( string $raw ) {
@@ -373,11 +401,11 @@ class Generate_Links_Newsletter_Ability {
 			return new WP_Error( 'invalid_ai_response', __( 'Could not parse the generated newsletter.', 'prc-email-builder' ) );
 		}
 
-		$title       = isset( $decoded['title'] ) ? sanitize_text_field( (string) $decoded['title'] ) : '';
-		$subject     = isset( $decoded['subject'] ) ? sanitize_text_field( (string) $decoded['subject'] ) : '';
-		$preview     = isset( $decoded['previewText'] ) ? sanitize_text_field( (string) $decoded['previewText'] ) : '';
-		$content     = isset( $decoded['content'] ) ? (string) $decoded['content'] : '';
-		$content     = $this->sanitize_block_content( $content );
+		$title   = isset( $decoded['title'] ) ? sanitize_text_field( (string) $decoded['title'] ) : '';
+		$subject = isset( $decoded['subject'] ) ? sanitize_text_field( (string) $decoded['subject'] ) : '';
+		$preview = isset( $decoded['previewText'] ) ? sanitize_text_field( (string) $decoded['previewText'] ) : '';
+		$content = isset( $decoded['content'] ) ? (string) $decoded['content'] : '';
+		$content = $this->sanitize_block_content( $content );
 
 		if ( '' === $title || '' === $subject || '' === $content ) {
 			return new WP_Error( 'incomplete_ai_response', __( 'The generated newsletter was missing required fields.', 'prc-email-builder' ) );
@@ -399,6 +427,11 @@ class Generate_Links_Newsletter_Ability {
 		);
 	}
 
+	/**
+	 * Sanitize block content.
+	 *
+	 * @param string $content Content.
+	 */
 	private function sanitize_block_content( string $content ): string {
 		$content = trim( $content );
 		if ( '' === $content ) {
@@ -412,6 +445,9 @@ class Generate_Links_Newsletter_Ability {
 		return (string) $content;
 	}
 
+	/**
+	 * Get site content guidelines.
+	 */
 	private function get_site_content_guidelines(): string {
 		if ( ! function_exists( 'PRC\Platform\AI\Utils\get_content_guidelines_for_post' ) ) {
 			return '';

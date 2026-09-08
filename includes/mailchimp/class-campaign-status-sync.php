@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Recurring Action Scheduler job that polls the Mailchimp API for campaign
  * status updates and caches the result in post meta.
@@ -7,8 +6,13 @@ declare(strict_types=1);
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
+/**
+ * Campaign Status Sync class.
+ */
 class Campaign_Status_Sync {
 
 	const SYNC_HOOK    = 'prc_email_campaign_status_sync';
@@ -49,9 +53,9 @@ class Campaign_Status_Sync {
 	 * Register the sync hook and ensure the recurring job is scheduled.
 	 */
 	public static function init(): void {
-		add_action( self::SYNC_HOOK, [ __CLASS__, 'sync' ] );
-		add_action( 'init', [ __CLASS__, 'maybe_schedule' ] );
-		add_action( self::SLACK_NOTIFY_HOOK, [ __CLASS__, 'handle_mailchimp_sent_slack_notification' ], 10, 3 );
+		add_action( self::SYNC_HOOK, array( __CLASS__, 'sync' ) );
+		add_action( 'init', array( __CLASS__, 'maybe_schedule' ) );
+		add_action( self::SLACK_NOTIFY_HOOK, array( __CLASS__, 'handle_mailchimp_sent_slack_notification' ), 10, 3 );
 	}
 
 	/**
@@ -62,7 +66,7 @@ class Campaign_Status_Sync {
 			return;
 		}
 
-		if ( as_has_scheduled_action( self::SYNC_HOOK, [], self::ACTION_GROUP ) ) {
+		if ( as_has_scheduled_action( self::SYNC_HOOK, array(), self::ACTION_GROUP ) ) {
 			return;
 		}
 
@@ -70,7 +74,7 @@ class Campaign_Status_Sync {
 			time() + self::INTERVAL,
 			self::INTERVAL,
 			self::SYNC_HOOK,
-			[],
+			array(),
 			self::ACTION_GROUP
 		);
 	}
@@ -79,37 +83,39 @@ class Campaign_Status_Sync {
 	 * Poll Mailchimp for the status of all non-terminal, non-migrated campaigns.
 	 */
 	public static function sync(): void {
-		$query = new \WP_Query( [
-			'post_type'      => Post_Type::CAMPAIGN_POST_TYPE,
-			'post_status'    => 'any',
-			'posts_per_page' => 100,
-			'fields'         => 'ids',
-			'no_found_rows'  => true,
-			'meta_query'     => [
-				'relation' => 'AND',
-				[
-					'key'     => 'prc_email_mailchimp_campaign_id',
-					'compare' => '!=',
-					'value'   => '',
-				],
-				[
-					'relation' => 'OR',
-					[
-						'key'     => 'prc_email_mailchimp_campaign_status',
+		$query = new \WP_Query(
+			array(
+				'post_type'      => Post_Type::CAMPAIGN_POST_TYPE,
+				'post_status'    => 'any',
+				'posts_per_page' => 100,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'     => 'prc_email_mailchimp_campaign_id',
+						'compare' => '!=',
+						'value'   => '',
+					),
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => 'prc_email_mailchimp_campaign_status',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => 'prc_email_mailchimp_campaign_status',
+							'compare' => 'NOT IN',
+							'value'   => array( 'sent', self::UNAVAILABLE_STATUS ),
+						),
+					),
+					array(
+						'key'     => Migration::MIGRATED_META_KEY,
 						'compare' => 'NOT EXISTS',
-					],
-					[
-						'key'     => 'prc_email_mailchimp_campaign_status',
-						'compare' => 'NOT IN',
-						'value'   => [ 'sent', self::UNAVAILABLE_STATUS ],
-					],
-				],
-				[
-					'key'     => Migration::MIGRATED_META_KEY,
-					'compare' => 'NOT EXISTS',
-				],
-			],
-		] );
+					),
+				),
+			) 
+		);
 
 		$post_ids = $query->posts;
 
@@ -137,12 +143,14 @@ class Campaign_Status_Sync {
 					self::mark_campaign_unavailable( (int) $post_id );
 				}
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( sprintf(
-					'[prc-email-builder] Campaign status sync failed for post %d / campaign %s: %s',
-					$post_id,
-					$campaign_id,
-					$response->get_error_message()
-				) );
+				error_log(
+					sprintf(
+						'[prc-email-builder] Campaign status sync failed for post %d / campaign %s: %s',
+						$post_id,
+						$campaign_id,
+						$response->get_error_message()
+					) 
+				);
 				continue;
 			}
 
@@ -170,6 +178,8 @@ class Campaign_Status_Sync {
 	 *
 	 * Sets a terminal campaign status and aligns report sync state so neither
 	 * recurring job keeps calling Mailchimp for the deleted ID.
+	 *
+	 * @param int $post_id Post id.
 	 */
 	public static function mark_campaign_unavailable( int $post_id ): void {
 		if ( $post_id <= 0 ) {
@@ -194,6 +204,9 @@ class Campaign_Status_Sync {
 	 * notification in the `prc-email-builder` group into one. The handler is
 	 * additionally idempotent via the SENT_SLACK_NOTIFIED_META guard, and
 	 * reschedules itself on delivery failure (AS does not auto-retry failed actions).
+	 *
+	 * @param int    $post_id Post id.
+	 * @param string $campaign_id Campaign id.
 	 */
 	private static function schedule_mailchimp_sent_slack_notification( int $post_id, string $campaign_id ): void {
 		if ( ! function_exists( 'as_enqueue_async_action' ) ) {
@@ -203,13 +216,15 @@ class Campaign_Status_Sync {
 
 		as_enqueue_async_action(
 			self::SLACK_NOTIFY_HOOK,
-			[ $post_id, $campaign_id, 1 ],
+			array( $post_id, $campaign_id, 1 ),
 			self::ACTION_GROUP,
 			true
 		);
 	}
 
 	/**
+	 * Handle mailchimp sent slack notification.
+	 *
 	 * @param int|string $post_id     Newsletter post ID.
 	 * @param string     $campaign_id Mailchimp campaign ID at the time of the sent transition.
 	 * @param int|string $attempt     1-based delivery attempt (defaults for in-flight 2-arg actions).
@@ -248,15 +263,17 @@ class Campaign_Status_Sync {
 
 		if ( ! function_exists( '\PRC\Platform\Slack\notify_in_post_thread' ) ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( sprintf(
-				'[prc-email-builder] Mailchimp campaign %s sent (post %d) but PRC Slack is unavailable; skipping Slack notification.',
-				$campaign_id,
-				$post_id
-			) );
+			error_log(
+				sprintf(
+					'[prc-email-builder] Mailchimp campaign %s sent (post %d) but PRC Slack is unavailable; skipping Slack notification.',
+					$campaign_id,
+					$post_id
+				) 
+			);
 			return;
 		}
 
-		$mc_title = '';
+		$mc_title  = '';
 		$mailchimp = new Mailchimp();
 		$campaign  = $mailchimp->get_campaign( $campaign_id );
 		if ( ! is_wp_error( $campaign ) ) {
@@ -274,7 +291,7 @@ class Campaign_Status_Sync {
 		$subject_meta = sanitize_text_field( (string) get_post_meta( $post_id, 'prc_email_subject', true ) );
 		$edit_url     = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 
-		$lines   = [];
+		$lines   = array();
 		$lines[] = sprintf(
 			'Mailchimp campaign `%s` has been sent.',
 			$campaign_id
@@ -282,12 +299,12 @@ class Campaign_Status_Sync {
 		$lines[] = sprintf(
 			'*Newsletter:* <%s|%s>',
 			esc_url_raw( $edit_url ),
-			$title !== '' ? $title : __( '(no title)', 'prc-email-builder' )
+			'' !== $title ? $title : __( '(no title)', 'prc-email-builder' )
 		);
-		if ( $subject_meta !== '' ) {
+		if ( '' !== $subject_meta ) {
 			$lines[] = sprintf( '*Subject:* %s', $subject_meta );
 		}
-		if ( $mc_title !== '' && $mc_title !== $subject_meta ) {
+		if ( '' !== $mc_title && $mc_title !== $subject_meta ) {
 			$lines[] = sprintf( '*Mailchimp title:* %s', $mc_title );
 		}
 
@@ -297,19 +314,21 @@ class Campaign_Status_Sync {
 		try {
 			$result = \PRC\Platform\Slack\notify_in_post_thread(
 				$post_id,
-				[
+				array(
 					'text' => $text,
-				]
+				)
 			);
 		} catch ( \Throwable $e ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( sprintf(
-				'[prc-email-builder] Slack notification threw for Mailchimp send (post %d, campaign %s, attempt %d): %s',
-				$post_id,
-				$campaign_id,
-				$attempt,
-				$e->getMessage()
-			) );
+			error_log(
+				sprintf(
+					'[prc-email-builder] Slack notification threw for Mailchimp send (post %d, campaign %s, attempt %d): %s',
+					$post_id,
+					$campaign_id,
+					$attempt,
+					$e->getMessage()
+				) 
+			);
 			self::reschedule_mailchimp_sent_slack_notification( $post_id, $campaign_id, $attempt );
 			return;
 		}
@@ -352,17 +371,23 @@ class Campaign_Status_Sync {
 	 * Completes the current Action Scheduler action without throwing so it is
 	 * not stuck in `failed` with no further work. The SENT_SLACK_NOTIFIED_META
 	 * guard still prevents duplicate posts after a successful later attempt.
+	 *
+	 * @param int    $post_id Post id.
+	 * @param string $campaign_id Campaign id.
+	 * @param int    $attempt Attempt.
 	 */
 	private static function reschedule_mailchimp_sent_slack_notification( int $post_id, string $campaign_id, int $attempt ): void {
 		$next = $attempt + 1;
 		if ( $next > self::SLACK_NOTIFY_MAX_ATTEMPTS ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-			error_log( sprintf(
-				'[prc-email-builder] Giving up Slack notify for Mailchimp send (post %d, campaign %s) after %d attempts.',
-				$post_id,
-				$campaign_id,
-				$attempt
-			) );
+			error_log(
+				sprintf(
+					'[prc-email-builder] Giving up Slack notify for Mailchimp send (post %d, campaign %s) after %d attempts.',
+					$post_id,
+					$campaign_id,
+					$attempt
+				) 
+			);
 			return;
 		}
 
@@ -373,7 +398,7 @@ class Campaign_Status_Sync {
 		as_schedule_single_action(
 			time() + ( self::SLACK_NOTIFY_RETRY_DELAY * $attempt ),
 			self::SLACK_NOTIFY_HOOK,
-			[ $post_id, $campaign_id, $next ],
+			array( $post_id, $campaign_id, $next ),
 			self::ACTION_GROUP
 		);
 	}

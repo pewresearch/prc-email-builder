@@ -32,6 +32,8 @@ class Suggest_Subject_Ability {
 	public static $ability_name = 'prc-email-builder/suggest-subject';
 
 	/**
+	 * Allowed blocks.
+	 *
 	 * @var array<int, string>
 	 */
 	public static $allowed_blocks = array();
@@ -59,6 +61,8 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook wp_abilities_api_init
 	 */
 	public function register_ability(): void {
@@ -133,6 +137,8 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Suggest subjects.
+	 *
 	 * @param array<string, mixed> $input Input parameters.
 	 * @return array<string, mixed>|WP_Error
 	 */
@@ -176,14 +182,22 @@ Do not use markdown fences or extra prose. Example:
 			return new WP_Error( 'no_options', __( 'Could not generate subject options.', 'prc-email-builder' ) );
 		}
 
-		$options = array_slice( $options, 0, self::OPTION_COUNT );
-		while ( count( $options ) < self::OPTION_COUNT ) {
-			$options[] = $options[ count( $options ) - 1 ];
+		$options      = array_slice( $options, 0, self::OPTION_COUNT );
+		$option_count = count( $options );
+		while ( $option_count < self::OPTION_COUNT ) {
+			$options[] = $options[ $option_count - 1 ];
+			++$option_count;
 		}
 
 		return array( 'options' => $options );
 	}
 
+	/**
+	 * Build system instruction.
+	 *
+	 * @param string $extra_context Extra context.
+	 * @param string $guidelines Guidelines.
+	 */
 	private function build_system_instruction( string $extra_context, string $guidelines ): string {
 		$text = strtr(
 			self::get_default_system_prompt_template(),
@@ -207,6 +221,9 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Parse subject options.
+	 *
+	 * @param string $raw Raw.
 	 * @return array<int, array{subject: string}>
 	 */
 	private function parse_subject_options( string $raw ): array {

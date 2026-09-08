@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Template Registry — discovers PHP body templates from the templates/ directory.
  *
@@ -15,6 +14,8 @@ declare(strict_types=1);
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -34,12 +35,12 @@ final class Template_Registry {
 	/**
 	 * Map of docblock header label → array key.
 	 */
-	private const HEADERS = [
+	private const HEADERS = array(
 		'name'        => 'Template Name',
 		'description' => 'Description',
 		'audience'    => 'Audience',
 		'segment'     => 'Segment',
-	];
+	);
 
 	/**
 	 * Return all registered templates, keyed by slug.
@@ -54,8 +55,9 @@ final class Template_Registry {
 		}
 
 		$dir   = PRC_EMAIL_BUILDER_DIR . '/templates/';
-		$files = glob( $dir . '*.php' ) ?: [];
-		$out   = [];
+		$files = glob( $dir . '*.php' );
+		$files = false !== $files ? $files : array();
+		$out   = array();
 
 		foreach ( $files as $file ) {
 			$name = basename( $file, '.php' );
@@ -72,14 +74,14 @@ final class Template_Registry {
 				continue;
 			}
 
-			$out[ $name ] = [
+			$out[ $name ] = array(
 				'slug'        => $name,
 				'label'       => $headers['name'],
 				'description' => $headers['description'] ?? '',
 				'audience'    => $headers['audience'] ?? '',
 				'segment'     => $headers['segment'] ?? '',
 				'path'        => $file,
-			];
+			);
 		}
 
 		/**

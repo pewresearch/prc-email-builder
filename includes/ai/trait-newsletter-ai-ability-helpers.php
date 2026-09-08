@@ -45,6 +45,8 @@ trait Newsletter_AI_Ability_Helpers {
 
 	/**
 	 * Fetch site content guidelines for SEO-style metadata generation.
+	 *
+	 * @param int $post_id Post id.
 	 */
 	private function get_content_guidelines( int $post_id ): string {
 		if ( ! function_exists( 'PRC\Platform\AI\Utils\get_content_guidelines_for_post' ) ) {
@@ -64,6 +66,8 @@ trait Newsletter_AI_Ability_Helpers {
 
 	/**
 	 * Generate plain text from the WP AI client, returning empty string on failure.
+	 *
+	 * @param string $prompt Prompt.
 	 */
 	private function generate_text_via_ai_client( string $prompt ): string {
 		if ( ! function_exists( 'wp_ai_client_prompt' ) ) {
@@ -85,6 +89,9 @@ trait Newsletter_AI_Ability_Helpers {
 
 	/**
 	 * Generate JSON text from the WP AI client with system instructions.
+	 *
+	 * @param string $prompt Prompt.
+	 * @param string $system_instruction System instruction.
 	 */
 	private function generate_json_via_ai_client( string $prompt, string $system_instruction ): string {
 		if ( ! function_exists( 'wp_ai_client_prompt' ) ) {

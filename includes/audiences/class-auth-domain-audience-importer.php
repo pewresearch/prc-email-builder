@@ -1,17 +1,23 @@
 <?php
-declare(strict_types=1);
 /**
  * Imports a validated auth-domain audience artifact once.
  *
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
 use WP_Error;
 
+/**
+ * Auth Domain Audience Importer class.
+ */
 final class Auth_Domain_Audience_Importer {
 	/**
+	 * Import.
+	 *
 	 * @param array<string, mixed> $job      Stored WordPress job.
 	 * @param array<string, mixed> $artifact Decoded Cloud Storage artifact.
 	 * @return array<string, mixed>|WP_Error
@@ -24,12 +30,12 @@ final class Auth_Domain_Audience_Importer {
 
 		$audience_key = Auth_Domain_Audience_Build::audience_key( $job['jobId'] );
 		$meta         = array(
-			'label'         => $job['label'],
-			'count'         => count( $validated ),
-			'verification'  => $job['query']['verification'],
+			'label'           => $job['label'],
+			'count'           => count( $validated ),
+			'verification'    => $job['query']['verification'],
 			'domain_contains' => $job['query']['domainContains'],
-			'built_at'      => $artifact['builtAt'],
-			'source'        => 'firebase_auth_domain',
+			'built_at'        => $artifact['builtAt'],
+			'source'          => 'firebase_auth_domain',
 		);
 
 		if ( ! add_option( $audience_key, $validated, '', false ) && null === get_option( $audience_key, null ) ) {
@@ -51,6 +57,8 @@ final class Auth_Domain_Audience_Importer {
 	}
 
 	/**
+	 * Validate artifact.
+	 *
 	 * @param array<string, mixed> $job      Stored WordPress job.
 	 * @param array<string, mixed> $artifact Decoded artifact.
 	 * @return string[]|WP_Error
@@ -80,7 +88,7 @@ final class Auth_Domain_Audience_Importer {
 			|| ! array_is_list( $emails )
 			|| ! isset( $artifact['count'] )
 			|| ! is_int( $artifact['count'] )
-			|| $artifact['count'] !== count( $emails )
+			|| count( $emails ) !== $artifact['count']
 			|| ! isset( $artifact['builtAt'] )
 			|| ! is_string( $artifact['builtAt'] )
 		) {
@@ -113,6 +121,11 @@ final class Auth_Domain_Audience_Importer {
 		return array_values( $validated );
 	}
 
+	/**
+	 * Artifact error.
+	 *
+	 * @param string $message Message.
+	 */
 	private static function artifact_error( string $message ): WP_Error {
 		return new WP_Error( 'artifact_invalid', $message, array( 'status' => 502 ) );
 	}

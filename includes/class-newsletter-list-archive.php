@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Newsletter list archive context for Mailchimp forms.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -16,6 +17,11 @@ class Newsletter_List_Archive {
 
 	const MAILCHIMP_SUBSCRIBE_ACTION = 'subscribe';
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_filter( 'render_block_prc-block/form', $this, 'inject_mailchimp_targeting', 10, 2 );
 	}
@@ -23,7 +29,7 @@ class Newsletter_List_Archive {
 	/**
 	 * Merge archive targeting into a form interactivity context.
 	 *
-	 * @param array<string, mixed>                    $context   Decoded data-wp-context.
+	 * @param array<string, mixed>                           $context   Decoded data-wp-context.
 	 * @param array{audience_id: string, segment_id: string} $targeting Archive targeting.
 	 * @return array<string, mixed>
 	 */
@@ -52,7 +58,7 @@ class Newsletter_List_Archive {
 	/**
 	 * Write merged targeting into the form's data-wp-context attribute.
 	 *
-	 * @param string                                  $html      Rendered form HTML.
+	 * @param string                                         $html      Rendered form HTML.
 	 * @param array{audience_id: string, segment_id: string} $targeting Archive targeting.
 	 */
 	public static function stamp_form_context( string $html, array $targeting ): string {

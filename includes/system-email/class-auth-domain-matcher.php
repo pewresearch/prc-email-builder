@@ -100,7 +100,7 @@ class Auth_Domain_Matcher {
 		}
 
 		$at = strrpos( $email, '@' );
-		if ( false === $at || 0 === $at || $at === strlen( $email ) - 1 ) {
+		if ( false === $at || 0 === $at || strlen( $email ) - 1 === $at ) {
 			return false;
 		}
 
@@ -119,7 +119,7 @@ class Auth_Domain_Matcher {
 	 * Mirrors firebase/functions/src/email-domain.ts authUserPassesAudienceFilters.
 	 *
 	 * @param array  $user   Keys: disabled, email, emailVerified.
-	 * @param string $filter verified|unverified|all
+	 * @param string $filter verified|unverified|all.
 	 */
 	public static function auth_user_passes_audience_filters( array $user, string $filter ): bool {
 		if ( ! empty( $user['disabled'] ) ) {
@@ -164,7 +164,7 @@ class Auth_Domain_Matcher {
 	 * via a fingerprint of the exact needle.
 	 *
 	 * @param string $domain_contains Normalized needle.
-	 * @param string $verification    verified|unverified|all
+	 * @param string $verification    verified|unverified|all.
 	 * @return string|WP_Error
 	 */
 	public static function option_key( string $domain_contains, string $verification ) {

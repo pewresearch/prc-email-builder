@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Public campaign email HTML preview endpoint.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -28,6 +29,11 @@ class Public_Email_Preview {
 	/** Route path under REST_API::NAMESPACE. */
 	const ROUTE = '/campaign-preview/(?P<post_id>\d+)';
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'rest_api_init', $this, 'register_routes' );
 		$loader->add_filter( 'rest_pre_serve_request', $this, 'serve_raw_html', 10, 4 );
@@ -262,6 +268,8 @@ class Public_Email_Preview {
 	}
 
 	/**
+	 * Is our route.
+	 *
 	 * @param WP_REST_Request $request Request.
 	 */
 	private function is_our_route( WP_REST_Request $request ): bool {

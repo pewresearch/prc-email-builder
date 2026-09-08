@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Dark Mode Registry — accumulates @media (prefers-color-scheme: dark) rules.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -18,6 +19,8 @@ namespace PRC\Platform\Email_Builder;
 class Dark_Mode_Registry {
 
 	/**
+	 * Reset.
+	 *
 	 * @var array<string,string> class name => full rule body (includes selector + declarations).
 	 */
 	private static array $rules = array();
@@ -114,6 +117,8 @@ class Dark_Mode_Registry {
 	}
 
 	/**
+	 * Preset dark.
+	 *
 	 * @param string $slug     Palette slug.
 	 * @param string $fallback Hex used when the preset is missing.
 	 */
@@ -125,6 +130,8 @@ class Dark_Mode_Registry {
 	}
 
 	/**
+	 * Get css.
+	 *
 	 * @return string Rule bodies (no @media wrapper) for injection into the shell.
 	 */
 	public static function get_css(): string {
@@ -135,6 +142,8 @@ class Dark_Mode_Registry {
 	}
 
 	/**
+	 * Has rules.
+	 *
 	 * @return bool
 	 */
 	public static function has_rules(): bool {

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Campaign email preview block registration.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -17,6 +18,11 @@ class Campaign_Email_Preview {
 
 	const BLOCK_NAME = 'prc-email-builder/campaign-email-preview';
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'init', $this, 'block_init' );
 	}

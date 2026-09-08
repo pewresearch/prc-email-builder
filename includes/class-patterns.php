@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Block pattern registration for newsletter campaigns.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -19,20 +20,28 @@ class Patterns {
 	const CAMPAIGN_CATEGORY_SLUG      = 'email-campaign';
 	const TRANSACTIONAL_CATEGORY_SLUG = 'email-transactional';
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'init', $this, 'register_category' );
 		$loader->add_action( 'admin_menu', $this, 'register_pattern_admin_links' );
 		// $loader->add_action( 'init', $this, 'register_patterns' );
 	}
 
+	/**
+	 * Register category.
+	 */
 	public function register_category(): void {
 		register_block_pattern_category(
 			self::CAMPAIGN_CATEGORY_SLUG,
-			[ 'label' => _x( 'Email Campaign', 'Block pattern category', 'prc-email-builder' ) ]
+			array( 'label' => _x( 'Email Campaign', 'Block pattern category', 'prc-email-builder' ) )
 		);
 		register_block_pattern_category(
 			self::TRANSACTIONAL_CATEGORY_SLUG,
-			[ 'label' => _x( 'Transactional Email', 'Block pattern category', 'prc-email-builder' ) ]
+			array( 'label' => _x( 'Transactional Email', 'Block pattern category', 'prc-email-builder' ) )
 		);
 	}
 
@@ -51,11 +60,11 @@ class Patterns {
 			__( 'Campaign Patterns', 'prc-email-builder' ),
 			$cap,
 			add_query_arg(
-				[
+				array(
 					'path'       => '/pattern',
 					'postType'   => 'wp_block',
 					'categoryId' => self::CAMPAIGN_CATEGORY_SLUG,
-				],
+				),
 				'site-editor.php'
 			)
 		);
@@ -66,18 +75,21 @@ class Patterns {
 			__( 'Transactional Patterns', 'prc-email-builder' ),
 			$cap,
 			add_query_arg(
-				[
+				array(
 					'path'       => '/pattern',
 					'postType'   => 'wp_block',
 					'categoryId' => self::TRANSACTIONAL_CATEGORY_SLUG,
-				],
+				),
 				'site-editor.php'
 			)
 		);
 	}
 
+	/**
+	 * Register patterns.
+	 */
 	public function register_patterns(): void {
-		$patterns_dir = PRC_EMAIL_BUILDER_DIR . '/patterns/';
+		$patterns_dir  = PRC_EMAIL_BUILDER_DIR . '/patterns/';
 		$pattern_files = glob( $patterns_dir . '*.php' );
 
 		if ( empty( $pattern_files ) ) {

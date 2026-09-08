@@ -2,14 +2,17 @@
 /**
  * Pattern: Briefing
  * The standard Pew Research Center newsletter format.
+ *
+ * @package PRC\Platform\Email_Builder
  */
-return [
+
+return array(
 	'slug'        => 'prc-newsletter/briefing',
 	'title'       => __( 'Briefing', 'prc-email-builder' ),
 	'description' => __( 'Standard Pew Research Center briefing newsletter with lead story, and supporting items.', 'prc-email-builder' ),
-	'categories'  => [ 'email-campaign' ],
-	'postTypes'   => [ 'prc_email_campaign', 'prc_email_txn' ],
-	'blockTypes'  => [ 'core/post-content' ],
+	'categories'  => array( 'email-campaign' ),
+	'postTypes'   => array( 'prc_email_campaign', 'prc_email_txn' ),
+	'blockTypes'  => array( 'core/post-content' ),
 	'content'     => <<<'PATTERN'
 <!-- wp:post-date {"metadata":{"bindings":{"datetime":{"source":"core/post-data","args":{"field":"date"}}}}} /-->
 	<!-- wp:heading {"level":2,"style":{"typography":{"fontFamily":"Georgia, serif","fontSize":"28px","fontWeight":"700"},"color":{"text":"#2a2a2a"}}} -->
@@ -137,5 +140,6 @@ return [
 <!-- wp:paragraph -->
 <p><em>Do you like this newsletter? Email us at <a href="mailto:journalism@pewresearch.org">journalism@pewresearch.org</a> or fill out this <a href="https://us1.list-manage.com/survey?u=434f5d1199912232d416897e4&amp;id=449f3c3d35&amp;attribution=false" target="_blank" rel="noreferrer noopener">two-question survey</a> to tell us what you think</em>.</p>
 <!-- /wp:paragraph -->
-PATTERN,
-];
+PATTERN
+	,
+);

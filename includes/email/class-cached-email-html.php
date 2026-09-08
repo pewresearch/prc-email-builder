@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Resolves email HTML for newsletter sends.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 

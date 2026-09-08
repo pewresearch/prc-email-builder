@@ -9,7 +9,10 @@
  *   string $body_template   Path to body template PHP file.
  *   string $view_online_url Website permalink for "View in browser" (campaign posts).
  *   string $accent_color    Optional hex accent from the campaign's newsletter list term.
+ *
+ * @package PRC\Platform\Email_Builder
  */
+
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;
 use PRC\Platform\Email_Builder\Email_Preset_Resolver;
 
@@ -32,66 +35,66 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
 <meta name="format-detection" content="telephone=no, address=no, email=no, date=no">
 <!--[if mso]>
 <noscript>
-  <xml>
-    <o:OfficeDocumentSettings>
-      <o:PixelsPerInch>96</o:PixelsPerInch>
-    </o:OfficeDocumentSettings>
-  </xml>
+	<xml>
+	<o:OfficeDocumentSettings>
+		<o:PixelsPerInch>96</o:PixelsPerInch>
+	</o:OfficeDocumentSettings>
+	</xml>
 </noscript>
 <![endif]-->
 <style type="text/css">
-  body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-  table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-  img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
-  a { text-decoration: none; }
-  /* Stop iOS Mail / Gmail from re-coloring auto-detected links */
-  a[x-apple-data-detectors],
-  .x-gmail-data-detectors,
-  .x-gmail-data-detectors *,
-  .aBn { color: inherit !important; text-decoration: inherit !important; }
-  /* Footer links — keep gray on all clients */
-  .footer-link, .footer-link:link, .footer-link:visited { color: #999999 !important; text-decoration: underline !important; }
-  /* Body content links — blue */
-  .body-link, .body-link:link, .body-link:visited { color: #2b6dad !important; text-decoration: underline !important; }
-  /* List markers — many clients reset native bullets; keep markers visible */
-  ul:not(.is-style-list-style-type-none) { list-style-type: disc !important; list-style-position: outside !important; padding-left: 24px !important; }
-  ol:not(.is-style-list-style-type-none) { list-style-type: decimal !important; list-style-position: outside !important; padding-left: 24px !important; }
-  ul:not(.is-style-list-style-type-none) li,
-  ol:not(.is-style-list-style-type-none) li { list-style-position: outside !important; }
-  ul.is-style-list-style-type-none,
-  ol.is-style-list-style-type-none { list-style-type: none !important; }
-  ul.is-style-list-style-type-none li,
-  ol.is-style-list-style-type-none li { list-style-type: none !important; }
-  /* Opt-out via Gutenberg Decorations (text-decoration:none) — no color override */
-  .body-link-plain, .body-link-plain:link, .body-link-plain:visited { text-decoration: none !important; }
-  /* Custom Color → Link — underline without locking colour */
-  .body-link-custom, .body-link-custom:link, .body-link-custom:visited { text-decoration: underline !important; }
-  /* Story-item left/right cards — stack on narrow viewports (Mailchimp parity) */
-  @media only screen and (max-width: 480px) {
-    td.story-item-image,
-    td.story-item-text {
-      display: block !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      padding-left: 0 !important;
-      padding-right: 0 !important;
-      box-sizing: border-box;
-    }
-    td.story-item-image {
-      padding-bottom: 12px !important;
-    }
-    td.story-item-image img {
-      width: 100% !important;
-      max-width: 100% !important;
-      height: auto !important;
-    }
-  }
-  @media (prefers-color-scheme: dark) {
+	body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+	table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+	img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+	a { text-decoration: none; }
+	/* Stop iOS Mail / Gmail from re-coloring auto-detected links */
+	a[x-apple-data-detectors],
+	.x-gmail-data-detectors,
+	.x-gmail-data-detectors *,
+	.aBn { color: inherit !important; text-decoration: inherit !important; }
+	/* Footer links — keep gray on all clients */
+	.footer-link, .footer-link:link, .footer-link:visited { color: #999999 !important; text-decoration: underline !important; }
+	/* Body content links — blue */
+	.body-link, .body-link:link, .body-link:visited { color: #2b6dad !important; text-decoration: underline !important; }
+	/* List markers — many clients reset native bullets; keep markers visible */
+	ul:not(.is-style-list-style-type-none) { list-style-type: disc !important; list-style-position: outside !important; padding-left: 24px !important; }
+	ol:not(.is-style-list-style-type-none) { list-style-type: decimal !important; list-style-position: outside !important; padding-left: 24px !important; }
+	ul:not(.is-style-list-style-type-none) li,
+	ol:not(.is-style-list-style-type-none) li { list-style-position: outside !important; }
+	ul.is-style-list-style-type-none,
+	ol.is-style-list-style-type-none { list-style-type: none !important; }
+	ul.is-style-list-style-type-none li,
+	ol.is-style-list-style-type-none li { list-style-type: none !important; }
+	/* Opt-out via Gutenberg Decorations (text-decoration:none) — no color override */
+	.body-link-plain, .body-link-plain:link, .body-link-plain:visited { text-decoration: none !important; }
+	/* Custom Color → Link — underline without locking colour */
+	.body-link-custom, .body-link-custom:link, .body-link-custom:visited { text-decoration: underline !important; }
+	/* Story-item left/right cards — stack on narrow viewports (Mailchimp parity) */
+	@media only screen and (max-width: 480px) {
+	td.story-item-image,
+	td.story-item-text {
+		display: block !important;
+		width: 100% !important;
+		max-width: 100% !important;
+		padding-left: 0 !important;
+		padding-right: 0 !important;
+		box-sizing: border-box;
+	}
+	td.story-item-image {
+		padding-bottom: 12px !important;
+	}
+	td.story-item-image img {
+		width: 100% !important;
+		max-width: 100% !important;
+		height: auto !important;
+	}
+	}
+	@media (prefers-color-scheme: dark) {
 <?php
 	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated from trusted preset registry.
 	echo Dark_Mode_Registry::get_fallback_text_css();
 ?>
-  }
+	}
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',Times,serif;color-scheme:light dark;">
@@ -107,17 +110,17 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
 
 <?php
 // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
-include $body_template;
+require $body_template;
 
 $dark_mode_css = Dark_Mode_Registry::get_css();
 if ( '' !== $dark_mode_css ) :
 	?>
 <style type="text/css">
 @media (prefers-color-scheme: dark) {
-<?php
+	<?php
 	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated from trusted preset registry.
 	echo $dark_mode_css;
-?>
+	?>
 }
 </style>
 <?php endif; ?>

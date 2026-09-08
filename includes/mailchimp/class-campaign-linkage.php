@@ -18,9 +18,11 @@ use PRC\Platform\Email_Builder\Reports\Report_Store;
  */
 final class Campaign_Linkage {
 
-	public const META_CAMPAIGN_ID        = 'prc_email_mailchimp_campaign_id';
-	public const META_CAMPAIGN_ADMIN_URL = 'prc_email_mailchimp_campaign_admin_url';
-	public const META_CAMPAIGN_STATUS    = 'prc_email_mailchimp_campaign_status';
+	public const META_CAMPAIGN_ID            = 'prc_email_mailchimp_campaign_id';
+	public const META_CAMPAIGN_ADMIN_URL     = 'prc_email_mailchimp_campaign_admin_url';
+	public const META_CAMPAIGN_STATUS        = 'prc_email_mailchimp_campaign_status';
+	public const META_PENDING_SEND_AT        = 'prc_email_mailchimp_pending_send_at';
+	public const META_DELAYED_SEND_CANCELLED = 'prc_email_mailchimp_delayed_send_cancelled';
 
 	/**
 	 * When true, delete_post_meta of linkage keys is allowed (unlink path).
@@ -40,6 +42,8 @@ final class Campaign_Linkage {
 			self::META_CAMPAIGN_ID,
 			self::META_CAMPAIGN_ADMIN_URL,
 			self::META_CAMPAIGN_STATUS,
+			self::META_PENDING_SEND_AT,
+			self::META_DELAYED_SEND_CANCELLED,
 		);
 	}
 
@@ -158,6 +162,72 @@ final class Campaign_Linkage {
 	}
 
 	/**
+	 * Unix timestamp when the queued Mailchimp send should run, or 0.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function pending_send_at( int $post_id ): int {
+		return (int) get_post_meta( $post_id, self::META_PENDING_SEND_AT, true );
+	}
+
+	/**
+	 * Store the queued send timestamp.
+	 *
+	 * @param int $post_id   Campaign post ID.
+	 * @param int $timestamp Unix timestamp.
+	 */
+	public static function set_pending_send_at( int $post_id, int $timestamp ): void {
+		update_post_meta( $post_id, self::META_PENDING_SEND_AT, (string) $timestamp );
+		self::clear_delayed_send_cancelled( $post_id );
+	}
+
+	/**
+	 * Clear the queued send timestamp.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function clear_pending_send( int $post_id ): void {
+		self::$clearing = true;
+		try {
+			delete_post_meta( $post_id, self::META_PENDING_SEND_AT );
+		} finally {
+			self::$clearing = false;
+		}
+	}
+
+	/**
+	 * Mark a queued send as cancelled.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function mark_delayed_send_cancelled( int $post_id ): void {
+		update_post_meta( $post_id, self::META_DELAYED_SEND_CANCELLED, '1' );
+	}
+
+	/**
+	 * Whether the cancelled-send marker is set.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function delayed_send_cancelled( int $post_id ): bool {
+		return '1' === (string) get_post_meta( $post_id, self::META_DELAYED_SEND_CANCELLED, true );
+	}
+
+	/**
+	 * Clear the cancelled-send marker.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function clear_delayed_send_cancelled( int $post_id ): void {
+		self::$clearing = true;
+		try {
+			delete_post_meta( $post_id, self::META_DELAYED_SEND_CANCELLED );
+		} finally {
+			self::$clearing = false;
+		}
+	}
+
+	/**
 	 * Clears linkage + Slack markers and report meta. Idempotent.
 	 *
 	 * @param int $post_id Campaign post ID.
@@ -178,6 +248,8 @@ final class Campaign_Linkage {
 			delete_post_meta( $post_id, self::META_CAMPAIGN_ID );
 			delete_post_meta( $post_id, self::META_CAMPAIGN_ADMIN_URL );
 			delete_post_meta( $post_id, self::META_CAMPAIGN_STATUS );
+			delete_post_meta( $post_id, self::META_PENDING_SEND_AT );
+			delete_post_meta( $post_id, self::META_DELAYED_SEND_CANCELLED );
 			delete_post_meta( $post_id, Campaign_Status_Sync::SENT_SLACK_NOTIFIED_META );
 			delete_post_meta( $post_id, First_Day_Campaign_Stats::NOTIFIED_META );
 			Report_Store::clear( $post_id );

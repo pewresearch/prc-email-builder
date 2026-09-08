@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email preview REST endpoints.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -23,61 +24,69 @@ use WP_Error;
  */
 class Preview {
 
-	const API_KEY_CONSTANT = 'PRC_PLATFORM_MANDRILL_KEY';
-	const API_URL          = 'https://mandrillapp.com/api/1.0/';
+	const API_KEY_CONSTANT    = 'PRC_PLATFORM_MANDRILL_KEY';
+	const API_URL             = 'https://mandrillapp.com/api/1.0/';
 	const MAX_TEST_RECIPIENTS = 10;
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_action( 'rest_api_init', $this, 'register_routes' );
 	}
 
+	/**
+	 * Register routes.
+	 */
 	public function register_routes(): void {
 		register_rest_route(
 			REST_API::NAMESPACE,
 			'/preview',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'get_preview' ],
-				'permission_callback' => [ $this, 'permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'get_preview' ),
+				'permission_callback' => array( $this, 'permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		register_rest_route(
 			REST_API::NAMESPACE,
 			'/test-send',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'send_test' ],
-				'permission_callback' => [ $this, 'permission_check' ],
-				'args'                => [
-					'post_id' => [
+				'callback'            => array( $this, 'send_test' ),
+				'permission_callback' => array( $this, 'permission_check' ),
+				'args'                => array(
+					'post_id' => array(
 						'required'          => true,
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
-					],
-					'emails'  => [
+					),
+					'emails'  => array(
 						'required'          => false,
 						'type'              => 'array',
-						'items'             => [
+						'items'             => array(
 							'type' => 'string',
-						],
-						'sanitize_callback' => [ $this, 'sanitize_emails_param' ],
-						'validate_callback' => [ $this, 'validate_emails_param' ],
-					],
-					'email'   => [
+						),
+						'sanitize_callback' => array( $this, 'sanitize_emails_param' ),
+						'validate_callback' => array( $this, 'validate_emails_param' ),
+					),
+					'email'   => array(
 						'required'          => false,
 						'type'              => 'string',
 						'sanitize_callback' => 'sanitize_text_field',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 	}
 
@@ -85,35 +94,42 @@ class Preview {
 	 * GET /preview
 	 *
 	 * Renders synchronously and always returns status='complete'.
+	 *
+	 * @param WP_REST_Request $request Request.
 	 */
 	public function get_preview( WP_REST_Request $request ): WP_REST_Response {
 		$post_id = $request->get_param( 'post_id' );
 
 		if ( Migration::is_migrated( $post_id ) ) {
-			return rest_ensure_response( [
-				'status' => 'error',
-				'html'   => '',
-				'error'  => 'Migrated newsletters do not support email preview.',
-			] );
+			return rest_ensure_response(
+				array(
+					'status' => 'error',
+					'html'   => '',
+					'error'  => 'Migrated newsletters do not support email preview.',
+				) 
+			);
 		}
 
 		$settings = Mailchimp::get_settings();
-		$meta     = [
+		$meta     = array(
 			'from_name'    => $settings['from_name'] ?? '',
 			'from_email'   => $settings['from_email'] ?? '',
 			'subject'      => Email_Subject::display( $post_id ),
 			'preview_text' => get_post_meta( $post_id, 'prc_email_preview_text', true ),
-		];
+		);
 
 		$post = get_post( $post_id );
 		if ( ! $post ) {
 			return rest_ensure_response(
-				array_merge( $meta, [
-					'status'     => 'error',
-					'html'       => '',
-					'size_bytes' => 0,
-					'error'      => 'Post not found.',
-				] )
+				array_merge(
+					$meta,
+					array(
+						'status'     => 'error',
+						'html'       => '',
+						'size_bytes' => 0,
+						'error'      => 'Post not found.',
+					) 
+				)
 			);
 		}
 
@@ -122,11 +138,14 @@ class Preview {
 		$html      = '' !== $content ? Email_Template::wrap( $content, $post_id ) : '';
 
 		return rest_ensure_response(
-			array_merge( $meta, [
-				'status'     => 'complete',
-				'html'       => $html,
-				'size_bytes' => strlen( $html ),
-			] )
+			array_merge(
+				$meta,
+				array(
+					'status'     => 'complete',
+					'html'       => $html,
+					'size_bytes' => strlen( $html ),
+				) 
+			)
 		);
 	}
 
@@ -135,6 +154,8 @@ class Preview {
 	 *
 	 * Sends the email HTML to one or more addresses via Mandrill messages/send.
 	 * The subject is prefixed with "[TEST]" so it's easy to spot in an inbox.
+	 *
+	 * @param WP_REST_Request $request Request.
 	 */
 	public function send_test( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$post_id = $request->get_param( 'post_id' );
@@ -148,7 +169,7 @@ class Preview {
 			return new WP_Error(
 				'migrated_post',
 				'Migrated newsletters do not support test sends.',
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
@@ -175,16 +196,16 @@ class Preview {
 			return new WP_Error(
 				'mandrill_send_rejected',
 				sprintf( 'Mandrill rejected the email: %s.', $first_reason ),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		return rest_ensure_response(
-			[
+			array(
 				'success' => true,
 				'sent'    => $result['sent'],
 				'failed'  => (object) $failed,
-			]
+			)
 		);
 	}
 
@@ -193,17 +214,19 @@ class Preview {
 	 *
 	 * Accepts either `emails` (preferred) or legacy single/comma-separated `email`.
 	 *
+	 * @param WP_REST_Request $request Request.
 	 * @return array<int, string>|WP_Error
 	 */
 	private function resolve_test_emails( WP_REST_Request $request ): array|WP_Error {
 		$emails_param = $request->get_param( 'emails' );
 		$email_param  = $request->get_param( 'email' );
 
-		$raw = [];
+		$raw = array();
 		if ( is_array( $emails_param ) ) {
 			$raw = $emails_param;
 		} elseif ( is_string( $email_param ) && '' !== trim( $email_param ) ) {
-			$raw = preg_split( '/\s*,\s*/', trim( $email_param ), -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+			$split = preg_split( '/\s*,\s*/', trim( $email_param ), -1, PREG_SPLIT_NO_EMPTY );
+			$raw   = false !== $split ? $split : array();
 		}
 
 		$parsed = $this->parse_and_validate_emails( $raw );
@@ -215,7 +238,7 @@ class Preview {
 			return new WP_Error(
 				'rest_invalid_param',
 				'At least one valid email address is required.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -234,10 +257,10 @@ class Preview {
 	 */
 	public function sanitize_emails_param( $value ): array {
 		if ( ! is_array( $value ) ) {
-			return [];
+			return array();
 		}
 
-		$sanitized = [];
+		$sanitized = array();
 		foreach ( $value as $email ) {
 			$sanitized[] = is_string( $email ) ? trim( $email ) : $email;
 		}
@@ -257,7 +280,7 @@ class Preview {
 			return new WP_Error(
 				'rest_invalid_param',
 				'emails must be an array of email addresses.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -272,14 +295,14 @@ class Preview {
 	 * @return array<int, string>|WP_Error
 	 */
 	private function parse_and_validate_emails( array $raw ): array|WP_Error {
-		$emails = [];
+		$emails = array();
 
 		foreach ( $raw as $value ) {
 			if ( ! is_string( $value ) ) {
 				return new WP_Error(
 					'rest_invalid_param',
 					'Each recipient must be a valid email address.',
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 
@@ -288,7 +311,7 @@ class Preview {
 				return new WP_Error(
 					'rest_invalid_param',
 					sprintf( 'Invalid email address: %s.', $value ),
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 
@@ -303,7 +326,7 @@ class Preview {
 					'A maximum of %d test recipients is allowed.',
 					self::MAX_TEST_RECIPIENTS
 				),
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -317,18 +340,20 @@ class Preview {
 	 * default Mandrill template.
 	 *
 	 * @param array<int, string> $to_emails Recipient addresses.
+	 * @param string             $subject Subject.
+	 * @param string             $html Html.
 	 * @return array{sent: array<int, string>, failed: array<string, string>}|WP_Error
 	 */
 	private function dispatch_test_email( array $to_emails, string $subject, string $html ): array|WP_Error {
 		$api_key = $this->get_api_key();
 		if ( '' === $api_key ) {
-			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', array( 'status' => 500 ) );
 		}
 
 		$settings   = Mailchimp::get_settings();
 		$from_email = (string) ( $settings['from_email'] ?? '' );
 		if ( ! is_email( $from_email ) ) {
-			return new WP_Error( 'missing_from_email', 'A valid from email address is required.', [ 'status' => 500 ] );
+			return new WP_Error( 'missing_from_email', 'A valid from email address is required.', array( 'status' => 500 ) );
 		}
 
 		$reply_to = (string) ( $settings['reply_to'] ?? '' );
@@ -336,62 +361,62 @@ class Preview {
 			$reply_to = $from_email;
 		}
 
-		$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : [ 'prc-newsletter' ];
+		$base_tags = is_array( $settings['mandrill_tags'] ?? null ) ? $settings['mandrill_tags'] : array( 'prc-newsletter' );
 
 		$to = array_map(
-			static fn( string $email ): array => [
+			static fn( string $email ): array => array(
 				'email' => $email,
 				'type'  => 'to',
-			],
+			),
 			$to_emails
 		);
 
-		$message = [
+		$message = array(
 			'html'                => $html,
 			'subject'             => $subject,
 			'from_email'          => $from_email,
 			'from_name'           => (string) ( $settings['from_name'] ?? '' ),
 			'to'                  => $to,
-			'headers'             => [ 'Reply-To' => $reply_to ],
+			'headers'             => array( 'Reply-To' => $reply_to ),
 			'track_opens'         => (bool) ( $settings['track_opens'] ?? true ),
 			'track_clicks'        => (bool) ( $settings['track_clicks'] ?? true ),
-			'tags'                => array_merge( $base_tags, [ 'test' ] ),
+			'tags'                => array_merge( $base_tags, array( 'test' ) ),
 			'preserve_recipients' => false,
-		];
+		);
 
 		$subaccount = (string) ( $settings['mandrill_subaccount'] ?? '' );
 		if ( '' !== $subaccount ) {
 			$message['subaccount'] = $subaccount;
 		}
 
-		$payload = [
+		$payload = array(
 			'key'     => $api_key,
 			'message' => $message,
 			'async'   => false,
-		];
+		);
 
 		$response = wp_remote_post(
 			self::API_URL . 'messages/send',
-			[
-				'timeout' => 30,
-				'headers' => [ 'Content-Type' => 'application/json' ],
+			array(
+				'timeout' => 30, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Mandrill send can exceed the default 5s.
+				'headers' => array( 'Content-Type' => 'application/json' ),
 				'body'    => wp_json_encode( $payload ),
-			]
+			)
 		);
 
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error(
 				'mandrill_request_failed',
 				$response->get_error_message(),
-				[ 'status' => 500 ]
+				array( 'status' => 500 )
 			);
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
 		if ( $status_code >= 400 ) {
-			$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? [];
+			$body   = json_decode( wp_remote_retrieve_body( $response ), true ) ?? array();
 			$detail = $body['message'] ?? $body['name'] ?? "HTTP {$status_code}";
-			return new WP_Error( 'mandrill_api_error', (string) $detail, [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_api_error', (string) $detail, array( 'status' => 500 ) );
 		}
 
 		return $this->parse_batch_send_response( $response, $to_emails );
@@ -407,22 +432,22 @@ class Preview {
 	private function parse_batch_send_response( array $response, array $to_emails ): array|WP_Error {
 		$results = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $results ) || ! isset( $results[0]['status'] ) ) {
-			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', [ 'status' => 500 ] );
+			return new WP_Error( 'mandrill_invalid_response', 'Mandrill did not return a recipient status.', array( 'status' => 500 ) );
 		}
 
-		$statuses = [];
+		$statuses = array();
 		foreach ( $results as $result ) {
 			if ( ! is_array( $result ) || ! isset( $result['email'], $result['status'] ) ) {
 				continue;
 			}
-			$statuses[ strtolower( (string) $result['email'] ) ] = [
+			$statuses[ strtolower( (string) $result['email'] ) ] = array(
 				'status' => (string) $result['status'],
 				'reason' => (string) ( $result['reject_reason'] ?? $result['status'] ),
-			];
+			);
 		}
 
-		$sent   = [];
-		$failed = [];
+		$sent   = array();
+		$failed = array();
 
 		foreach ( $to_emails as $to_email ) {
 			$entry = $statuses[ strtolower( $to_email ) ] ?? null;
@@ -430,19 +455,22 @@ class Preview {
 				$failed[ $to_email ] = 'no recipient status returned';
 				continue;
 			}
-			if ( in_array( $entry['status'], [ 'sent', 'queued', 'scheduled' ], true ) ) {
+			if ( in_array( $entry['status'], array( 'sent', 'queued', 'scheduled' ), true ) ) {
 				$sent[] = $to_email;
 			} else {
 				$failed[ $to_email ] = $entry['reason'];
 			}
 		}
 
-		return [
+		return array(
 			'sent'   => $sent,
 			'failed' => $failed,
-		];
+		);
 	}
 
+	/**
+	 * Get api key.
+	 */
 	private function get_api_key(): string {
 		if ( defined( self::API_KEY_CONSTANT ) ) {
 			return (string) constant( self::API_KEY_CONSTANT );
@@ -452,6 +480,8 @@ class Preview {
 
 	/**
 	 * Shared permission check: the caller must be able to edit the target post.
+	 *
+	 * @param WP_REST_Request $request Request.
 	 */
 	public function permission_check( WP_REST_Request $request ): bool|WP_Error {
 		$post_id = $request->get_param( 'post_id' );
@@ -459,7 +489,7 @@ class Preview {
 			return new WP_Error(
 				'rest_forbidden',
 				'You do not have permission to preview this newsletter.',
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 		return true;

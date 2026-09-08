@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * WP-CLI command: migrate prc_email_system_email_key meta to post slugs.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -42,6 +43,8 @@ class CLI_System_Key_Migrate {
 	 *     wp prc email migrate-system-keys --post-id=12345 --dry-run=false
 	 *
 	 * @when after_wp_load
+	 * @param array $args Args.
+	 * @param array $assoc_args Assoc args.
 	 */
 	public function __invoke( array $args, array $assoc_args ): void {
 		if ( isset( $assoc_args['dry-run'] ) ) {
@@ -57,7 +60,7 @@ class CLI_System_Key_Migrate {
 		}
 
 		$rows    = $this->fetch_legacy_rows( $post_id );
-		$results = [];
+		$results = array();
 
 		if ( empty( $rows ) ) {
 			WP_CLI::warning( 'No transactional emails with a legacy system email key were found.' );
@@ -71,7 +74,7 @@ class CLI_System_Key_Migrate {
 		WP_CLI\Utils\format_items(
 			'table',
 			$results,
-			[ 'post_id', 'old_slug', 'target_slug', 'result_slug', 'status', 'notes' ]
+			array( 'post_id', 'old_slug', 'target_slug', 'result_slug', 'status', 'notes' )
 		);
 
 		$migrated = array_filter( $results, static fn( array $row ): bool => 'migrated' === $row['status'] );
@@ -92,6 +95,9 @@ class CLI_System_Key_Migrate {
 	}
 
 	/**
+	 * Fetch legacy rows.
+	 *
+	 * @param int $post_id Post id.
 	 * @return array<int, object{ID: string, post_name: string, system_key: string}>
 	 */
 	private function fetch_legacy_rows( int $post_id ): array {
@@ -106,7 +112,7 @@ class CLI_System_Key_Migrate {
 			AND pm.meta_value != ''
 		";
 
-		$prepare = [ Post_Type::TRANSACTIONAL_POST_TYPE, self::LEGACY_META_KEY ];
+		$prepare = array( Post_Type::TRANSACTIONAL_POST_TYPE, self::LEGACY_META_KEY );
 
 		if ( $post_id > 0 ) {
 			$sql      .= ' AND p.ID = %d';
@@ -120,7 +126,10 @@ class CLI_System_Key_Migrate {
 	}
 
 	/**
-	 * @param object{ID: string, post_name: string, system_key: string} $row
+	 * Migrate row.
+	 *
+	 * @param object $row     Row from the migrate query (ID, post_name, system_key).
+	 * @param bool   $dry_run Dry run.
 	 * @return array{post_id: int, old_slug: string, target_slug: string, result_slug: string, status: string, notes: string}
 	 */
 	private function migrate_row( object $row, bool $dry_run ): array {
@@ -128,14 +137,14 @@ class CLI_System_Key_Migrate {
 		$old_slug    = (string) $row->post_name;
 		$target_slug = sanitize_title( (string) $row->system_key );
 
-		$result = [
-			'post_id'      => $id,
-			'old_slug'     => $old_slug,
-			'target_slug'  => $target_slug,
-			'result_slug'  => $old_slug,
-			'status'       => 'skipped',
-			'notes'        => '',
-		];
+		$result = array(
+			'post_id'     => $id,
+			'old_slug'    => $old_slug,
+			'target_slug' => $target_slug,
+			'result_slug' => $old_slug,
+			'status'      => 'skipped',
+			'notes'       => '',
+		);
 
 		if ( '' === $target_slug ) {
 			$result['status'] = 'error';
@@ -166,10 +175,10 @@ class CLI_System_Key_Migrate {
 		}
 
 		$updated = wp_update_post(
-			[
+			array(
 				'ID'        => $id,
 				'post_name' => $target_slug,
-			],
+			),
 			true
 		);
 
@@ -179,15 +188,15 @@ class CLI_System_Key_Migrate {
 			return $result;
 		}
 
-		$result_slug = (string) get_post_field( 'post_name', $id );
+		$result_slug           = (string) get_post_field( 'post_name', $id );
 		$result['result_slug'] = $result_slug;
 
 		if ( $result_slug !== $target_slug ) {
 			wp_update_post(
-				[
+				array(
 					'ID'        => $id,
 					'post_name' => $old_slug,
-				],
+				),
 				true
 			);
 			$result['result_slug'] = $old_slug;
@@ -203,6 +212,12 @@ class CLI_System_Key_Migrate {
 		return $result;
 	}
 
+	/**
+	 * Slug is taken by other post.
+	 *
+	 * @param string $slug Slug.
+	 * @param int    $post_id Post id.
+	 */
 	private function slug_is_taken_by_other_post( string $slug, int $post_id ): bool {
 		$existing = get_page_by_path( $slug, OBJECT, Post_Type::TRANSACTIONAL_POST_TYPE );
 		return $existing instanceof \WP_Post && (int) $existing->ID !== $post_id;

@@ -1,33 +1,15 @@
 <?php
-declare(strict_types=1);
 /**
  * Email subject domain model and publish gate.
  *
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
 use WP_Error;
-
-/**
- * Trimmed subject that is legal to send.
- */
-final class Ready_Subject {
-	/**
-	 * @param string $line Trimmed non-empty subject.
-	 */
-	public function __construct(
-		private string $line
-	) {}
-
-	/**
-	 * @return string Trimmed subject line.
-	 */
-	public function line(): string {
-		return $this->line;
-	}
-}
 
 /**
  * Parse, require, display, and gate publish on `prc_email_subject`.
@@ -37,6 +19,8 @@ class Email_Subject {
 	public const ERROR_CODE = 'prc_email_subject_required';
 
 	/**
+	 * Construct.
+	 *
 	 * @param Loader $loader Hook loader.
 	 */
 	public function __construct( $loader ) {
@@ -53,6 +37,8 @@ class Email_Subject {
 	}
 
 	/**
+	 * Parse.
+	 *
 	 * @param mixed $raw Stored or incoming meta.
 	 * @return Ready_Subject|null
 	 */
@@ -68,6 +54,8 @@ class Email_Subject {
 	}
 
 	/**
+	 * Require for send.
+	 *
 	 * @param int $post_id Email post ID.
 	 * @return Ready_Subject|WP_Error
 	 */
@@ -180,6 +168,8 @@ class Email_Subject {
 	}
 
 	/**
+	 * Is outbound status.
+	 *
 	 * @param string $status Post status.
 	 * @return bool
 	 */

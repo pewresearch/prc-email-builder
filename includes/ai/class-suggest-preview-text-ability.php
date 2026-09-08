@@ -32,6 +32,8 @@ class Suggest_Preview_Text_Ability {
 	public static $ability_name = 'prc-email-builder/suggest-preview-text';
 
 	/**
+	 * Allowed blocks.
+	 *
 	 * @var array<int, string>
 	 */
 	public static $allowed_blocks = array();
@@ -59,6 +61,8 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook wp_abilities_api_init
 	 */
 	public function register_ability(): void {
@@ -137,6 +141,8 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Suggest preview text.
+	 *
 	 * @param array<string, mixed> $input Input parameters.
 	 * @return array<string, mixed>|WP_Error
 	 */
@@ -186,14 +192,23 @@ Do not use markdown fences or extra prose. Example:
 			return new WP_Error( 'no_options', __( 'Could not generate preview text options.', 'prc-email-builder' ) );
 		}
 
-		$options = array_slice( $options, 0, self::OPTION_COUNT );
-		while ( count( $options ) < self::OPTION_COUNT ) {
-			$options[] = $options[ count( $options ) - 1 ];
+		$options      = array_slice( $options, 0, self::OPTION_COUNT );
+		$option_count = count( $options );
+		while ( $option_count < self::OPTION_COUNT ) {
+			$options[] = $options[ $option_count - 1 ];
+			++$option_count;
 		}
 
 		return array( 'options' => $options );
 	}
 
+	/**
+	 * Build system instruction.
+	 *
+	 * @param string $extra_context Extra context.
+	 * @param string $current_subject Current subject.
+	 * @param string $guidelines Guidelines.
+	 */
 	private function build_system_instruction( string $extra_context, string $current_subject, string $guidelines ): string {
 		$text = strtr(
 			self::get_default_system_prompt_template(),
@@ -204,7 +219,7 @@ Do not use markdown fences or extra prose. Example:
 		);
 
 		if ( '' !== $current_subject ) {
-			$text .= "\n\nThe current subject line is: \"" . $current_subject . "\". Preview text must complement it without repeating it.";
+			$text .= "\n\nThe current subject line is: \"" . $current_subject . '". Preview text must complement it without repeating it.';
 		}
 
 		if ( '' !== $extra_context ) {
@@ -221,6 +236,9 @@ Do not use markdown fences or extra prose. Example:
 	}
 
 	/**
+	 * Parse preview options.
+	 *
+	 * @param string $raw Raw.
 	 * @return array<int, array{previewText: string}>
 	 */
 	private function parse_preview_options( string $raw ): array {

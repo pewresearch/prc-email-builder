@@ -33,7 +33,7 @@ class Auth_Domain_Audience_Service {
 	 * JSON body for buildEmailDomainAudience (verification contract).
 	 *
 	 * @param string $domain_contains Normalized needle.
-	 * @param string $verification    verified|unverified|all
+	 * @param string $verification    verified|unverified|all.
 	 * @return array<string, mixed>
 	 */
 	public static function request_body( string $domain_contains, string $verification ): array {
@@ -47,7 +47,7 @@ class Auth_Domain_Audience_Service {
 	 * Call Firebase and persist the audience list + meta.
 	 *
 	 * @param string $domain_contains Domain substring (e.g. k12).
-	 * @param string $verification    verified|unverified|all
+	 * @param string $verification    verified|unverified|all.
 	 * @param array  $args            Optional: dry_run (bool), label (string|null), audience_key (string|null).
 	 * @return array|WP_Error Snapshot on success, or dry-run summary when dry_run.
 	 */
@@ -100,7 +100,7 @@ class Auth_Domain_Audience_Service {
 		$response = wp_remote_post(
 			$endpoint,
 			array(
-				'timeout' => 540,
+				'timeout' => 540, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Cloud Function audience build can take several minutes.
 				'headers' => array(
 					'Authorization' => 'Bearer ' . $id_token,
 					'Content-Type'  => 'application/json',

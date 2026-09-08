@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * WP-CLI commands for managing system-email (Mandrill) newsletter audiences.
  *
@@ -9,6 +8,8 @@ declare(strict_types=1);
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -32,7 +33,7 @@ class CLI_Audience {
 	use CLI_Audience_Verification;
 
 	/**
-	 * wp_options key prefix for audience email lists.
+	 * Option-table key prefix for audience email lists.
 	 */
 	const AUDIENCE_OPTION_PREFIX        = 'prc_email_audience_';
 	const LEGACY_AUDIENCE_OPTION_PREFIX = 'prc_newsletter_audience_';
@@ -85,11 +86,13 @@ class CLI_Audience {
 
 		$existing = get_option( $audience_key, false );
 		if ( false !== $existing && is_array( $existing ) && ! empty( $existing ) ) {
-			WP_CLI::warning( sprintf(
-				'Overwriting existing audience "%s" (%d email(s)).',
-				$audience_key,
-				count( $existing )
-			) );
+			WP_CLI::warning(
+				sprintf(
+					'Overwriting existing audience "%s" (%d email(s)).',
+					$audience_key,
+					count( $existing )
+				) 
+			);
 		}
 
 		$built_at = current_time( 'mysql', true );
@@ -106,12 +109,14 @@ class CLI_Audience {
 			false
 		);
 
-		WP_CLI::success( sprintf(
-			'Audience saved → %s (%d email(s), label: "%s")',
-			$audience_key,
-			$count,
-			$label
-		) );
+		WP_CLI::success(
+			sprintf(
+				'Audience saved → %s (%d email(s), label: "%s")',
+				$audience_key,
+				$count,
+				$label
+			) 
+		);
 	}
 
 	/**
@@ -152,11 +157,13 @@ class CLI_Audience {
 
 		$referencing = $this->find_newsletters_using_audience( $audience_key );
 		if ( ! empty( $referencing ) ) {
-			WP_CLI::warning( sprintf(
-				'%d newsletter post(s) reference this audience: %s',
-				count( $referencing ),
-				implode( ', ', $referencing )
-			) );
+			WP_CLI::warning(
+				sprintf(
+					'%d newsletter post(s) reference this audience: %s',
+					count( $referencing ),
+					implode( ', ', $referencing )
+				) 
+			);
 		}
 
 		if ( ! $yes ) {
@@ -266,16 +273,16 @@ class CLI_Audience {
 	public function build_from_mandrill( $args, $assoc_args ): void {
 		System_Email_Recipients_Table::maybe_create_table();
 
-		$key_slug       = Utils\get_flag_value( $assoc_args, 'key', '' );
-		$date_from_raw  = Utils\get_flag_value( $assoc_args, 'date-from', '' );
-		$date_to_raw    = Utils\get_flag_value( $assoc_args, 'date-to', '' );
-		$tag            = Utils\get_flag_value( $assoc_args, 'tag', 'system-email' );
-		$states_raw     = Utils\get_flag_value( $assoc_args, 'states', 'sent' );
-		$subject_match  = Utils\get_flag_value( $assoc_args, 'subject-match', null );
-		$csv_file       = Utils\get_flag_value( $assoc_args, 'csv-file', '' );
-		$label          = Utils\get_flag_value( $assoc_args, 'label', '' );
-		$dry_run        = (bool) Utils\get_flag_value( $assoc_args, 'dry-run', false );
-		$create_post    = (bool) Utils\get_flag_value( $assoc_args, 'create-post', false );
+		$key_slug      = Utils\get_flag_value( $assoc_args, 'key', '' );
+		$date_from_raw = Utils\get_flag_value( $assoc_args, 'date-from', '' );
+		$date_to_raw   = Utils\get_flag_value( $assoc_args, 'date-to', '' );
+		$tag           = Utils\get_flag_value( $assoc_args, 'tag', 'system-email' );
+		$states_raw    = Utils\get_flag_value( $assoc_args, 'states', 'sent' );
+		$subject_match = Utils\get_flag_value( $assoc_args, 'subject-match', null );
+		$csv_file      = Utils\get_flag_value( $assoc_args, 'csv-file', '' );
+		$label         = Utils\get_flag_value( $assoc_args, 'label', '' );
+		$dry_run       = (bool) Utils\get_flag_value( $assoc_args, 'dry-run', false );
+		$create_post   = (bool) Utils\get_flag_value( $assoc_args, 'create-post', false );
 
 		if ( '' === trim( (string) $key_slug ) ) {
 			WP_CLI::error( '--key is required.' );
@@ -416,15 +423,15 @@ class CLI_Audience {
 			$emails,
 			$final_label,
 			array(
-				'source'         => 'mandrill_export',
-				'date_from'      => $date_from,
-				'date_to'        => $date_to,
-				'tag'            => (string) $tag,
-				'states'         => $states,
-				'subject_match'  => $subject_pattern,
-				'rows_scanned'   => (int) $parsed['rows_scanned'],
-				'rows_matched'   => (int) $parsed['rows_matched'],
-				'mandrill_job_id'=> $job_id,
+				'source'          => 'mandrill_export',
+				'date_from'       => $date_from,
+				'date_to'         => $date_to,
+				'tag'             => (string) $tag,
+				'states'          => $states,
+				'subject_match'   => $subject_pattern,
+				'rows_scanned'    => (int) $parsed['rows_scanned'],
+				'rows_matched'    => (int) $parsed['rows_matched'],
+				'mandrill_job_id' => $job_id,
 			),
 			$dry_run,
 			$create_post,
@@ -940,6 +947,6 @@ class CLI_Audience {
 			)
 		);
 
-		return array_map( 'intval', $ids ?: array() );
+		return array_map( 'intval', is_array( $ids ) ? $ids : array() );
 	}
 }

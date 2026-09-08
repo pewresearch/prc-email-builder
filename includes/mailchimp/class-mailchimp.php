@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Mailchimp API v3 integration via the official mailchimp/marketing PHP SDK.
  *
@@ -7,8 +6,10 @@ declare(strict_types=1);
  * highest registered version of mailchimp/marketing wins across all plugins
  * that ship it (prc-mailchimp mu-plugin + this plugin).
  *
- * @package    PRC\Platform\Email_Builder
+ * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -62,6 +63,9 @@ class Mailchimp {
 	 */
 	const SEND_LOCK_OPTION_PREFIX = 'prc_email_mailchimp_send_lock_';
 	const SEND_LOCK_TTL           = 180;
+	const DELAYED_SEND_HOOK       = 'prc_email_builder_mailchimp_delayed_send';
+	const DELAYED_SEND_GROUP      = 'prc-email-builder';
+	const DELAYED_SEND_DELAY      = 600;
 
 	/**
 	 * Campaign post IDs that transitioned to `publish` during the current REST
@@ -71,8 +75,13 @@ class Mailchimp {
 	 *
 	 * @var array<int, true>
 	 */
-	private array $pending_publish_dispatch = [];
+	private array $pending_publish_dispatch = array();
 
+	/**
+	 * Register Mailchimp publish hooks when a loader is provided.
+	 *
+	 * @param Loader|null $loader Plugin loader.
+	 */
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
 			return;
@@ -80,6 +89,7 @@ class Mailchimp {
 		$loader->add_action( 'rest_after_insert_' . Post_Type::CAMPAIGN_POST_TYPE, $this, 'on_rest_publish', 10, 1 );
 		$loader->add_action( 'prc_email_builder_campaign_ready', $this, 'on_campaign_ready', 10, 2 );
 		$loader->add_action( 'transition_post_status', $this, 'on_status_transition', 10, 3 );
+		$loader->add_action( self::DELAYED_SEND_HOOK, $this, 'run_delayed_send', 10, 1 );
 	}
 
 	// -------------------------------------------------------------------------
@@ -117,8 +127,8 @@ class Mailchimp {
 			return $this->to_wp_error( $e, 'mailchimp_audiences_error' );
 		}
 
-		$audiences = [];
-		foreach ( $response->lists ?? [] as $list ) {
+		$audiences = array();
+		foreach ( $response->lists ?? array() as $list ) {
 			$audiences[ $list->id ] = $list->name;
 		}
 		asort( $audiences );
@@ -149,7 +159,7 @@ class Mailchimp {
 	 */
 	public function get_segments( string $audience_id ): array|WP_Error {
 		if ( '' === $audience_id ) {
-			return [];
+			return array();
 		}
 
 		$cache_key = self::SEGMENTS_TRANSIENT_PREFIX . md5( $audience_id );
@@ -177,18 +187,18 @@ class Mailchimp {
 			return $this->to_wp_error( $e, 'mailchimp_segments_error' );
 		}
 
-		$segments = [];
-		foreach ( $response->segments ?? [] as $s ) {
+		$segments = array();
+		foreach ( $response->segments ?? array() as $s ) {
 			$type = (string) ( $s->type ?? '' );
 			if ( 'saved' !== $type ) {
 				continue;
 			}
-			$segments[] = [
+			$segments[] = array(
 				'id'           => (int) ( $s->id ?? 0 ),
 				'name'         => (string) ( $s->name ?? '' ),
 				'type'         => $type,
 				'member_count' => (int) ( $s->member_count ?? 0 ),
-			];
+			);
 		}
 		usort( $segments, fn( $a, $b ) => strcasecmp( $a['name'], $b['name'] ) );
 
@@ -197,7 +207,7 @@ class Mailchimp {
 			static function ( array &$rollback_keys ) use ( $cache_key, $segments, $audience_id ): void {
 				set_transient( $cache_key, $segments, HOUR_IN_SECONDS );
 				$rollback_keys[] = $cache_key;
-				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+				self::merge_cached_audience_ids_under_lock( array( $audience_id ) );
 			}
 		);
 
@@ -255,7 +265,7 @@ class Mailchimp {
 			static function ( array &$rollback_keys ) use ( $cache_key, $count, $audience_id ): void {
 				set_transient( $cache_key, $count, HOUR_IN_SECONDS );
 				$rollback_keys[] = $cache_key;
-				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+				self::merge_cached_audience_ids_under_lock( array( $audience_id ) );
 			}
 		);
 
@@ -282,7 +292,7 @@ class Mailchimp {
 
 			$segment_id_int = (int) $segment_id;
 			foreach ( $segments as $segment ) {
-				if ( $segment_id_int === (int) ( $segment['id'] ?? 0 ) ) {
+				if ( (int) ( $segment['id'] ?? 0 ) === $segment_id_int ) {
 					return (int) ( $segment['member_count'] ?? 0 );
 				}
 			}
@@ -359,18 +369,20 @@ class Mailchimp {
 		$recipients = self::build_recipients( $audience_id, $segment_id );
 
 		try {
-			$campaign = $client->campaigns->create( [
-				'type'       => 'regular',
-				'recipients' => $recipients,
-				'settings'   => [
-					'title'        => get_the_title( $post_id ),
-					'subject_line' => $ready->line(),
-					'preview_text' => $preview_text,
-					'from_name'    => $from['from_name'],
-					'reply_to'     => $from['from_email'],
-					'auto_footer'  => false,
-				],
-			] );
+			$campaign = $client->campaigns->create(
+				array(
+					'type'       => 'regular',
+					'recipients' => $recipients,
+					'settings'   => array(
+						'title'        => get_the_title( $post_id ),
+						'subject_line' => $ready->line(),
+						'preview_text' => $preview_text,
+						'from_name'    => $from['from_name'],
+						'reply_to'     => $from['from_email'],
+						'auto_footer'  => false,
+					),
+				) 
+			);
 		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_create_error' );
 		}
@@ -381,17 +393,17 @@ class Mailchimp {
 		}
 
 		try {
-			$client->campaigns->setContent( $campaign_id, [ 'html' => $html ] );
+			$client->campaigns->setContent( $campaign_id, array( 'html' => $html ) );
 		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
 		}
 
 		$web_id = (int) ( $campaign->web_id ?? 0 );
 
-		return [
+		return array(
 			'campaign_id' => $campaign_id,
 			'admin_url'   => self::build_campaign_admin_url( $web_id ),
-		];
+		);
 	}
 
 	/**
@@ -409,7 +421,7 @@ class Mailchimp {
 			return new WP_Error(
 				'no_campaign',
 				'No Mailchimp campaign exists for this newsletter.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -424,9 +436,9 @@ class Mailchimp {
 				'campaign_not_editable',
 				sprintf(
 					'Mailchimp campaign cannot be edited while status is "%s".',
-					$status ?: 'unknown'
+					'' !== $status ? $status : 'unknown'
 				),
-				[ 'status' => 409 ]
+				array( 'status' => 409 )
 			);
 		}
 
@@ -437,7 +449,7 @@ class Mailchimp {
 			return new WP_Error(
 				'missing_audience',
 				'No Mailchimp audience selected for this newsletter.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -449,7 +461,7 @@ class Mailchimp {
 			return new WP_Error(
 				'empty_content',
 				'Newsletter has no renderable email content.',
-				[ 'status' => 400 ]
+				array( 'status' => 400 )
 			);
 		}
 
@@ -469,23 +481,23 @@ class Mailchimp {
 		try {
 			$client->campaigns->update(
 				$campaign_id,
-				[
+				array(
 					'recipients' => self::build_recipients( $audience_id, $segment_id, true ),
-					'settings'   => [
+					'settings'   => array(
 						'title'        => get_the_title( $post_id ),
 						'subject_line' => $ready->line(),
 						'preview_text' => $preview_text,
 						'from_name'    => $from['from_name'],
 						'reply_to'     => $from['from_email'],
-					],
-				]
+					),
+				)
 			);
 		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_update_error' );
 		}
 
 		try {
-			$client->campaigns->setContent( $campaign_id, [ 'html' => $html ] );
+			$client->campaigns->setContent( $campaign_id, array( 'html' => $html ) );
 		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
 		}
@@ -494,11 +506,11 @@ class Mailchimp {
 
 		$admin_url = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
 
-		return [
+		return array(
 			'campaign_id' => $campaign_id,
-			'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
+			'admin_url'   => '' !== $admin_url ? $admin_url : 'https://admin.mailchimp.com/campaigns/',
 			'status'      => 'save',
-		];
+		);
 	}
 
 	/**
@@ -567,6 +579,147 @@ class Mailchimp {
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', $campaign_id );
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', sanitize_text_field( $status ) );
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', esc_url_raw( $admin_url ) );
+		if ( in_array( $status, array( 'sending', 'sent' ), true ) ) {
+			Campaign_Linkage::clear_pending_send( $post_id );
+			Campaign_Linkage::clear_delayed_send_cancelled( $post_id );
+		}
+	}
+
+	/**
+	 * Shared guards for Mailchimp create and send.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return true|WP_Error
+	 */
+	private function assert_mailchimp_campaign_action( int $post_id ): true|WP_Error {
+		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
+			return new WP_Error(
+				'invalid_post_type',
+				'Mailchimp campaign actions apply only to campaign newsletters.',
+				array( 'status' => 400 )
+			);
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $post || 'publish' !== $post->post_status ) {
+			return new WP_Error(
+				'not_published',
+				'Publish the campaign before creating or sending a Mailchimp campaign.',
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( Migration::is_migrated( $post_id ) ) {
+			return new WP_Error(
+				'migrated_campaign',
+				'Migrated campaigns cannot be sent to Mailchimp from this panel.',
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! $this->is_connected() ) {
+			return new WP_Error(
+				'mailchimp_not_connected',
+				'Mailchimp is not connected.',
+				array( 'status' => 400 )
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Acquire the per-post Mailchimp send lock, or return send_locked.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ lock: Option_Lock, token: string }|WP_Error
+	 */
+	private function acquire_mailchimp_send_lock( int $post_id ): array|WP_Error {
+		$lock  = new Option_Lock( self::SEND_LOCK_OPTION_PREFIX, self::SEND_LOCK_TTL, 'mc_send_' );
+		$token = $lock->acquire( $post_id );
+		if ( '' === $token ) {
+			return new WP_Error(
+				'send_locked',
+				'A Mailchimp send is already in progress for this campaign.',
+				array( 'status' => 409 )
+			);
+		}
+
+		return array(
+			'lock'  => $lock,
+			'token' => $token,
+		);
+	}
+
+	/**
+	 * Create a Mailchimp campaign draft and persist linkage without sending.
+	 *
+	 * Uses the same per-post lock as create_and_send_campaign() so create and
+	 * send cannot race. Linked posts return already_linked (409).
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	public function create_linked_campaign_draft( int $post_id ): array|WP_Error {
+		$ready = $this->assert_mailchimp_campaign_action( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$held = $this->acquire_mailchimp_send_lock( $post_id );
+		if ( is_wp_error( $held ) ) {
+			return $held;
+		}
+
+		try {
+			return $this->create_linked_campaign_draft_locked( $post_id );
+		} finally {
+			$held['lock']->release( $post_id, $held['token'] );
+		}
+	}
+
+	/**
+	 * Create-only pipeline. Caller must hold the per-post send lock.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	private function create_linked_campaign_draft_locked( int $post_id ): array|WP_Error {
+		$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
+		if ( '' !== $campaign_id ) {
+			return new WP_Error(
+				'already_linked',
+				'This newsletter already has a Mailchimp campaign. Unlink it first to create a new draft.',
+				array( 'status' => 409 )
+			);
+		}
+
+		$html = Cached_Email_Html::resolve( $post_id );
+		if ( is_wp_error( $html ) ) {
+			return $html;
+		}
+		if ( '' === $html ) {
+			return new WP_Error(
+				'missing_email_html',
+				'Email HTML is not ready. Generate email content before creating a Mailchimp draft.',
+				array( 'status' => 400 )
+			);
+		}
+
+		$result = $this->create_campaign_draft( $post_id, $html );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$campaign_id = $result['campaign_id'];
+		$admin_url   = $result['admin_url'];
+		self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'save' );
+
+		return array(
+			'campaign_id' => $campaign_id,
+			'admin_url'   => $admin_url,
+			'status'      => 'save',
+		);
 	}
 
 	/**
@@ -588,53 +741,20 @@ class Mailchimp {
 	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
 	 */
 	public function create_and_send_campaign( int $post_id, bool $retry_existing_draft = false ): array|WP_Error {
-		if ( ! Post_Type::is_campaign_post( $post_id ) ) {
-			return new WP_Error(
-				'invalid_post_type',
-				'Mailchimp send applies only to campaign newsletters.',
-				[ 'status' => 400 ]
-			);
+		$ready = $this->assert_mailchimp_campaign_action( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
 		}
 
-		$post = get_post( $post_id );
-		if ( ! $post || 'publish' !== $post->post_status ) {
-			return new WP_Error(
-				'not_published',
-				'Publish the campaign before sending to Mailchimp.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		if ( Migration::is_migrated( $post_id ) ) {
-			return new WP_Error(
-				'migrated_campaign',
-				'Migrated campaigns cannot be sent to Mailchimp from this panel.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		if ( ! $this->is_connected() ) {
-			return new WP_Error(
-				'mailchimp_not_connected',
-				'Mailchimp is not connected.',
-				[ 'status' => 400 ]
-			);
-		}
-
-		$lock  = new Option_Lock( self::SEND_LOCK_OPTION_PREFIX, self::SEND_LOCK_TTL, 'mc_send_' );
-		$token = $lock->acquire( $post_id );
-		if ( '' === $token ) {
-			return new WP_Error(
-				'send_locked',
-				'A Mailchimp send is already in progress for this campaign.',
-				[ 'status' => 409 ]
-			);
+		$held = $this->acquire_mailchimp_send_lock( $post_id );
+		if ( is_wp_error( $held ) ) {
+			return $held;
 		}
 
 		try {
 			return $this->create_and_send_campaign_locked( $post_id, $retry_existing_draft );
 		} finally {
-			$lock->release( $post_id, $token );
+			$held['lock']->release( $post_id, $held['token'] );
 		}
 	}
 
@@ -653,20 +773,20 @@ class Mailchimp {
 		$admin_url   = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
 		$status      = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', true );
 
-		if ( '' !== $campaign_id && ! in_array( $status, [ '', 'save' ], true ) ) {
-			return [
+		if ( '' !== $campaign_id && ! in_array( $status, array( '', 'save' ), true ) ) {
+			return array(
 				'campaign_id' => $campaign_id,
-				'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
+				'admin_url'   => '' !== $admin_url ? $admin_url : 'https://admin.mailchimp.com/campaigns/',
 				'status'      => $status,
-			];
+			);
 		}
 
 		if ( '' !== $campaign_id && ! $retry_existing_draft ) {
-			return [
+			return array(
 				'campaign_id' => $campaign_id,
-				'admin_url'   => $admin_url ?: 'https://admin.mailchimp.com/campaigns/',
-				'status'      => $status ?: 'save',
-			];
+				'admin_url'   => '' !== $admin_url ? $admin_url : 'https://admin.mailchimp.com/campaigns/',
+				'status'      => '' !== $status ? $status : 'save',
+			);
 		}
 
 		if ( '' === $campaign_id ) {
@@ -678,7 +798,7 @@ class Mailchimp {
 				return new WP_Error(
 					'missing_email_html',
 					'Email HTML is not ready. Generate email content before sending to Mailchimp.',
-					[ 'status' => 400 ]
+					array( 'status' => 400 )
 				);
 			}
 
@@ -697,14 +817,202 @@ class Mailchimp {
 			return $send;
 		}
 
-		$admin_url = $admin_url ?: 'https://admin.mailchimp.com/campaigns/';
+		$admin_url = '' !== $admin_url ? $admin_url : 'https://admin.mailchimp.com/campaigns/';
 		self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'sending' );
 
-		return [
+		return array(
 			'campaign_id' => $campaign_id,
 			'admin_url'   => $admin_url,
 			'status'      => 'sending',
-		];
+		);
+	}
+
+	/**
+	 * Queue create-and-send for DELAYED_SEND_DELAY seconds later.
+	 *
+	 * Action Scheduler 4.x includes args in the unique key (hook + group +
+	 * post ID), so unique=true dedupes per campaign. Missing Action Scheduler
+	 * returns action_scheduler_unavailable; this does not send immediately.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ queued: bool, pending_send_at: int }|WP_Error
+	 */
+	public function queue_delayed_send( int $post_id ): array|WP_Error {
+		$ready = $this->assert_mailchimp_campaign_action( $post_id );
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$campaign_id = (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_ID, true );
+		$status      = (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_STATUS, true );
+		if ( '' !== $campaign_id && ! in_array( $status, array( '', 'save' ), true ) ) {
+			return new WP_Error(
+				'already_sent',
+				'This campaign was already sent or is no longer a Mailchimp draft. Unlink it first to create a new send.',
+				array( 'status' => 409 )
+			);
+		}
+
+		$existing = Campaign_Linkage::pending_send_at( $post_id );
+		if ( $existing > 0 ) {
+			Campaign_Linkage::clear_delayed_send_cancelled( $post_id );
+			return array(
+				'queued'          => true,
+				'pending_send_at' => $existing,
+			);
+		}
+
+		if ( ! function_exists( 'as_schedule_single_action' ) ) {
+			return new WP_Error(
+				'action_scheduler_unavailable',
+				'Action Scheduler is not available. The Mailchimp send was not queued.',
+				array( 'status' => 500 )
+			);
+		}
+
+		$timestamp = time() + self::DELAYED_SEND_DELAY;
+		$action_id = as_schedule_single_action(
+			$timestamp,
+			self::DELAYED_SEND_HOOK,
+			array( $post_id ),
+			self::DELAYED_SEND_GROUP,
+			true
+		);
+
+		if ( ! $action_id ) {
+			$next = function_exists( 'as_next_scheduled_action' )
+				? as_next_scheduled_action(
+					self::DELAYED_SEND_HOOK,
+					array( $post_id ),
+					self::DELAYED_SEND_GROUP
+				)
+				: false;
+			if ( is_numeric( $next ) && (int) $next > 0 ) {
+				Campaign_Linkage::set_pending_send_at( $post_id, (int) $next );
+				return array(
+					'queued'          => true,
+					'pending_send_at' => (int) $next,
+				);
+			}
+
+			return new WP_Error(
+				'send_already_scheduled',
+				'A Mailchimp send is already queued for this campaign.',
+				array( 'status' => 409 )
+			);
+		}
+
+		Campaign_Linkage::set_pending_send_at( $post_id, $timestamp );
+
+		return array(
+			'queued'          => true,
+			'pending_send_at' => $timestamp,
+		);
+	}
+
+	/**
+	 * Remove a queued Mailchimp send before it runs.
+	 *
+	 * @param int  $post_id         Campaign post ID.
+	 * @param bool $remember_cancel When true, write the cancelled-send marker.
+	 * @return array{ cancelled: bool, pending_send_at: int }|WP_Error
+	 */
+	public function cancel_delayed_send( int $post_id, bool $remember_cancel = true ): array|WP_Error {
+		$pending = Campaign_Linkage::pending_send_at( $post_id );
+		$next    = $this->next_delayed_send_action( $post_id );
+
+		if ( $pending <= 0 && false === $next ) {
+			return new WP_Error(
+				'no_pending_send',
+				'There is no queued Mailchimp send to cancel.',
+				array( 'status' => 409 )
+			);
+		}
+
+		// true means the Action Scheduler worker already claimed the job.
+		// Unscheduling does not abort that run.
+		if ( true !== $next && function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions(
+				self::DELAYED_SEND_HOOK,
+				array( $post_id ),
+				self::DELAYED_SEND_GROUP
+			);
+			$next = $this->next_delayed_send_action( $post_id );
+		}
+
+		if ( true === $next ) {
+			return new WP_Error(
+				'send_in_progress',
+				'This Mailchimp send is already in progress and cannot be cancelled.',
+				array( 'status' => 409 )
+			);
+		}
+
+		Campaign_Linkage::clear_pending_send( $post_id );
+		if ( $remember_cancel ) {
+			Campaign_Linkage::mark_delayed_send_cancelled( $post_id );
+		}
+
+		return array(
+			'cancelled'       => true,
+			'pending_send_at' => 0,
+		);
+	}
+
+	/**
+	 * Next matching delayed-send Action Scheduler result.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return int|true|false Timestamp when pending, true when running, false when none.
+	 */
+	private function next_delayed_send_action( int $post_id ): int|bool {
+		if ( ! function_exists( 'as_next_scheduled_action' ) ) {
+			return false;
+		}
+
+		return as_next_scheduled_action(
+			self::DELAYED_SEND_HOOK,
+			array( $post_id ),
+			self::DELAYED_SEND_GROUP
+		);
+	}
+
+	/**
+	 * Cancel a queued send if present, then create-and-send immediately.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
+	 */
+	public function send_immediately( int $post_id ): array|WP_Error {
+		$cancelled = $this->cancel_delayed_send( $post_id, false );
+		if ( is_wp_error( $cancelled ) && 'no_pending_send' !== $cancelled->get_error_code() ) {
+			return $cancelled;
+		}
+
+		return $this->create_and_send_campaign( $post_id, true );
+	}
+
+	/**
+	 * Action Scheduler callback for a queued Mailchimp send.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public function run_delayed_send( int $post_id ): void {
+		try {
+			$result = $this->create_and_send_campaign( $post_id, true );
+			if ( is_wp_error( $result ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- operator-visible send failure.
+				error_log(
+					sprintf(
+						'[prc-email-builder] Delayed Mailchimp send failed for post %d: %s',
+						$post_id,
+						$result->get_error_message()
+					)
+				);
+			}
+		} finally {
+			Campaign_Linkage::clear_pending_send( $post_id );
+		}
 	}
 
 	/**
@@ -764,7 +1072,7 @@ class Mailchimp {
 			return $client;
 		}
 
-		$count = max( 1, min( 1000, $count ) );
+		$count  = max( 1, min( 1000, $count ) );
 		$fields = 'urls_clicked.url,urls_clicked.total_clicks';
 
 		try {
@@ -796,11 +1104,11 @@ class Mailchimp {
 			$client->lists->setListMember(
 				$audience_id,
 				$hash,
-				[
+				array(
 					'email_address' => $email,
 					'status_if_new' => 'subscribed',
 					'status'        => 'subscribed',
-				]
+				)
 			);
 		} catch ( \Exception $e ) {
 			return $this->to_wp_error( $e, 'mailchimp_subscribe_error' );
@@ -848,16 +1156,16 @@ class Mailchimp {
 		$term_ids = wp_get_object_terms(
 			$post_id,
 			Post_Type::TAXONOMY,
-			[
+			array(
 				'fields' => 'ids',
-			]
+			)
 		);
 
 		if ( is_wp_error( $term_ids ) || empty( $term_ids ) ) {
-			return [
+			return array(
 				'from_name'  => $from_name,
 				'from_email' => $from_email,
-			];
+			);
 		}
 
 		$term_id         = (int) $term_ids[0];
@@ -871,17 +1179,17 @@ class Mailchimp {
 			$from_email = $list_from_email;
 		}
 
-		return [
+		return array(
 			'from_name'  => $from_name,
 			'from_email' => $from_email,
-		];
+		);
 	}
 
 	/**
 	 * Returns saved settings merged with defaults.
 	 */
 	public static function get_settings(): array {
-		$defaults = [
+		$defaults = array(
 			'mailchimp_api_key'    => '',
 			'from_name'            => '',
 			'from_email'           => '',
@@ -889,13 +1197,16 @@ class Mailchimp {
 			'track_clicks'         => true,
 			'reply_to'             => '',
 			'mandrill_subaccount'  => '',
-			'mandrill_tags'        => [ 'prc-newsletter' ],
+			'mandrill_tags'        => array( 'prc-newsletter' ),
 			'auto_send_on_publish' => true,
-		];
-		$saved = get_option( self::SETTINGS_KEY, [] );
+		);
+		$saved    = get_option( self::SETTINGS_KEY, array() );
 		return wp_parse_args( $saved, $defaults );
 	}
 
+	/**
+	 * Whether publishing a campaign should create and send the Mailchimp campaign.
+	 */
 	public static function is_auto_send_on_publish_enabled(): bool {
 		return (bool) self::get_settings()['auto_send_on_publish'];
 	}
@@ -903,13 +1214,16 @@ class Mailchimp {
 	/**
 	 * Persists settings. Strips the API key from the array before saving if
 	 * the constant is defined — the constant is always authoritative.
+	 *
+	 * @param array<string, mixed> $settings Settings payload from the REST settings form.
 	 */
 	public static function save_settings( array $settings ): void {
-		$tags = $settings['mandrill_tags'] ?? [];
+		$tags = $settings['mandrill_tags'] ?? array();
 		if ( is_string( $tags ) ) {
-			$tags = preg_split( '/[\s,]+/', $tags, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+			$split = preg_split( '/[\s,]+/', $tags, -1, PREG_SPLIT_NO_EMPTY );
+			$tags  = false !== $split ? $split : array();
 		}
-		$tags = is_array( $tags ) ? $tags : [];
+		$tags = is_array( $tags ) ? $tags : array();
 		$tags = array_values(
 			array_filter(
 				array_map( 'sanitize_key', $tags ),
@@ -917,7 +1231,7 @@ class Mailchimp {
 			)
 		);
 
-		$sanitized = [
+		$sanitized = array(
 			'mailchimp_api_key'    => defined( self::API_KEY_CONSTANT ) ? '' : sanitize_text_field( $settings['mailchimp_api_key'] ?? '' ),
 			'from_name'            => sanitize_text_field( $settings['from_name'] ?? '' ),
 			'from_email'           => sanitize_email( $settings['from_email'] ?? '' ),
@@ -925,14 +1239,14 @@ class Mailchimp {
 			'track_clicks'         => filter_var( $settings['track_clicks'] ?? true, FILTER_VALIDATE_BOOLEAN ),
 			'reply_to'             => sanitize_email( $settings['reply_to'] ?? '' ),
 			'mandrill_subaccount'  => sanitize_text_field( $settings['mandrill_subaccount'] ?? '' ),
-			'mandrill_tags'        => $tags ?: [ 'prc-newsletter' ],
+			'mandrill_tags'        => ! empty( $tags ) ? $tags : array( 'prc-newsletter' ),
 			'auto_send_on_publish' => filter_var(
 				array_key_exists( 'auto_send_on_publish', $settings )
 					? $settings['auto_send_on_publish']
 					: self::get_settings()['auto_send_on_publish'],
 				FILTER_VALIDATE_BOOLEAN
 			),
-		];
+		);
 		update_option( self::SETTINGS_KEY, $sanitized, false );
 		self::invalidate_mailchimp_caches();
 	}
@@ -990,11 +1304,11 @@ class Mailchimp {
 		// Always union audiences keys with the durable registry. The registry
 		// is a superset (segment/list-total IDs may be absent from audiences),
 		// so preferring a warm audiences transient alone would skip those IDs.
-		$audience_ids = [];
+		$audience_ids = array();
 		if ( is_array( $audiences ) ) {
 			$audience_ids = array_keys( $audiences );
 		}
-		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, [] );
+		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, array() );
 		if ( is_array( $stored ) ) {
 			$audience_ids = array_unique( array_merge( $audience_ids, $stored ) );
 		}
@@ -1009,7 +1323,7 @@ class Mailchimp {
 		}
 		delete_option( self::CACHED_AUDIENCE_IDS_OPTION );
 
-		$segment_count_keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, [] );
+		$segment_count_keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, array() );
 		if ( is_array( $segment_count_keys ) ) {
 			foreach ( array_keys( $segment_count_keys ) as $key ) {
 				delete_transient( (string) $key );
@@ -1019,11 +1333,11 @@ class Mailchimp {
 
 		// Belt-and-suspenders for installs that persist transients in options.
 		self::delete_mailchimp_transients_by_prefix(
-			[
+			array(
 				self::SEGMENTS_TRANSIENT_PREFIX,
 				self::LIST_TOTAL_TRANSIENT_PREFIX,
 				self::SEGMENT_COUNT_TRANSIENT_PREFIX,
-			]
+			)
 		);
 	}
 
@@ -1061,7 +1375,7 @@ class Mailchimp {
 				if ( self::cache_generation() !== $generation ) {
 					return false;
 				}
-				$rollback_keys = [];
+				$rollback_keys = array();
 				$writer( $rollback_keys );
 				if ( self::cache_generation() !== $generation ) {
 					foreach ( $rollback_keys as $key ) {
@@ -1086,7 +1400,7 @@ class Mailchimp {
 		}
 		self::with_registry_lock(
 			static function () use ( $audience_id ): void {
-				self::merge_cached_audience_ids_under_lock( [ $audience_id ] );
+				self::merge_cached_audience_ids_under_lock( array( $audience_id ) );
 			}
 		);
 	}
@@ -1118,13 +1432,13 @@ class Mailchimp {
 				)
 			)
 		);
-		if ( [] === $incoming ) {
+		if ( array() === $incoming ) {
 			return;
 		}
 
-		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, [] );
+		$stored = get_option( self::CACHED_AUDIENCE_IDS_OPTION, array() );
 		if ( ! is_array( $stored ) ) {
-			$stored = [];
+			$stored = array();
 		}
 		$merged = array_values(
 			array_unique(
@@ -1165,9 +1479,9 @@ class Mailchimp {
 		if ( '' === $key ) {
 			return;
 		}
-		$keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, [] );
+		$keys = get_option( self::SEGMENT_COUNT_KEYS_OPTION, array() );
 		if ( ! is_array( $keys ) ) {
-			$keys = [];
+			$keys = array();
 		}
 		if ( isset( $keys[ $key ] ) ) {
 			return;
@@ -1251,6 +1565,8 @@ class Mailchimp {
 	 * request — not on ordinary updates of an already-published campaign.
 	 *
 	 * @hook rest_after_insert_{post_type}
+	 *
+	 * @param \WP_Post $post Campaign post after REST insert/update.
 	 */
 	public function on_rest_publish( \WP_Post $post ): void {
 		if ( ! isset( $this->pending_publish_dispatch[ $post->ID ] ) ) {
@@ -1321,16 +1637,23 @@ class Mailchimp {
 		$this->dispatch_auto_send( $post->ID, 'scheduled post' );
 	}
 
+	/**
+	 * Create and queue a delayed Mailchimp send when auto-send is enabled.
+	 *
+	 * @param int    $post_id     Campaign post ID.
+	 * @param string $log_context Label for error_log (post vs scheduled post).
+	 */
 	private function dispatch_auto_send( int $post_id, string $log_context ): void {
 		if ( ! self::is_auto_send_on_publish_enabled() ) {
 			return;
 		}
 
-		$result = $this->create_and_send_campaign( $post_id );
+		$result = $this->queue_delayed_send( $post_id );
 		if ( is_wp_error( $result ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- operator-visible send failure.
 			error_log(
 				sprintf(
-					'[prc-email-builder] Mailchimp create-and-send failed for %s %d: %s',
+					'[prc-email-builder] Mailchimp delayed send queue failed for %s %d: %s',
 					$log_context,
 					$post_id,
 					$result->get_error_message()
@@ -1353,17 +1676,20 @@ class Mailchimp {
 	 * @return array{list_id: string, segment_opts?: array{saved_segment_id: int}|\stdClass}
 	 */
 	private static function build_recipients( string $audience_id, int $segment_id, bool $clear_empty_segment = false ): array {
-		$recipients = [ 'list_id' => $audience_id ];
+		$recipients = array( 'list_id' => $audience_id );
 		if ( $segment_id > 0 ) {
-			$recipients['segment_opts'] = [ 'saved_segment_id' => $segment_id ];
+			$recipients['segment_opts'] = array( 'saved_segment_id' => $segment_id );
 		} elseif ( $clear_empty_segment ) {
 			// Empty JSON object (not [] / omission) so PATCH clears saved segments.
-			$recipients['segment_opts'] = (object) [];
+			$recipients['segment_opts'] = (object) array();
 		}
 
 		return $recipients;
 	}
 
+	/**
+	 * API key from the platform constant, or the stored settings fallback.
+	 */
 	private function get_api_key(): string {
 		if ( defined( self::API_KEY_CONSTANT ) ) {
 			return (string) constant( self::API_KEY_CONSTANT );
@@ -1394,10 +1720,12 @@ class Mailchimp {
 		}
 
 		$client = new ApiClient();
-		$client->setConfig( [
-			'apiKey' => $api_key,
-			'server' => substr( $api_key, strrpos( $api_key, '-' ) + 1 ),
-		] );
+		$client->setConfig(
+			array(
+				'apiKey' => $api_key,
+				'server' => substr( $api_key, strrpos( $api_key, '-' ) + 1 ),
+			) 
+		);
 
 		return $client;
 	}
@@ -1442,6 +1770,6 @@ class Mailchimp {
 			}
 		}
 
-		return new WP_Error( $code, $detail, [ 'status' => $status ] );
+		return new WP_Error( $code, $detail, array( 'status' => $status ) );
 	}
 }

@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Send-window resolution + due-date math for scheduled email automations.
  *
@@ -12,6 +11,8 @@ declare(strict_types=1);
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -32,11 +33,11 @@ class Automation_Window {
 	 * Hard-coded fallback used when the site default option is unset/invalid.
 	 * 9:00 AM US Eastern matches the plan's default.
 	 */
-	const HARD_DEFAULT = [
+	const HARD_DEFAULT = array(
 		'timezone' => 'America/New_York',
 		'hour'     => 9,
 		'minute'   => 0,
-	];
+	);
 
 	/**
 	 * The site-wide default send window, always a valid window array.
@@ -44,8 +45,8 @@ class Automation_Window {
 	 * @return array{timezone:string, hour:int, minute:int}
 	 */
 	public static function get_site_default(): array {
-		$saved  = get_option( self::SITE_DEFAULT_OPTION, [] );
-		$window = self::sanitize( is_array( $saved ) ? $saved : [] );
+		$saved  = get_option( self::SITE_DEFAULT_OPTION, array() );
+		$window = self::sanitize( is_array( $saved ) ? $saved : array() );
 
 		return $window ?? self::HARD_DEFAULT;
 	}
@@ -92,11 +93,11 @@ class Automation_Window {
 			return null;
 		}
 
-		return [
+		return array(
 			'timezone' => $timezone,
 			'hour'     => $hour,
 			'minute'   => $minute,
-		];
+		);
 	}
 
 	/**
@@ -129,8 +130,8 @@ class Automation_Window {
 	 * for storage. Two recipients enrolled hours apart on the same local day
 	 * therefore land on the identical due_at.
 	 *
-	 * @param string                                    $anchor_utc UTC datetime ('Y-m-d H:i:s') to count days from.
-	 * @param int                                       $delay_days Calendar days to add (>= 0).
+	 * @param string                                       $anchor_utc UTC datetime ('Y-m-d H:i:s') to count days from.
+	 * @param int                                          $delay_days Calendar days to add (>= 0).
 	 * @param array{timezone:string, hour:int, minute:int} $window  Resolved send window.
 	 * @return string UTC datetime string ('Y-m-d H:i:s').
 	 */
@@ -158,6 +159,8 @@ class Automation_Window {
 
 	/**
 	 * Whether a string is a valid PHP timezone identifier.
+	 *
+	 * @param string $timezone Timezone.
 	 */
 	public static function is_valid_timezone( string $timezone ): bool {
 		if ( '' === $timezone ) {

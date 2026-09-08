@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Newsletter list and campaign permalink routing.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -23,6 +24,11 @@ class Rewrites {
 	const REWRITE_FLUSH_OPTION  = 'prc_email_builder_rewrite_version';
 	const REWRITE_FLUSH_VERSION = 1;
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( Loader $loader ) {
 		$loader->add_filter( 'post_type_link', $this, 'filter_campaign_permalink', 10, 2 );
 		$loader->add_action( 'template_redirect', $this, 'redirect_canonical_list_segment' );
@@ -34,8 +40,8 @@ class Rewrites {
 	/**
 	 * Replace the %prc_newsletter_list% rewrite placeholder with the assigned term slug.
 	 *
-	 * @param string  $post_link Campaign permalink with placeholder.
-	 * @param WP_Post $post      Campaign post.
+	 * @param string   $post_link Campaign permalink with placeholder.
+	 * @param \WP_Post $post      Campaign post.
 	 * @return string
 	 */
 	public function filter_campaign_permalink( string $post_link, \WP_Post $post ): string {
@@ -125,7 +131,7 @@ class Rewrites {
 			return;
 		}
 
-		flush_rewrite_rules( false );
+		flush_rewrite_rules( false ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.flush_rewrite_rules_flush_rewrite_rules -- one-time versioned flush after permalink structure changes.
 		update_option( self::REWRITE_FLUSH_OPTION, (string) self::REWRITE_FLUSH_VERSION, false );
 	}
 
@@ -139,9 +145,9 @@ class Rewrites {
 		$terms = wp_get_object_terms(
 			$post_id,
 			Post_Type::TAXONOMY,
-			[
+			array(
 				'fields' => 'all',
-			]
+			)
 		);
 
 		if ( ! is_wp_error( $terms ) && ! empty( $terms ) && isset( $terms[0]->slug ) ) {

@@ -1,8 +1,8 @@
 <?php
-declare(strict_types=1);
 /**
  * WP-CLI commands for scheduled email automations (ops tooling).
  *
+ * Usage:
  *   wp prc email automations list [--status=<status>] [--limit=<n>]
  *   wp prc email automations cancel <enrollment-id>
  *   wp prc email automations run-due [--limit=<n>]
@@ -10,11 +10,16 @@ declare(strict_types=1);
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
 use WP_CLI;
 use WP_CLI\Utils;
 
+/**
+ * CLI Automations class.
+ */
 class CLI_Automations {
 
 	/**
@@ -40,7 +45,7 @@ class CLI_Automations {
 		$status = (string) Utils\get_flag_value( $assoc_args, 'status', '' );
 		$limit  = (int) Utils\get_flag_value( $assoc_args, 'limit', 50 );
 
-		if ( '' !== $status && ! in_array( $status, [ 'active', 'completed', 'cancelled' ], true ) ) {
+		if ( '' !== $status && ! in_array( $status, array( 'active', 'completed', 'cancelled' ), true ) ) {
 			WP_CLI::error( 'Invalid --status. Use active, completed, or cancelled.' );
 		}
 
@@ -51,23 +56,23 @@ class CLI_Automations {
 		}
 
 		$table = array_map(
-			static fn( array $row ): array => [
-				'id'          => $row['id'],
-				'trigger'     => $row['trigger_post_id'],
-				'recipient'   => $row['recipient_email'],
-				'status'      => $row['status'],
-				'step'        => $row['current_step'],
-				'follow_up'   => $row['follow_up_post_id'],
-				'due_at'      => $row['due_at'] ?? '',
-				'attempts'    => $row['attempts'],
-			],
+			static fn( array $row ): array => array(
+				'id'        => $row['id'],
+				'trigger'   => $row['trigger_post_id'],
+				'recipient' => $row['recipient_email'],
+				'status'    => $row['status'],
+				'step'      => $row['current_step'],
+				'follow_up' => $row['follow_up_post_id'],
+				'due_at'    => $row['due_at'] ?? '',
+				'attempts'  => $row['attempts'],
+			),
 			$rows
 		);
 
 		Utils\format_items(
 			'table',
 			$table,
-			[ 'id', 'trigger', 'recipient', 'status', 'step', 'follow_up', 'due_at', 'attempts' ]
+			array( 'id', 'trigger', 'recipient', 'status', 'step', 'follow_up', 'due_at', 'attempts' )
 		);
 	}
 
@@ -120,13 +125,15 @@ class CLI_Automations {
 
 		$summary = Automation_Scheduler::process_due( $limit );
 
-		WP_CLI::line( sprintf(
-			'Due: %d | Groups: %d | Sent: %d | Failed: %d',
-			$summary['due'],
-			$summary['groups'],
-			$summary['sent'],
-			$summary['failed']
-		) );
+		WP_CLI::line(
+			sprintf(
+				'Due: %d | Groups: %d | Sent: %d | Failed: %d',
+				$summary['due'],
+				$summary['groups'],
+				$summary['sent'],
+				$summary['failed']
+			) 
+		);
 		WP_CLI::success( 'Dispatcher run complete.' );
 	}
 }

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email template wrapper.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -29,11 +30,12 @@ class Email_Template {
 	 * @return string Full DOCTYPE HTML email document.
 	 */
 	public static function wrap( string $content, int $post_id ): string {
-		$subject      = (string) ( get_post_meta( $post_id, 'prc_email_subject', true ) ?: get_the_title( $post_id ) );
+		$meta_subject = get_post_meta( $post_id, 'prc_email_subject', true );
+		$subject      = (string) ( is_string( $meta_subject ) && '' !== $meta_subject ? $meta_subject : get_the_title( $post_id ) );
 		$preview_text = (string) get_post_meta( $post_id, 'prc_email_preview_text', true );
 
-		$slug          = Template_Resolver::resolve( $post_id );
-		$template      = $slug ? Template_Registry::get( $slug ) : Template_Registry::default();
+		$slug     = Template_Resolver::resolve( $post_id );
+		$template = $slug ? Template_Registry::get( $slug ) : Template_Registry::default();
 
 		if ( ! $template ) {
 			// Pathological: no body templates registered at all.

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * HTML to Email Converter — fallback for unregistered blocks.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -27,6 +28,8 @@ class Html_To_Email_Converter {
 	const DEFAULT_COLOR       = '#333333';
 
 	/**
+	 * Convert.
+	 *
 	 * @param string $html Rendered block HTML.
 	 * @return string
 	 */
@@ -49,6 +52,8 @@ class Html_To_Email_Converter {
 	}
 
 	/**
+	 * Rewrite link colours.
+	 *
 	 * @param string $html HTML fragment.
 	 * @return string
 	 */

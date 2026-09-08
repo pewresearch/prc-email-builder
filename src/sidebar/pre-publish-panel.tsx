@@ -6,7 +6,12 @@ import { __ } from '@wordpress/i18n';
 
 import { InboxSubjectAI } from './inbox-subject-ai';
 import { EMAIL_SUBJECT_LOCK, parseEmailSubject } from './subject-readiness';
-import { isEmailPostType, useNewsletterMeta } from './use-newsletter-data';
+import {
+	config,
+	isCampaignPostType,
+	isEmailPostType,
+	useNewsletterMeta,
+} from './use-newsletter-data';
 
 function isHeaderPublishButtonTarget(event: Event): boolean {
 	const button = event.composedPath().find((node): node is Element => {
@@ -16,6 +21,25 @@ function isHeaderPublishButtonTarget(event: Event): boolean {
 		);
 	});
 	return !!button && !button.closest('.editor-post-publish-panel');
+}
+
+function getBlankSubjectNotice(postType: string | undefined): string {
+	if (!isCampaignPostType(postType)) {
+		return __(
+			'Add a subject line before publishing. Transactional emails cannot be sent without a subject.',
+			'prc-email-builder'
+		);
+	}
+	if (config.autoSendOnPublish) {
+		return __(
+			'Add a subject line before publishing. Campaigns queue a 10-minute Mailchimp send on publish.',
+			'prc-email-builder'
+		);
+	}
+	return __(
+		'Add a subject line before publishing. Campaigns do not send on publish. Create a Mailchimp draft from Campaign Setup after you publish.',
+		'prc-email-builder'
+	);
 }
 
 export function EmailSubjectPrePublishPanel() {
@@ -101,10 +125,7 @@ export function EmailSubjectPrePublishPanel() {
 		case 'blank':
 			statusNotice = (
 				<Notice status="error" isDismissible={false}>
-					{__(
-						'Add a subject line before publishing. Campaigns send on publish. Transactional emails cannot be sent without a subject.',
-						'prc-email-builder'
-					)}
+					{getBlankSubjectNotice(postType)}
 				</Notice>
 			);
 			break;

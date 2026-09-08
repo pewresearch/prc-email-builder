@@ -9,6 +9,8 @@
  *   string $preview_text    Preview / preheader text.
  *   string $view_online_url Website permalink for "View in browser" (campaign posts).
  *   string $accent_color    Optional hex accent from the campaign's newsletter list term.
+ *
+ * @package PRC\Platform\Email_Builder
  */
 
 use PRC\Platform\Email_Builder\Dark_Mode_Registry;

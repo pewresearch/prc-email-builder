@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Mandrill activity export helpers for audience backfill.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -141,7 +142,7 @@ class Mandrill_Activity_Export {
 		$response = wp_remote_get(
 			$result_url,
 			array(
-				'timeout'  => 120,
+				'timeout'  => 120, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Mandrill zip export is a long-running job.
 				'stream'   => true,
 				'filename' => $zip_path,
 			)
@@ -282,8 +283,8 @@ class Mandrill_Activity_Export {
 	/**
 	 * Locate a CSV column index by case-insensitive header aliases.
 	 *
-	 * @param array<int, string>   $header  Header row cells.
-	 * @param array<int, string>   $aliases Candidate header names.
+	 * @param array<int, string> $header  Header row cells.
+	 * @param array<int, string> $aliases Candidate header names.
 	 */
 	public static function find_column_index( array $header, array $aliases ): ?int {
 		foreach ( $aliases as $alias ) {
@@ -311,6 +312,8 @@ class Mandrill_Activity_Export {
 
 	/**
 	 * Normalize a CSV header label for alias matching.
+	 *
+	 * @param string $label Label.
 	 */
 	private static function normalize_header_label( string $label ): string {
 		$label = trim( $label );
@@ -342,6 +345,9 @@ class Mandrill_Activity_Export {
 
 	/**
 	 * Normalize a CLI date flag to Mandrill's UTC datetime format.
+	 *
+	 * @param string $raw Raw.
+	 * @param bool   $end_of_day End of day.
 	 */
 	public static function normalize_export_datetime( string $raw, bool $end_of_day = false ): string|WP_Error {
 		$raw = trim( $raw );
@@ -374,7 +380,7 @@ class Mandrill_Activity_Export {
 		$response = wp_remote_post(
 			self::API_URL . $endpoint . '.json',
 			array(
-				'timeout' => 60,
+				'timeout' => 60, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- Mandrill export API can exceed the default 5s.
 				'headers' => array( 'Content-Type' => 'application/json' ),
 				'body'    => wp_json_encode( $payload ),
 			)

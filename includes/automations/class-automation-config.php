@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Authoring layer for scheduled email automations.
  *
@@ -9,6 +8,8 @@ declare(strict_types=1);
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -36,6 +37,11 @@ class Automation_Config {
 	 */
 	const MAX_DELAY_DAYS = 365;
 
+	/**
+	 * Construct.
+	 *
+	 * @param Loader $loader Loader.
+	 */
 	public function __construct( ?Loader $loader = null ) {
 		if ( null === $loader ) {
 			return;
@@ -57,21 +63,21 @@ class Automation_Config {
 		register_post_meta(
 			Post_Type::TRANSACTIONAL_POST_TYPE,
 			self::META_KEY,
-			[
+			array(
 				'single'            => true,
 				'type'              => 'object',
 				'description'       => 'Scheduled follow-up automation config (send window + ordered steps) for a dynamic system email.',
 				'revisions_enabled' => true,
-				'default'           => [
+				'default'           => array(
 					'send_window' => null,
-					'steps'       => [],
-				],
-				'sanitize_callback' => [ __CLASS__, 'sanitize' ],
+					'steps'       => array(),
+				),
+				'sanitize_callback' => array( __CLASS__, 'sanitize' ),
 				'auth_callback'     => fn() => current_user_can( 'edit_posts' ),
-				'show_in_rest'      => [
+				'show_in_rest'      => array(
 					'schema' => self::rest_schema(),
-				],
-			]
+				),
+			)
 		);
 	}
 
@@ -81,35 +87,46 @@ class Automation_Config {
 	 * @return array<string, mixed>
 	 */
 	public static function rest_schema(): array {
-		$window_schema = [
-			'type'                 => [ 'object', 'null' ],
+		$window_schema = array(
+			'type'                 => array( 'object', 'null' ),
 			'additionalProperties' => false,
-			'properties'           => [
-				'timezone' => [ 'type' => 'string' ],
-				'hour'     => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 23 ],
-				'minute'   => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 59 ],
-			],
-		];
+			'properties'           => array(
+				'timezone' => array( 'type' => 'string' ),
+				'hour'     => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 23,
+				),
+				'minute'   => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 59,
+				),
+			),
+		);
 
-		return [
+		return array(
 			'type'                 => 'object',
 			'additionalProperties' => false,
-			'properties'           => [
+			'properties'           => array(
 				'send_window' => $window_schema,
-				'steps'       => [
+				'steps'       => array(
 					'type'  => 'array',
-					'items' => [
+					'items' => array(
 						'type'                 => 'object',
 						'additionalProperties' => false,
-						'properties'           => [
-							'follow_up_post_id' => [ 'type' => 'integer' ],
-							'delay_days'        => [ 'type' => 'integer', 'minimum' => 0 ],
+						'properties'           => array(
+							'follow_up_post_id' => array( 'type' => 'integer' ),
+							'delay_days'        => array(
+								'type'    => 'integer',
+								'minimum' => 0,
+							),
 							'send_window'       => $window_schema,
-						],
-					],
-				],
-			],
-		];
+						),
+					),
+				),
+			),
+		);
 	}
 
 	/**
@@ -121,16 +138,16 @@ class Automation_Config {
 	public static function sanitize( mixed $raw ): array {
 		if ( is_string( $raw ) ) {
 			$decoded = json_decode( $raw, true );
-			$raw     = is_array( $decoded ) ? $decoded : [];
+			$raw     = is_array( $decoded ) ? $decoded : array();
 		}
 		if ( ! is_array( $raw ) ) {
-			$raw = [];
+			$raw = array();
 		}
 
 		$send_window = Automation_Window::sanitize( $raw['send_window'] ?? null );
 
-		$steps     = [];
-		$raw_steps = isset( $raw['steps'] ) && is_array( $raw['steps'] ) ? $raw['steps'] : [];
+		$steps     = array();
+		$raw_steps = isset( $raw['steps'] ) && is_array( $raw['steps'] ) ? $raw['steps'] : array();
 		foreach ( $raw_steps as $raw_step ) {
 			if ( ! is_array( $raw_step ) ) {
 				continue;
@@ -144,10 +161,10 @@ class Automation_Config {
 			$delay_days = isset( $raw_step['delay_days'] ) ? (int) $raw_step['delay_days'] : 0;
 			$delay_days = max( 0, min( self::MAX_DELAY_DAYS, $delay_days ) );
 
-			$step = [
+			$step = array(
 				'follow_up_post_id' => $follow_up_post_id,
 				'delay_days'        => $delay_days,
-			];
+			);
 
 			$step_window = Automation_Window::sanitize( $raw_step['send_window'] ?? null );
 			if ( null !== $step_window ) {
@@ -161,10 +178,10 @@ class Automation_Config {
 			}
 		}
 
-		return [
+		return array(
 			'send_window' => $send_window,
 			'steps'       => $steps,
-		];
+		);
 	}
 
 	/**
@@ -175,7 +192,7 @@ class Automation_Config {
 	 */
 	public static function get( int $post_id ): array {
 		$raw = get_post_meta( $post_id, self::META_KEY, true );
-		return self::sanitize( is_array( $raw ) ? $raw : [] );
+		return self::sanitize( is_array( $raw ) ? $raw : array() );
 	}
 
 	/**
@@ -207,24 +224,26 @@ class Automation_Config {
 	}
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook rest_api_init
 	 */
 	public function register_routes(): void {
 		register_rest_route(
 			REST_API::NAMESPACE,
 			'/automation-templates',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'list_follow_up_templates' ],
+				'callback'            => array( $this, 'list_follow_up_templates' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
-				'args'                => [
-					'exclude' => [
+				'args'                => array(
+					'exclude' => array(
 						'type'              => 'integer',
 						'default'           => 0,
 						'sanitize_callback' => 'absint',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 	}
 
@@ -238,7 +257,7 @@ class Automation_Config {
 		$exclude = (int) $request->get_param( 'exclude' );
 
 		$query = new \WP_Query(
-			[
+			array(
 				'post_type'              => Post_Type::TRANSACTIONAL_POST_TYPE,
 				'post_status'            => 'publish',
 				'posts_per_page'         => 200,
@@ -246,19 +265,22 @@ class Automation_Config {
 				'order'                  => 'ASC',
 				'no_found_rows'          => true,
 				'update_post_term_cache' => false,
-				'post__not_in'           => $exclude > 0 ? [ $exclude ] : [],
-				'meta_query'             => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+				'post__not_in'           => $exclude > 0 ? array( $exclude ) : array(),
+				'meta_query'             => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 					Post_Type::dynamic_delivery_mode_meta_query(),
-				],
-			]
+				),
+			)
 		);
 
 		$templates = array_map(
-			static fn( WP_Post $post ): array => [
-				'id'    => $post->ID,
-				'title' => get_the_title( $post ) ?: sprintf( '#%d', $post->ID ),
-				'key'   => (string) $post->post_name,
-			],
+			static function ( WP_Post $post ): array {
+				$title = get_the_title( $post );
+				return array(
+					'id'    => $post->ID,
+					'title' => '' !== $title ? $title : sprintf( '#%d', $post->ID ),
+					'key'   => (string) $post->post_name,
+				);
+			},
 			$query->posts
 		);
 

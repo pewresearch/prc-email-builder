@@ -13,8 +13,8 @@
 use PRC\Platform\Email_Builder\Public_Email_Preview;
 use PRC\Platform\Email_Builder\REST_API;
 
-$post_id = isset( $block->context['postId'] ) ? (int) $block->context['postId'] : 0;
-if ( $post_id <= 0 || true !== Public_Email_Preview::validate_previewable( $post_id ) ) {
+$campaign_post_id = isset( $block->context['postId'] ) ? (int) $block->context['postId'] : 0;
+if ( $campaign_post_id <= 0 || true !== Public_Email_Preview::validate_previewable( $campaign_post_id ) ) {
 	return;
 }
 
@@ -29,8 +29,8 @@ $link_text    = isset( $attributes['linkText'] ) && is_string( $attributes['link
 $frame_width  = max( 240, min( 480, $frame_width ) );
 $frame_height = max( 320, min( 900, $frame_height ) );
 
-$preview_url = rest_url( REST_API::NAMESPACE . '/campaign-preview/' . $post_id );
-$permalink   = get_permalink( $post_id );
+$preview_url = rest_url( REST_API::NAMESPACE . '/campaign-preview/' . $campaign_post_id );
+$permalink   = get_permalink( $campaign_post_id );
 $link_url    = $permalink;
 if (
 	isset( $attributes['linkUrl'] )
@@ -42,11 +42,11 @@ if (
 		$link_url = $custom_link_url;
 	}
 }
-$title       = get_the_title( $post_id );
-$iframe_title = sprintf(
+$campaign_title = get_the_title( $campaign_post_id );
+$iframe_title   = sprintf(
 	/* translators: %s: campaign title */
 	__( 'Email preview: %s', 'prc-email-builder' ),
-	$title ? $title : __( 'Newsletter', 'prc-email-builder' )
+	$campaign_title ? $campaign_title : __( 'Newsletter', 'prc-email-builder' )
 );
 
 $classes = array( 'prc-email-builder-campaign-email-preview' );

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Durable recipient log for keyed dynamic system emails.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -29,6 +30,8 @@ class System_Email_Send_Log {
 	public const BACKFILL_OPTION = 'prc_email_dynamic_active_status_backfilled';
 
 	/**
+	 * Construct.
+	 *
 	 * @param Loader|null $loader Plugin loader; when null hooks are not registered (tests).
 	 */
 	public function __construct( ?Loader $loader = null ) {
@@ -54,7 +57,7 @@ class System_Email_Send_Log {
 	 * @param string               $to_email Recipient address.
 	 * @param array<string, mixed> $context  Merge context (unused; reserved for future enrichment).
 	 */
-	public function record_send( int $post_id, string $to_email, array $context = [] ): void {
+	public function record_send( int $post_id, string $to_email, array $context = array() ): void {
 		unset( $context );
 
 		$system_email_key = (string) get_post_field( 'post_name', $post_id );
@@ -77,6 +80,8 @@ class System_Email_Send_Log {
 
 	/**
 	 * Mark a dynamic template as Active after its first successful send.
+	 *
+	 * @param int $post_id Post id.
 	 */
 	public static function mark_active( int $post_id ): void {
 		if ( $post_id <= 0 ) {
@@ -114,7 +119,7 @@ class System_Email_Send_Log {
 		$post_ids = $wpdb->get_col( "SELECT DISTINCT post_id FROM {$table} WHERE post_id > 0" );
 
 		if ( ! is_array( $post_ids ) ) {
-			$post_ids = [];
+			$post_ids = array();
 		}
 
 		foreach ( $post_ids as $post_id ) {

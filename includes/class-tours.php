@@ -107,7 +107,7 @@ class Tours {
 				array(
 					'id'                       => 'email-send',
 					'title'                    => __( 'Campaign Setup', 'prc-email-builder' ),
-					'description'              => __( 'Audience and segment live in Campaign Setup. Review them here. Do not send from this tour.', 'prc-email-builder' ),
+					'description'              => __( 'Audience and segment live in Campaign Setup. Create Mailchimp draft does not send. Send now queues a 10-minute send you can cancel. Do not send from this tour.', 'prc-email-builder' ),
 					'selector'                 => '[data-prc-tour="email-send"], button[aria-label="Campaign Setup"]',
 					'side'                     => 'left',
 					'disableActiveInteraction' => true,
@@ -116,7 +116,7 @@ class Tours {
 				array(
 					'id'                       => 'email-publish',
 					'title'                    => __( 'Publish can send', 'prc-email-builder' ),
-					'description'              => __( 'Publishing can send the campaign automatically when that setting is on. Do not click Publish until you are ready.', 'prc-email-builder' ),
+					'description'              => __( 'Publishing queues a Mailchimp send when that setting is on. WordPress waits 10 minutes so you can cancel. Do not click Publish until you are ready.', 'prc-email-builder' ),
 					'selector'                 => '.editor-post-publish-button__button, .editor-post-publish-panel',
 					'side'                     => 'bottom',
 					'disableActiveInteraction' => true,

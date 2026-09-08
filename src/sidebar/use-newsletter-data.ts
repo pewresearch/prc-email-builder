@@ -59,6 +59,7 @@ export const config: {
 	transactionalPatternCategorySlug?: string;
 	nonce: string;
 	autoSendOnPublish: boolean;
+	delayedSendSeconds: number;
 	defaults?: {
 		from_name: string;
 		from_email: string;
@@ -66,6 +67,10 @@ export const config: {
 } = {
 	...localizedConfig,
 	autoSendOnPublish: localizedConfig.autoSendOnPublish ?? true,
+	delayedSendSeconds:
+		typeof localizedConfig.delayedSendSeconds === 'number'
+			? localizedConfig.delayedSendSeconds
+			: 600,
 };
 
 export function isEmailPostType(postType: string | undefined): boolean {
@@ -166,6 +171,17 @@ export function useNewsletterMeta() {
 		meta?.prc_email_mailchimp_campaign_admin_url ?? '';
 	const campaignStatus: string =
 		meta?.prc_email_mailchimp_campaign_status ?? '';
+	const pendingSendAtRaw = meta?.prc_email_mailchimp_pending_send_at;
+	const pendingSendAtParsed =
+		typeof pendingSendAtRaw === 'number'
+			? pendingSendAtRaw
+			: parseInt(String(pendingSendAtRaw ?? ''), 10);
+	const pendingSendAt =
+		Number.isFinite(pendingSendAtParsed) && pendingSendAtParsed > 0
+			? pendingSendAtParsed
+			: 0;
+	const cancelledDelayedSend =
+		String(meta?.prc_email_mailchimp_delayed_send_cancelled ?? '') === '1';
 	const audienceOptionKey: string = meta?.prc_email_audience_option_key ?? '';
 	const mandrillSendStatus: string =
 		meta?.prc_email_mandrill_send_status ?? '';
@@ -271,6 +287,8 @@ export function useNewsletterMeta() {
 		campaignId,
 		campaignAdminUrl,
 		campaignStatus,
+		pendingSendAt,
+		cancelledDelayedSend,
 		audienceOptionKey,
 		mandrillSendStatus,
 		mandrillSendSummary,
@@ -451,133 +469,7 @@ export function useTransformStatus(postId: number) {
 	};
 }
 
-const MAILCHIMP_SYNC_POLL_MS = 3000;
-const MAILCHIMP_SYNC_MAX_ATTEMPTS = 20;
-
-/**
- * Poll server post meta for a Mailchimp campaign written asynchronously
- * after publish (see Mailchimp::on_rest_publish).
- *
- * Copies campaign_id, admin_url, and status together. Does not apply a
- * draft (`save` / empty) snapshot into the editor until send leaves that
- * state — otherwise the sidebar shows send-recovery after a successful
- * auto-send whose ID arrived before status.
- *
- * @param postId     Newsletter post ID.
- * @param shouldSync When true, poll until send meta is settled in the editor.
- */
-export function useSyncMailchimpCampaignMeta(
-	postId: number,
-	shouldSync: boolean
-): { syncTimedOut: boolean } {
-	const [syncTimedOut, setSyncTimedOut] = useState(false);
-	const postType = useSelect(
-		(select) => select(editorStore).getCurrentPostType(),
-		[]
-	);
-	const { editPost } = useDispatch(editorStore);
-
-	useEffect(() => {
-		if (!shouldSync || !postId || !postType) {
-			// Keep any prior timeout so unpublishing a timed-out campaign does
-			// not hide the Mailchimp failure notice. It resets when a new poll
-			// cycle starts below (i.e. on republish).
-			return undefined;
-		}
-
-		let cancelled = false;
-		let attempts = 0;
-		let timer: ReturnType<typeof setInterval> | undefined;
-
-		const stopPolling = () => {
-			if (timer) {
-				clearInterval(timer);
-				timer = undefined;
-			}
-		};
-
-		const applyCampaignMeta = (draft: {
-			id: string;
-			status: string;
-			adminUrl: string;
-		}) => {
-			editPost({
-				meta: {
-					prc_email_mailchimp_campaign_id: draft.id,
-					prc_email_mailchimp_campaign_status: draft.status,
-					...(draft.adminUrl
-						? {
-								prc_email_mailchimp_campaign_admin_url:
-									draft.adminUrl,
-							}
-						: {}),
-				},
-			});
-		};
-
-		const sync = () => {
-			if (cancelled) {
-				return;
-			}
-			attempts += 1;
-			const isFinalAttempt = attempts > MAILCHIMP_SYNC_MAX_ATTEMPTS;
-			if (isFinalAttempt) {
-				stopPolling();
-			}
-
-			apiFetch<{ meta?: Record<string, string> }>({
-				path: `/wp/v2/${postType}/${postId}?context=edit&_fields=meta`,
-			})
-				.then((data) => {
-					if (cancelled) {
-						return;
-					}
-					const id = data.meta?.prc_email_mailchimp_campaign_id ?? '';
-					if (!id) {
-						if (isFinalAttempt) {
-							setSyncTimedOut(true);
-						}
-						return;
-					}
-					const status =
-						data.meta?.prc_email_mailchimp_campaign_status ?? '';
-					const adminUrl =
-						data.meta?.prc_email_mailchimp_campaign_admin_url ?? '';
-					if (!status || status === 'save') {
-						// Never apply a save/empty snapshot: that would set
-						// campaignId, stop shouldSync, and cancel in-flight
-						// polls that may already carry sending/sent.
-						if (isFinalAttempt) {
-							setSyncTimedOut(true);
-						}
-						return;
-					}
-					stopPolling();
-					applyCampaignMeta({ id, status, adminUrl });
-				})
-				.catch(() => {
-					if (cancelled) {
-						return;
-					}
-					// Keep polling through transient REST errors until the
-					// final attempt, which must settle the timeout UI.
-					if (isFinalAttempt) {
-						setSyncTimedOut(true);
-					}
-				});
-		};
-
-		setSyncTimedOut(false);
-		sync();
-		timer = setInterval(sync, MAILCHIMP_SYNC_POLL_MS);
-		return () => {
-			cancelled = true;
-			stopPolling();
-		};
-	}, [postId, postType, shouldSync, editPost]);
-
-	return { syncTimedOut };
-}
+export { useSyncMailchimpCampaignMeta } from './use-sync-mailchimp-campaign-meta';
 
 const MANDRILL_SYNC_POLL_MS = 3000;
 const MANDRILL_SYNC_MAX_ATTEMPTS = 40;

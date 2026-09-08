@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Template resolver — finds the right PHP body template for a newsletter.
  *
  * @package    PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 

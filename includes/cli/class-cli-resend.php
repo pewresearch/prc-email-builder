@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * WP-CLI command for resuming / inspecting Mandrill system-email sends.
  *
@@ -11,11 +10,16 @@ declare(strict_types=1);
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
 use WP_CLI;
 use WP_CLI\Utils;
 
+/**
+ * CLI Resend class.
+ */
 class CLI_Resend {
 
 	const EMAIL_PROVIDER = 'email';
@@ -60,11 +64,13 @@ class CLI_Resend {
 
 		$post = get_post( $post_id );
 		if ( ! $post || ! Post_Type::is_transactional_post( $post ) ) {
-			WP_CLI::error( sprintf(
-				'Post %d does not exist or is not a "%s" post.',
-				$post_id,
-				Post_Type::TRANSACTIONAL_POST_TYPE
-			) );
+			WP_CLI::error(
+				sprintf(
+					'Post %d does not exist or is not a "%s" post.',
+					$post_id,
+					Post_Type::TRANSACTIONAL_POST_TYPE
+				) 
+			);
 		}
 
 		if ( 'mandrill' !== Post_Type::transactional_delivery_mode( $post ) ) {
@@ -84,10 +90,12 @@ class CLI_Resend {
 		}
 
 		if ( $sender->is_locked( $post_id ) ) {
-			WP_CLI::error( sprintf(
-				'A send is already in flight for post %d (fresh lock). Wait for it to finish or reset.',
-				$post_id
-			) );
+			WP_CLI::error(
+				sprintf(
+					'A send is already in flight for post %d (fresh lock). Wait for it to finish or reset.',
+					$post_id
+				) 
+			);
 		}
 
 		$html = $this->get_cached_html( $post_id );
@@ -103,21 +111,25 @@ class CLI_Resend {
 		}
 
 		$status = get_post_meta( $post_id, Mandrill_Sender::STATUS_META, true );
-		WP_CLI::line( sprintf(
-			'Batches: %d total, %d completed, %d skipped (already sent), %d failed this run.',
-			(int) ( $result['batches'] ?? 0 ),
-			(int) ( $result['completed_batches'] ?? 0 ),
-			(int) ( $result['skipped_batches'] ?? 0 ),
-			(int) ( $result['failed_batches'] ?? 0 )
-		) );
+		WP_CLI::line(
+			sprintf(
+				'Batches: %d total, %d completed, %d skipped (already sent), %d failed this run.',
+				(int) ( $result['batches'] ?? 0 ),
+				(int) ( $result['completed_batches'] ?? 0 ),
+				(int) ( $result['skipped_batches'] ?? 0 ),
+				(int) ( $result['failed_batches'] ?? 0 )
+			) 
+		);
 
 		if ( 'sent' === $status ) {
 			WP_CLI::success( sprintf( 'Post %d fully sent.', $post_id ) );
 		} elseif ( 'partial' === $status ) {
-			WP_CLI::warning( sprintf(
-				'Post %d partially sent. Re-run without --reset to resume the remaining batches.',
-				$post_id
-			) );
+			WP_CLI::warning(
+				sprintf(
+					'Post %d partially sent. Re-run without --reset to resume the remaining batches.',
+					$post_id
+				) 
+			);
 		} else {
 			WP_CLI::warning( sprintf( 'Post %d send status: %s.', $post_id, (string) $status ) );
 		}
@@ -134,14 +146,14 @@ class CLI_Resend {
 		$progress = $sender->get_progress( $post_id );
 		$summary  = get_post_meta( $post_id, Mandrill_Sender::SUMMARY_META, true );
 
-		$completed = count( (array) ( $progress['completed_batches'] ?? [] ) );
+		$completed = count( (array) ( $progress['completed_batches'] ?? array() ) );
 		$total     = (int) ( $progress['total_batches'] ?? 0 );
 
-		WP_CLI::line( sprintf( 'Status:     %s', $status ?: '(none)' ) );
+		WP_CLI::line( sprintf( 'Status:     %s', is_string( $status ) && '' !== $status ? $status : '(none)' ) );
 		WP_CLI::line( sprintf( 'Locked:     %s', $sender->is_locked( $post_id ) ? 'yes' : 'no' ) );
 		WP_CLI::line( sprintf( 'Batches:    %d / %d completed', $completed, $total ) );
 		WP_CLI::line( sprintf( 'Updated:    %s', $progress['updated_at'] ?? '(n/a)' ) );
-		WP_CLI::line( sprintf( 'Summary:    %s', $summary ?: '(none)' ) );
+		WP_CLI::line( sprintf( 'Summary:    %s', is_string( $summary ) && '' !== $summary ? $summary : '(none)' ) );
 	}
 
 	/**

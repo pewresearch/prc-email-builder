@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 /**
  * Per-resource atomic lock stored in the options table.
  *
@@ -14,6 +13,8 @@ declare(strict_types=1);
  * @package PRC\Platform\Email_Builder
  */
 
+declare(strict_types=1);
+
 namespace PRC\Platform\Email_Builder;
 
 /**
@@ -22,6 +23,8 @@ namespace PRC\Platform\Email_Builder;
 final class Option_Lock {
 
 	/**
+	 * Construct.
+	 *
 	 * @param string $option_prefix Prefix for the option_name row (e.g. prc_email_mandrill_lock_).
 	 * @param int    $ttl_seconds   Freshness window before a lock may be reclaimed.
 	 * @param string $token_prefix  Optional uniqid() prefix (e.g. report_).
@@ -73,11 +76,11 @@ final class Option_Lock {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$inserted = $wpdb->insert(
 				$wpdb->options,
-				[
+				array(
 					'option_name'  => $option_name,
 					'option_value' => $new_value,
 					'autoload'     => 'no',
-				]
+				)
 			);
 			if ( $inserted ) {
 				wp_cache_delete( $option_name, 'options' );
@@ -97,11 +100,11 @@ final class Option_Lock {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$reclaimed = $wpdb->update(
 			$wpdb->options,
-			[ 'option_value' => $new_value ],
-			[
+			array( 'option_value' => $new_value ),
+			array(
 				'option_name'  => $option_name,
 				'option_value' => $existing,
-			]
+			)
 		);
 
 		if ( $reclaimed ) {
@@ -150,11 +153,11 @@ final class Option_Lock {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->update(
 			$wpdb->options,
-			[ 'option_value' => $new_value ],
-			[
+			array( 'option_value' => $new_value ),
+			array(
 				'option_name'  => $option_name,
 				'option_value' => $current,
-			]
+			)
 		);
 		wp_cache_delete( $option_name, 'options' );
 
@@ -185,10 +188,10 @@ final class Option_Lock {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$wpdb->delete(
 			$wpdb->options,
-			[
+			array(
 				'option_name'  => $option_name,
 				'option_value' => $current,
-			]
+			)
 		);
 		wp_cache_delete( $option_name, 'options' );
 	}
@@ -203,7 +206,7 @@ final class Option_Lock {
 
 		$option_name = $this->option_name( $resource_id );
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->delete( $wpdb->options, [ 'option_name' => $option_name ] );
+		$wpdb->delete( $wpdb->options, array( 'option_name' => $option_name ) );
 		wp_cache_delete( $option_name, 'options' );
 	}
 

@@ -29,7 +29,9 @@ use function PRC\Platform\Wp_Admin_Dataview\plain_text;
  *  POST /prc-email-builder/v1/send                           — Mandrill bulk send (explicit, edit_post scoped)
  *  POST /prc-email-builder/v1/campaigns/update-draft         — Push post HTML/settings to existing Mailchimp draft
  *  POST /prc-email-builder/v1/campaigns/unlink               — Clear Mailchimp campaign linkage meta
- *  POST /prc-email-builder/v1/campaigns/create-draft         — Create and send a Mailchimp campaign (recovery)
+ *  POST /prc-email-builder/v1/campaigns/create-draft         — Create a Mailchimp draft (does not send)
+ *  POST /prc-email-builder/v1/campaigns/send                 — Queue a 10-minute Mailchimp send (or send immediately)
+ *  POST /prc-email-builder/v1/campaigns/cancel-delayed-send  — Cancel a queued Mailchimp send
  *  POST /prc-email-builder/v1/transactional/create-from-audience — Draft prc_email_txn targeting an audience option
  */
 class REST_API {
@@ -306,6 +308,45 @@ class REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'create_mailchimp_draft' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id' => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/campaigns/send',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'send_mailchimp_campaign' ),
+				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
+				'args'                => array(
+					'post_id'   => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+					'immediate' => array(
+						'required' => false,
+						'type'     => 'boolean',
+						'default'  => false,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/campaigns/cancel-delayed-send',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'cancel_delayed_mailchimp_send' ),
 				'permission_callback' => array( $this, 'send_newsletter_permission_check' ),
 				'args'                => array(
 					'post_id' => array(
@@ -1115,6 +1156,12 @@ class REST_API {
 			);
 		}
 
+		$mailchimp = new Mailchimp();
+		$cancelled = $mailchimp->cancel_delayed_send( $post_id );
+		if ( is_wp_error( $cancelled ) && 'no_pending_send' !== $cancelled->get_error_code() ) {
+			return $this->normalize_rest_error( $cancelled );
+		}
+
 		$cleared = Campaign_Linkage::clear( $post_id );
 
 		return rest_ensure_response(
@@ -1135,15 +1182,36 @@ class REST_API {
 	}
 
 	/**
-	 * Create and send a Mailchimp campaign for a published campaign newsletter.
+	 * Create a Mailchimp draft for a published campaign newsletter.
 	 *
-	 * Recovery path when auto-dispatch failed, or to retry send for a linked
-	 * draft (`save` status). Route path kept for backward compatibility.
+	 * Does not send. Linked posts return 409 already_linked.
 	 *
 	 * @param WP_REST_Request $request Request with post_id.
 	 */
 	public function create_mailchimp_draft( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
 		$post_id = (int) $request->get_param( 'post_id' );
+
+		$result = ( new Mailchimp() )->create_linked_campaign_draft( $post_id );
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		return rest_ensure_response(
+			array_merge( array( 'success' => true ), $result )
+		);
+	}
+
+	/**
+	 * Queue a delayed Mailchimp send, or send immediately when requested.
+	 *
+	 * Default: queue for 10 minutes (Send now). `immediate` skips the wait
+	 * while a send is queued.
+	 *
+	 * @param WP_REST_Request $request Request with post_id and optional immediate.
+	 */
+	public function send_mailchimp_campaign( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id   = (int) $request->get_param( 'post_id' );
+		$immediate = rest_sanitize_boolean( $request->get_param( 'immediate' ) );
 
 		$linkage = Campaign_Linkage::read( $post_id );
 		if (
@@ -1157,7 +1225,28 @@ class REST_API {
 			);
 		}
 
-		$result = ( new Mailchimp() )->create_and_send_campaign( $post_id, true );
+		$mailchimp = new Mailchimp();
+		$result    = $immediate
+			? $mailchimp->send_immediately( $post_id )
+			: $mailchimp->queue_delayed_send( $post_id );
+		if ( is_wp_error( $result ) ) {
+			return $this->normalize_rest_error( $result );
+		}
+
+		return rest_ensure_response(
+			array_merge( array( 'success' => true ), $result )
+		);
+	}
+
+	/**
+	 * Cancel a queued Mailchimp send before it runs.
+	 *
+	 * @param WP_REST_Request $request Request with post_id.
+	 */
+	public function cancel_delayed_mailchimp_send( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$post_id = (int) $request->get_param( 'post_id' );
+
+		$result = ( new Mailchimp() )->cancel_delayed_send( $post_id );
 		if ( is_wp_error( $result ) ) {
 			return $this->normalize_rest_error( $result );
 		}

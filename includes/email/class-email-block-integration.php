@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email Block Integration — core block callbacks.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -41,6 +42,11 @@ class Email_Block_Integration {
 	 */
 	const BODY_LINK_COLOR = '#2b6dad';
 
+	/**
+	 * Construct.
+	 *
+	 * @param mixed $loader Loader.
+	 */
 	public function __construct( $loader ) {
 		$loader->add_action(
 			'prc_email_builder_register_email_callbacks',
@@ -50,6 +56,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * Hook callback for @hook.
+	 *
 	 * @hook prc_email_builder_register_email_callbacks
 	 */
 	public function register_block_callbacks(): void {
@@ -199,7 +207,7 @@ class Email_Block_Integration {
 	 * @return string
 	 */
 	public static function build_float_image( string $url, string $alt, string $align, int $width ): string {
-		$w = self::clamp_float_width( $width );
+		$w      = self::clamp_float_width( $width );
 		$margin = 'left' === $align ? 'margin:0 16px 16px 0;' : 'margin:0 0 16px 16px;';
 
 		return sprintf(
@@ -218,13 +226,15 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Paragraph.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
 	public function paragraph( array $block, \WP_Post $post ): string {
-		$attrs     = $block['attrs'] ?? array();
-		$raw_html  = (string) ( $block['innerHTML'] ?? '' );
-		$inner     = $this->get_inner_html( $block );
+		$attrs    = $block['attrs'] ?? array();
+		$raw_html = (string) ( $block['innerHTML'] ?? '' );
+		$inner    = $this->get_inner_html( $block );
 		if ( '' === $inner ) {
 			return '';
 		}
@@ -250,6 +260,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Heading.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -354,6 +366,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * List block.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -444,6 +458,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * List item.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -471,6 +487,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Table.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -483,6 +501,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * Convert html table to email.
+	 *
 	 * @param string $html Rendered block HTML.
 	 * @return string
 	 */
@@ -535,6 +555,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Image.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -625,6 +647,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Spacer.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -653,6 +677,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * Separator.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -712,6 +738,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Quote.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -760,6 +788,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Group.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -810,11 +840,13 @@ class Email_Block_Integration {
 					$gap_px = (int) $gm[1];
 				}
 			}
+			$justify    = sanitize_key( (string) ( $layout['justifyContent'] ?? 'left' ) );
+			$valign     = sanitize_key( (string) ( $layout['verticalAlignment'] ?? 'top' ) );
 			$inner_html = $this->render_horizontal_row(
 				$cells,
 				array(
-					'justify' => sanitize_key( (string) ( $layout['justifyContent'] ?? 'left' ) ) ?: 'left',
-					'valign'  => sanitize_key( (string) ( $layout['verticalAlignment'] ?? 'top' ) ) ?: 'top',
+					'justify' => '' !== $justify ? $justify : 'left',
+					'valign'  => '' !== $valign ? $valign : 'top',
 					'gap_px'  => $gap_px,
 				)
 			);
@@ -891,8 +923,8 @@ class Email_Block_Integration {
 				continue;
 			}
 
-			$attrs  = is_array( $child['attrs'] ?? null ) ? $child['attrs'] : array();
-			$layout = is_array( $attrs['layout'] ?? null ) ? $attrs['layout'] : array();
+			$attrs         = is_array( $child['attrs'] ?? null ) ? $child['attrs'] : array();
+			$layout        = is_array( $attrs['layout'] ?? null ) ? $attrs['layout'] : array();
 			$local_justify = sanitize_key( (string) ( $layout['justifyContent'] ?? '' ) );
 			$local_text    = Email_Style_Resolver::text_align_from_attrs(
 				$attrs,
@@ -980,6 +1012,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Buttons.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -1024,10 +1058,12 @@ class Email_Block_Integration {
 			}
 		}
 
+		$justify = sanitize_key( (string) ( $layout['justifyContent'] ?? 'left' ) );
+
 		return $this->render_horizontal_row(
 			$anchors,
 			array(
-				'justify' => sanitize_key( (string) ( $layout['justifyContent'] ?? 'left' ) ) ?: 'left',
+				'justify' => '' !== $justify ? $justify : 'left',
 				'valign'  => 'center',
 				'gap_px'  => $gap_px,
 			)
@@ -1035,6 +1071,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * Button.
+	 *
 	 * @param array    $block Parsed block.
 	 * @param \WP_Post $post  Post.
 	 */
@@ -1097,14 +1135,15 @@ class Email_Block_Integration {
 
 		$fill_color = '#2b6dad';
 		if ( ! empty( $attrs['backgroundColor'] ) ) {
-			$fill_color = Email_Preset_Resolver::color_hex( (string) $attrs['backgroundColor'] ) ?: $fill_color;
+			$resolved   = Email_Preset_Resolver::color_hex( (string) $attrs['backgroundColor'] );
+			$fill_color = '' !== $resolved ? $resolved : $fill_color;
 		} elseif ( ! empty( $attrs['style']['color']['background'] ) ) {
 			$parsed     = Email_Preset_Resolver::parse_light_dark( (string) $attrs['style']['color']['background'] );
-			$fill_color = $parsed['light'] ?: $fill_color;
+			$fill_color = '' !== $parsed['light'] ? $parsed['light'] : $fill_color;
 		}
 
-		$text_color          = '#ffffff';
-		$has_explicit_text   = false;
+		$text_color        = '#ffffff';
+		$has_explicit_text = false;
 		if ( ! empty( $attrs['textColor'] ) ) {
 			$resolved = Email_Preset_Resolver::color_hex( (string) $attrs['textColor'] );
 			if ( '' !== $resolved ) {
@@ -1169,8 +1208,8 @@ class Email_Block_Integration {
 	/**
 	 * Lay out pre-rendered fragments in one table row (email-safe flex substitute).
 	 *
-	 * @param string[]             $children HTML fragments (one per cell).
-	 * @param array<string,mixed>  $opts     justify, valign, gap_px, stack, widths.
+	 * @param string[]            $children HTML fragments (one per cell).
+	 * @param array<string,mixed> $opts     justify, valign, gap_px, stack, widths.
 	 * @return string
 	 */
 	private function render_horizontal_row( array $children, array $opts ): string {
@@ -1208,7 +1247,7 @@ class Email_Block_Integration {
 		if ( $stack ) {
 			$rows = '';
 			foreach ( $children as $i => $child ) {
-				$pad = ( $i < $count - 1 ) ? 'padding-bottom:' . $gap_px . 'px;' : '';
+				$pad   = ( $i < $count - 1 ) ? 'padding-bottom:' . $gap_px . 'px;' : '';
 				$rows .= sprintf(
 					'<tr><td align="%s" style="padding:8px 0;%s" valign="%s">%s</td></tr>',
 					esc_attr( $justify ),
@@ -1257,6 +1296,8 @@ class Email_Block_Integration {
 	// -------------------------------------------------------------------------
 
 	/**
+	 * Class attr.
+	 *
 	 * @param string $classes Space-separated class names.
 	 * @return string HTML class attribute or empty.
 	 */
@@ -1266,6 +1307,8 @@ class Email_Block_Integration {
 	}
 
 	/**
+	 * Get inner html.
+	 *
 	 * @param array $block Parsed block.
 	 * @return string
 	 */
@@ -1322,7 +1365,8 @@ class Email_Block_Integration {
 		$processor = new \WP_HTML_Tag_Processor( $html );
 		while ( $processor->next_tag( 'A' ) ) {
 			$existing_class = (string) ( $processor->get_attribute( 'class' ) ?? '' );
-			$class_tokens   = preg_split( '/\s+/', trim( $existing_class ) ) ?: array();
+			$class_tokens   = preg_split( '/\s+/', trim( $existing_class ) );
+			$class_tokens   = false !== $class_tokens ? $class_tokens : array();
 			$class_tokens   = array_values(
 				array_filter(
 					$class_tokens,

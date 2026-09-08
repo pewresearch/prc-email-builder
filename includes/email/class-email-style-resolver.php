@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email Style Resolver.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -58,7 +59,10 @@ class Email_Style_Resolver {
 		$parts   = self::collapse_padding_parts( $parts );
 
 		if ( empty( $parts ) ) {
-			return array( 'css' => '', 'classes' => $classes );
+			return array(
+				'css'     => '',
+				'classes' => $classes,
+			);
 		}
 
 		$css = '';
@@ -67,8 +71,8 @@ class Email_Style_Resolver {
 		}
 
 		return array(
-			'css'      => $css,
-			'classes'  => array_values( array_unique( $classes ) ),
+			'css'     => $css,
+			'classes' => array_values( array_unique( $classes ) ),
 		);
 	}
 
@@ -138,6 +142,8 @@ class Email_Style_Resolver {
 	}
 
 	/**
+	 * Build style declaration parts.
+	 *
 	 * @param array<string,mixed> $attrs   Block attrs.
 	 * @param string[]            $classes Dark-mode classes (by reference).
 	 * @param string              $html    Optional saved block HTML for class-based supports.
@@ -256,6 +262,8 @@ class Email_Style_Resolver {
 	}
 
 	/**
+	 * Normalize spacing tree.
+	 *
 	 * @param array<string,mixed> $spacing Spacing subtree.
 	 * @return array<string,mixed>
 	 */
@@ -287,6 +295,8 @@ class Email_Style_Resolver {
 	}
 
 	/**
+	 * Maybe register dark class.
+	 *
 	 * @param string              $property CSS property.
 	 * @param string              $light    Light value already chosen for inline CSS.
 	 * @param array<string,mixed> $attrs    Original block attrs (for slug lookup).

@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Contract for fetching and normalizing email engagement reports.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder\Reports;
 

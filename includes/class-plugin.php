@@ -76,6 +76,7 @@ class Plugin {
 		require_once $includes . 'class-rewrites.php';
 		require_once $includes . 'class-post-type.php';
 		require_once $includes . 'class-transactional-draft.php';
+		require_once $includes . 'class-ready-subject.php';
 		require_once $includes . 'class-email-subject.php';
 		require_once $includes . 'class-newsletter-list.php';
 		require_once $includes . 'class-newsletter-list-archive.php';
@@ -242,7 +243,7 @@ class Plugin {
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-suggest-subject-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-suggest-preview-text-ability.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-generate-links-newsletter-ability.php';
-		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-newsletter-builder-ai-feature.php';
+		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-email-builder-ai-feature.php';
 		require_once plugin_dir_path( __DIR__ ) . '/includes/ai/class-generate-links-newsletter-ai-feature.php';
 
 		add_action(

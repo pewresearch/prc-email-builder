@@ -1,10 +1,11 @@
 <?php
-declare(strict_types=1);
 /**
  * Email Block Converter.
  *
  * @package PRC\Platform\Email_Builder
  */
+
+declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder;
 
@@ -28,10 +29,10 @@ class Email_Block_Converter {
 
 	/**
 	 * Block names that are treated as transparent containers: their own
-	 * markup is discarded and their innerBlocks are recursed into.
+	 * Markup is discarded and their innerBlocks are recursed into.
 	 *
-	 * core/group covers the majority of structural wrapper cases.
-	 * core/column / core/columns are listed here so their children still render
+	 * The core/group block covers the majority of structural wrapper cases.
+	 * The core/column and core/columns blocks are listed here so their children still render
 	 * even though proper multi-column email layout is out of scope (flagged as
 	 * open risk in the plan).
 	 *
@@ -151,7 +152,7 @@ class Email_Block_Converter {
 			}
 
 			// 4. Any other block with innerBlocks that has registered callbacks
-			//    inside — recurse so those callbacks are honoured.
+			// inside — recurse so those callbacks are honoured.
 			if ( ! empty( $inner ) ) {
 				$inner_html = $this->blocks_to_email_html( $inner, $post );
 				if ( '' !== trim( $inner_html ) ) {
@@ -192,7 +193,7 @@ class Email_Block_Converter {
 			$parts[] = Email_Block_Integration::hairline_row( 'story-item-divider' );
 		}
 
-		$parts[] = $fragment;
+		$parts[]                 = $fragment;
 		$last_emitted_block_name = $block_name;
 	}
 }
