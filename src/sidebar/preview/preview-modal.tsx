@@ -8,29 +8,25 @@
  *  4. TestSendFooter  — pinned to modal bottom via flex layout (outside scroll region)
  */
 
-import { __, sprintf } from '@wordpress/i18n';
+import { __ } from '@wordpress/i18n';
 import { useState, useCallback } from '@wordpress/element';
 import {
 	Modal,
 	Button,
 	Notice,
 	Spinner,
-	FormTokenField,
 	__experimentalText as Text,
 	__experimentalHStack as HStack,
 	__experimentalToggleGroupControl as ToggleGroupControl,
 	__experimentalToggleGroupControlOption as ToggleGroupControlOption,
 } from '@wordpress/components';
 import { copy, update } from '@wordpress/icons';
-import apiFetch from '@wordpress/api-fetch';
 
 import { usePreview } from './use-preview';
 import type { PreviewData } from './use-preview';
+import { TestSendFooter } from './test-send-footer';
 
 import './style.scss';
-
-const config: { restNamespace: string } =
-	(window as any).prcEmailBuilderConfig ?? {};
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -45,6 +41,19 @@ type ActiveTab = 'preview' | 'html';
 
 const DARK_MODE_PREVIEW_STYLE =
 	'<style>body,table,td,div,p,h1,h2,h3,h4,h5,h6,li,blockquote{background-color:#1a1a1a!important;color:#f0f0f0!important;-webkit-text-fill-color:#f0f0f0!important;}a{color:#5B9BD5!important;-webkit-text-fill-color:#5B9BD5!important;}</style>';
+
+function injectPreviewDarkStyle(html: string, darkStyle: string): string {
+	if (!darkStyle) {
+		return html;
+	}
+	if (html.includes('</head>')) {
+		return html.replace('</head>', `${darkStyle}</head>`);
+	}
+	if (html.includes('<body')) {
+		return html.replace('<body', `${darkStyle}<body`);
+	}
+	return `${darkStyle}${html}`;
+}
 
 // ─── InboxBar ────────────────────────────────────────────────────────────────
 
@@ -102,19 +111,38 @@ function InboxBar({ data }: { data: PreviewData | null }) {
 
 // ─── SizeIndicator ───────────────────────────────────────────────────────────
 
+function sizeBadgeVariant(kb: number): 'error' | 'warning' | 'ok' {
+	if (kb >= GMAIL_CLIP_KB) {
+		return 'error';
+	}
+	if (kb >= GMAIL_WARN_KB) {
+		return 'warning';
+	}
+	return 'ok';
+}
+
+function sizeBadgeLabel(
+	kb: number,
+	variant: 'error' | 'warning' | 'ok'
+): string {
+	const size = `${kb.toFixed(1)} KB`;
+	if (variant === 'error') {
+		return `${size} — Gmail will clip this email`;
+	}
+	if (variant === 'warning') {
+		return `${size} — approaching Gmail limit`;
+	}
+	return `${size} — within Gmail limits`;
+}
+
 export function SizeIndicator({ sizeBytes }: { sizeBytes: number }) {
-	if (sizeBytes <= 0) return null;
+	if (sizeBytes <= 0) {
+		return null;
+	}
 
 	const kb = sizeBytes / 1024;
-	const variant =
-		kb >= GMAIL_CLIP_KB ? 'error' : kb >= GMAIL_WARN_KB ? 'warning' : 'ok';
-
-	const label =
-		variant === 'error'
-			? `${kb.toFixed(1)} KB — Gmail will clip this email`
-			: variant === 'warning'
-				? `${kb.toFixed(1)} KB — approaching Gmail limit`
-				: `${kb.toFixed(1)} KB — within Gmail limits`;
+	const variant = sizeBadgeVariant(kb);
+	const label = sizeBadgeLabel(kb, variant);
 
 	return (
 		<div
@@ -181,14 +209,7 @@ function PreviewFrame({
 	const width = viewport === 'desktop' ? DESKTOP_WIDTH : MOBILE_WIDTH;
 
 	const darkStyle = colorMode === 'dark' ? DARK_MODE_PREVIEW_STYLE : '';
-
-	const srcDoc = darkStyle
-		? html.includes('</head>')
-			? html.replace('</head>', `${darkStyle}</head>`)
-			: html.includes('<body')
-				? html.replace('<body', `${darkStyle}<body`)
-				: `${darkStyle}${html}`
-		: html;
+	const srcDoc = injectPreviewDarkStyle(html, darkStyle);
 
 	const addressText = [subject, fromName, fromEmail]
 		.filter(Boolean)
@@ -226,164 +247,21 @@ function PreviewFrame({
 	);
 }
 
-// ─── TestSendFooter ───────────────────────────────────────────────────────────
-
-const MAX_TEST_RECIPIENTS = 10;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function normalizeEmailToken(token: string): string {
-	return token.trim().toLowerCase();
-}
-
-function isValidEmailToken(token: string): boolean {
-	return EMAIL_PATTERN.test(normalizeEmailToken(token));
-}
-
-function TestSendFooter({ postId }: { postId: number }) {
-	const [emails, setEmails] = useState<string[]>([]);
-	const [sending, setSending] = useState(false);
-	const [result, setResult] = useState<'idle' | 'success' | 'error'>('idle');
-	const [resultMessage, setResultMessage] = useState('');
-
-	const handleTokensChange = useCallback((tokens: string[]) => {
-		const next: string[] = [];
-		const seen = new Set<string>();
-
-		for (const token of tokens) {
-			const normalized = normalizeEmailToken(token);
-			if (!normalized || seen.has(normalized)) {
-				continue;
-			}
-			seen.add(normalized);
-			next.push(normalized);
-			if (next.length >= MAX_TEST_RECIPIENTS) {
-				break;
-			}
-		}
-
-		setEmails(next);
-	}, []);
-
-	const handleSend = useCallback(async () => {
-		const recipients = emails.filter(isValidEmailToken);
-		if (!recipients.length) return;
-		setSending(true);
-		setResult('idle');
-		try {
-			const response = (await apiFetch({
-				path: `/${config.restNamespace}/test-send`,
-				method: 'POST',
-				data: { post_id: postId, emails: recipients },
-			})) as {
-				success?: boolean;
-				sent?: string[];
-				failed?: Record<string, string>;
-			};
-
-			const sent = Array.isArray(response?.sent)
-				? response.sent
-				: recipients;
-			const failed = response?.failed ?? {};
-			const failedAddresses = Object.keys(failed);
-
-			if (failedAddresses.length === 0) {
-				setResult('success');
-				setResultMessage(
-					sprintf(
-						/* translators: %s: comma-separated email addresses */
-						__('Test email sent to %s.', 'prc-email-builder'),
-						sent.join(', ')
-					)
-				);
-			} else if (sent.length > 0) {
-				setResult('success');
-				setResultMessage(
-					sprintf(
-						/* translators: 1: sent addresses, 2: failed addresses */
-						__(
-							'Test email sent to %1$s. Failed for %2$s.',
-							'prc-email-builder'
-						),
-						sent.join(', '),
-						failedAddresses.join(', ')
-					)
-				);
-			} else {
-				setResult('error');
-				setResultMessage(
-					sprintf(
-						/* translators: %s: failed addresses */
-						__(
-							'Failed to send test email to %s.',
-							'prc-email-builder'
-						),
-						failedAddresses.join(', ')
-					)
-				);
-			}
-		} catch (err: any) {
-			setResult('error');
-			setResultMessage(
-				err?.message ??
-					__('Failed to send test email.', 'prc-email-builder')
-			);
-		} finally {
-			setSending(false);
-		}
-	}, [emails, postId]);
-
-	const hasValidRecipient = emails.some(isValidEmailToken);
-
-	return (
-		<div className="prc-email-preview__test-footer">
-			<span className="prc-email-preview__test-label">
-				{__('SEND TEST EMAIL TO', 'prc-email-builder')}
-			</span>
-			<div className="prc-email-preview__test-row">
-				<FormTokenField
-					__nextHasNoMarginBottom
-					label={__('Send test email to:', 'prc-email-builder')}
-					value={emails}
-					onChange={handleTokensChange}
-					placeholder={__(
-						'you@example.com, teammate@example.com',
-						'prc-email-builder'
-					)}
-					tokenizeOnBlur
-					maxLength={MAX_TEST_RECIPIENTS}
-				/>
-				<Button
-					variant="primary"
-					onClick={handleSend}
-					isBusy={sending}
-					disabled={sending || !hasValidRecipient}
-				>
-					{'▶ '}
-					{__('Send test', 'prc-email-builder')}
-				</Button>
-			</div>
-			{result === 'success' && (
-				<Notice status="success" isDismissible={false}>
-					{resultMessage}
-				</Notice>
-			)}
-			{result === 'error' && (
-				<Notice status="error" isDismissible={false}>
-					{resultMessage}
-				</Notice>
-			)}
-		</div>
-	);
-}
-
 // ─── Main modal ──────────────────────────────────────────────────────────────
 
 interface PreviewModalProps {
 	postId: number;
 	onClose: () => void;
+	testEmails: string[];
+	onTestEmailsChange: (emails: string[]) => void;
 }
 
-export function PreviewModal({ postId, onClose }: PreviewModalProps) {
+export function PreviewModal({
+	postId,
+	onClose,
+	testEmails,
+	onTestEmailsChange,
+}: PreviewModalProps) {
 	const [viewport, setViewport] = useState<Viewport>('desktop');
 	const [colorMode, setColorMode] = useState<ColorMode>('light');
 	const [activeTab, setActiveTab] = useState<ActiveTab>('preview');
@@ -543,7 +421,11 @@ export function PreviewModal({ postId, onClose }: PreviewModalProps) {
 				</div>
 
 				{/* Zone 4: Test-send footer (pinned to modal bottom) */}
-				<TestSendFooter postId={postId} />
+				<TestSendFooter
+					postId={postId}
+					testEmails={testEmails}
+					onTestEmailsChange={onTestEmailsChange}
+				/>
 			</div>
 		</Modal>
 	);

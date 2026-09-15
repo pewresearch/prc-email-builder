@@ -15,6 +15,7 @@ import { PreviewModal } from './preview-modal';
 
 export function EmailPreviewMenuItem() {
 	const [isOpen, setIsOpen] = useState(false);
+	const [testEmails, setTestEmails] = useState<string[]>([]);
 
 	const postId: number = useSelect(
 		(select) => select(editorStore).getCurrentPostId(),
@@ -35,6 +36,8 @@ export function EmailPreviewMenuItem() {
 				<PreviewModal
 					postId={postId}
 					onClose={() => setIsOpen(false)}
+					testEmails={testEmails}
+					onTestEmailsChange={setTestEmails}
 				/>
 			)}
 		</>

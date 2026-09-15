@@ -81,6 +81,7 @@ function ContentPanel() {
 	);
 
 	const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+	const [testEmails, setTestEmails] = useState<string[]>([]);
 
 	return (
 		<PluginDocumentSettingPanel
@@ -89,6 +90,7 @@ function ContentPanel() {
 		>
 			<VStack spacing={3}>
 				<Button
+					__next40pxDefaultSize
 					style={{
 						width: '100%',
 						justifyContent: 'center',
@@ -103,6 +105,8 @@ function ContentPanel() {
 					<PreviewModal
 						postId={postId}
 						onClose={() => setIsPreviewOpen(false)}
+						testEmails={testEmails}
+						onTestEmailsChange={setTestEmails}
 					/>
 				)}
 
