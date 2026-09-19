@@ -104,7 +104,6 @@ trait Newsletter_AI_Ability_Helpers {
 		}
 
 		$builder = $builder->using_system_instruction( $system_instruction );
-		$builder = $builder->using_temperature( 0.4 );
 
 		if ( method_exists( $builder, 'as_json_response' ) ) {
 			$builder = $builder->as_json_response();
