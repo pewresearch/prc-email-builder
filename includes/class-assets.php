@@ -163,6 +163,7 @@ class Assets {
 					'transactionalPostType'            => Post_Type::TRANSACTIONAL_POST_TYPE,
 					'campaignPatternCategorySlug'      => Patterns::CAMPAIGN_CATEGORY_SLUG,
 					'transactionalPatternCategorySlug' => Patterns::TRANSACTIONAL_CATEGORY_SLUG,
+					'audiencesPageUrl'                 => Email_Lists::get_page_url( 'audience' ),
 					'templates'                        => $templates,
 					'nonce'                            => wp_create_nonce( 'wp_rest' ),
 					'autoSendOnPublish'                => Mailchimp::is_auto_send_on_publish_enabled(),

@@ -2,6 +2,7 @@ import { decodeEntities } from '@wordpress/html-entities';
 import type { AudienceBuilder } from '../admin-dataview/audience-catalog';
 
 export type EmailListScope = 'campaign' | 'txn';
+export type EmailPageScope = EmailListScope | 'audience';
 
 export interface EmailLibraryRow {
 	id: number;
@@ -28,7 +29,7 @@ export interface EmailDataviewConfig {
 	postEditUrl: string;
 	campaignNewUrl?: string;
 	transactionalNewUrl?: string;
-	postTypeScope: EmailListScope;
+	postTypeScope: EmailPageScope;
 	newsletterLists?: Array<{
 		termId: number;
 		slug: string;
@@ -45,6 +46,8 @@ export interface EmailDataviewConfig {
 	transactionalPostType?: string;
 	newsletterListTaxonomy?: string;
 	campaignPatternCategorySlug?: string;
+	canManageLists?: boolean;
+	mailchimpConnected?: boolean;
 	audienceBuilders?: AudienceBuilder[];
 }
 
@@ -53,7 +56,7 @@ declare global {
 		prcWpAdminDataview?: {
 			postType?: string;
 			config?: {
-				postTypeScope?: EmailListScope;
+				postTypeScope?: EmailPageScope;
 			};
 			email?: EmailDataviewConfig;
 		};

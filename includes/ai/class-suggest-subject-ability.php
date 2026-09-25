@@ -189,6 +189,18 @@ Do not use markdown fences or extra prose. Example:
 			++$option_count;
 		}
 
+		if ( function_exists( '\PRC\Platform\AI\Utils\evaluate_generate_output' ) ) {
+			$encoded = wp_json_encode( $options );
+			$guard   = \PRC\Platform\AI\Utils\evaluate_generate_output(
+				false === $encoded ? '' : $encoded,
+				$prompt,
+				'email-subject'
+			);
+			if ( is_wp_error( $guard ) ) {
+				return new WP_Error( 'no_options', __( 'Could not generate subject options.', 'prc-email-builder' ) );
+			}
+		}
+
 		return array( 'options' => $options );
 	}
 

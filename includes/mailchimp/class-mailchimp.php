@@ -15,6 +15,8 @@ namespace PRC\Platform\Email_Builder;
 
 use MailchimpMarketing\ApiClient;
 use MailchimpMarketing\ApiException;
+use PRC\Primitives\DelayedAction\ActionSchedulerGateway;
+use PRC\Primitives\DelayedAction\DelayedAction;
 use WP_Error;
 
 /**
@@ -853,60 +855,28 @@ class Mailchimp {
 			);
 		}
 
-		$existing = Campaign_Linkage::pending_send_at( $post_id );
-		if ( $existing > 0 ) {
-			Campaign_Linkage::clear_delayed_send_cancelled( $post_id );
-			return array(
-				'queued'          => true,
-				'pending_send_at' => $existing,
-			);
-		}
-
-		if ( ! function_exists( 'as_schedule_single_action' ) ) {
-			return new WP_Error(
-				'action_scheduler_unavailable',
-				'Action Scheduler is not available. The Mailchimp send was not queued.',
-				array( 'status' => 500 )
-			);
-		}
-
-		$timestamp = time() + self::DELAYED_SEND_DELAY;
-		$action_id = as_schedule_single_action(
-			$timestamp,
+		$result = $this->delayed_action()->queue(
 			self::DELAYED_SEND_HOOK,
 			array( $post_id ),
 			self::DELAYED_SEND_GROUP,
-			true
+			self::DELAYED_SEND_DELAY
 		);
-
-		if ( ! $action_id ) {
-			$next = function_exists( 'as_next_scheduled_action' )
-				? as_next_scheduled_action(
-					self::DELAYED_SEND_HOOK,
-					array( $post_id ),
-					self::DELAYED_SEND_GROUP
-				)
-				: false;
-			if ( is_numeric( $next ) && (int) $next > 0 ) {
-				Campaign_Linkage::set_pending_send_at( $post_id, (int) $next );
-				return array(
-					'queued'          => true,
-					'pending_send_at' => (int) $next,
+		if ( is_wp_error( $result ) ) {
+			if ( 'already_scheduled' === $result->get_error_code() ) {
+				return new WP_Error(
+					'send_already_scheduled',
+					'A Mailchimp send is already queued for this campaign.',
+					array( 'status' => 409 )
 				);
 			}
-
-			return new WP_Error(
-				'send_already_scheduled',
-				'A Mailchimp send is already queued for this campaign.',
-				array( 'status' => 409 )
-			);
+			return $result;
 		}
 
-		Campaign_Linkage::set_pending_send_at( $post_id, $timestamp );
+		Campaign_Linkage::set_pending_send_at( $post_id, $result['scheduled_at'] );
 
 		return array(
 			'queued'          => true,
-			'pending_send_at' => $timestamp,
+			'pending_send_at' => $result['scheduled_at'],
 		);
 	}
 
@@ -919,33 +889,32 @@ class Mailchimp {
 	 */
 	public function cancel_delayed_send( int $post_id, bool $remember_cancel = true ): array|WP_Error {
 		$pending = Campaign_Linkage::pending_send_at( $post_id );
-		$next    = $this->next_delayed_send_action( $post_id );
+		$result  = $this->delayed_action()->cancel(
+			self::DELAYED_SEND_HOOK,
+			array( $post_id ),
+			self::DELAYED_SEND_GROUP
+		);
 
-		if ( $pending <= 0 && false === $next ) {
-			return new WP_Error(
-				'no_pending_send',
-				'There is no queued Mailchimp send to cancel.',
-				array( 'status' => 409 )
-			);
-		}
-
-		// true means the Action Scheduler worker already claimed the job.
-		// Unscheduling does not abort that run.
-		if ( true !== $next && function_exists( 'as_unschedule_all_actions' ) ) {
-			as_unschedule_all_actions(
-				self::DELAYED_SEND_HOOK,
-				array( $post_id ),
-				self::DELAYED_SEND_GROUP
-			);
-			$next = $this->next_delayed_send_action( $post_id );
-		}
-
-		if ( true === $next ) {
-			return new WP_Error(
-				'send_in_progress',
-				'This Mailchimp send is already in progress and cannot be cancelled.',
-				array( 'status' => 409 )
-			);
+		if ( is_wp_error( $result ) ) {
+			$code = $result->get_error_code();
+			if ( 'in_progress' === $code ) {
+				return new WP_Error(
+					'send_in_progress',
+					'This Mailchimp send is already in progress and cannot be cancelled.',
+					array( 'status' => 409 )
+				);
+			}
+			if ( 'no_pending' === $code ) {
+				if ( $pending <= 0 ) {
+					return new WP_Error(
+						'no_pending_send',
+						'There is no queued Mailchimp send to cancel.',
+						array( 'status' => 409 )
+					);
+				}
+			} else {
+				return $result;
+			}
 		}
 
 		Campaign_Linkage::clear_pending_send( $post_id );
@@ -960,21 +929,10 @@ class Mailchimp {
 	}
 
 	/**
-	 * Next matching delayed-send Action Scheduler result.
-	 *
-	 * @param int $post_id Campaign post ID.
-	 * @return int|true|false Timestamp when pending, true when running, false when none.
+	 * Delayed Action Scheduler helper.
 	 */
-	private function next_delayed_send_action( int $post_id ): int|bool {
-		if ( ! function_exists( 'as_next_scheduled_action' ) ) {
-			return false;
-		}
-
-		return as_next_scheduled_action(
-			self::DELAYED_SEND_HOOK,
-			array( $post_id ),
-			self::DELAYED_SEND_GROUP
-		);
+	private function delayed_action(): DelayedAction {
+		return new DelayedAction( new ActionSchedulerGateway() );
 	}
 
 	/**

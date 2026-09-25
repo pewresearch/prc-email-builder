@@ -5,12 +5,19 @@ import { Button, createSlotFill, Flex } from '@wordpress/components';
 import { useEffect, useState } from '@wordpress/element';
 import { addFilter } from '@wordpress/hooks';
 import { __ } from '@wordpress/i18n';
+import { plus } from '@wordpress/icons';
 
 /**
  * Internal Dependencies
  */
 import { composeEmailActions } from './actions';
-import { AudienceHubModal } from './audience-hub-modal';
+import { AudienceBuilderModal } from './audience-builder-modal';
+import { mapAudienceQuery } from './audience-catalog';
+import {
+	AUDIENCE_DEFAULT_VISIBLE_FIELDS,
+	getAudienceActions,
+	getAudienceFields,
+} from './audience-list';
 import CampaignStatsModal from '../library/components/campaign-stats-modal';
 import CreateCampaignDropdown from '../library/components/create-campaign-dropdown';
 import GenerateLinksNewsletterModal from '../library/components/generate-links-newsletter-modal';
@@ -18,7 +25,7 @@ import { getDefaultVisibleFields, getFieldsForScope } from '../library/fields';
 import {
 	getEmailConfig,
 	type EmailLibraryRow,
-	type EmailListScope,
+	type EmailPageScope,
 } from '../library/types';
 import '../library/style.scss';
 
@@ -34,7 +41,7 @@ const { Fill: PageExtrasFill } = createSlotFill(
 );
 const PAGE_EXTRA_EVENT = 'prcWpAdminDataview.pageExtra';
 
-function getScope(): EmailListScope | null {
+function getScope(): EmailPageScope | null {
 	return (
 		getEmailConfig()?.postTypeScope ??
 		window.prcWpAdminDataview?.config?.postTypeScope ??
@@ -53,7 +60,6 @@ function emitPageExtra(type: string, payload?: EmailLibraryRow) {
 function EmailPageExtras() {
 	const [campaign, setCampaign] = useState<EmailLibraryRow | null>(null);
 	const [isGenerateOpen, setIsGenerateOpen] = useState(false);
-	const [isAudienceOpen, setIsAudienceOpen] = useState(false);
 
 	useEffect(() => {
 		const handlePageExtra = (event: Event) => {
@@ -65,9 +71,6 @@ function EmailPageExtras() {
 			}
 			if (event.detail?.type === 'generate-links-newsletter') {
 				setIsGenerateOpen(true);
-			}
-			if (event.detail?.type === 'build-auth-domain-audience') {
-				setIsAudienceOpen(true);
 			}
 		};
 		window.addEventListener(PAGE_EXTRA_EVENT, handlePageExtra);
@@ -86,18 +89,47 @@ function EmailPageExtras() {
 				onClose={() => setIsGenerateOpen(false)}
 				onDraftCreated={() => window.location.reload()}
 			/>
-			<AudienceHubModal
-				isOpen={isAudienceOpen}
-				onClose={() => setIsAudienceOpen(false)}
-			/>
 		</>
 	);
 }
 
-function EmailHeaderActions() {
-	const scope = getScope();
-	if (!scope) {
-		return null;
+function AudiencePageExtras() {
+	const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+
+	useEffect(() => {
+		const handlePageExtra = (event: Event) => {
+			if (
+				event instanceof CustomEvent &&
+				event.detail?.type === 'add-audience'
+			) {
+				setIsBuilderOpen(true);
+			}
+		};
+		window.addEventListener(PAGE_EXTRA_EVENT, handlePageExtra);
+		return () =>
+			window.removeEventListener(PAGE_EXTRA_EVENT, handlePageExtra);
+	}, []);
+
+	return (
+		<AudienceBuilderModal
+			isOpen={isBuilderOpen}
+			onClose={() => setIsBuilderOpen(false)}
+		/>
+	);
+}
+
+function EmailHeaderActions({ scope }: { readonly scope: EmailPageScope }) {
+	if (scope === 'audience') {
+		return (
+			<Button
+				__next40pxDefaultSize
+				variant="primary"
+				icon={plus}
+				onClick={() => emitPageExtra('add-audience')}
+			>
+				{__('Add new', 'prc-email-builder')}
+			</Button>
+		);
 	}
 
 	const config = getEmailConfig();
@@ -115,24 +147,13 @@ function EmailHeaderActions() {
 			{isCampaign ? (
 				<CreateCampaignDropdown />
 			) : (
-				<>
-					<Button
-						__next40pxDefaultSize
-						variant="secondary"
-						onClick={() =>
-							emitPageExtra('build-auth-domain-audience')
-						}
-					>
-						{__('Build audience', 'prc-email-builder')}
-					</Button>
-					<Button
-						__next40pxDefaultSize
-						variant="primary"
-						href={transactionalNewUrl}
-					>
-						{__('Create new', 'prc-email-builder')}
-					</Button>
-				</>
+				<Button
+					__next40pxDefaultSize
+					variant="primary"
+					href={transactionalNewUrl}
+				>
+					{__('Create new', 'prc-email-builder')}
+				</Button>
 			)}
 			{isAIEnabled ? (
 				<Button
@@ -147,29 +168,25 @@ function EmailHeaderActions() {
 	);
 }
 
-function EmailFills() {
-	const scope = getScope();
-	if (!scope) {
-		return null;
-	}
+const PAGE_DESCRIPTIONS: Record<EmailPageScope, string> = {
+	campaign: __('Browse and manage email campaigns.', 'prc-email-builder'),
+	txn: __('Browse and manage transactional emails.', 'prc-email-builder'),
+	audience: __(
+		'Mailchimp newsletter lists for campaigns and recipient lists for bulk transactional emails, with send and engagement totals for each.',
+		'prc-email-builder'
+	),
+};
 
-	const isCampaign = scope === 'campaign';
-
+function EmailFills({ scope }: { readonly scope: EmailPageScope }) {
 	return (
 		<>
-			<span>
-				{isCampaign
-					? __(
-							'Browse and manage email campaigns.',
-							'prc-email-builder'
-						)
-					: __(
-							'Browse and manage transactional emails.',
-							'prc-email-builder'
-						)}
-			</span>
+			<span>{PAGE_DESCRIPTIONS[scope]}</span>
 			<PageExtrasFill>
-				<EmailPageExtras />
+				{scope === 'audience' ? (
+					<AudiencePageExtras />
+				) : (
+					<EmailPageExtras />
+				)}
 			</PageExtrasFill>
 		</>
 	);
@@ -179,6 +196,9 @@ addFilter('prcWpAdminDataview.fields', 'prc-email-builder/fields', (fields) => {
 	const scope = getScope();
 	if (!scope) {
 		return fields;
+	}
+	if (scope === 'audience') {
+		return [...fields, ...getAudienceFields()];
 	}
 	return [
 		...fields,
@@ -191,7 +211,13 @@ addFilter('prcWpAdminDataview.fields', 'prc-email-builder/fields', (fields) => {
 addFilter(
 	'prcWpAdminDataview.actions',
 	'prc-email-builder/actions',
-	(actions) => composeEmailActions(actions, getScope())
+	(actions, { onRefresh }) => {
+		const scope = getScope();
+		if (scope === 'audience') {
+			return [...actions, ...getAudienceActions(onRefresh)];
+		}
+		return composeEmailActions(actions, scope);
+	}
 );
 
 addFilter(
@@ -199,20 +225,31 @@ addFilter(
 	'prc-email-builder/default-fields',
 	(fields) => {
 		const scope = getScope();
-		return scope ? getDefaultVisibleFields(scope) : fields;
+		if (!scope) {
+			return fields;
+		}
+		return scope === 'audience'
+			? AUDIENCE_DEFAULT_VISIBLE_FIELDS
+			: getDefaultVisibleFields(scope);
 	}
 );
 
 addFilter(
 	'prcWpAdminDataview.headerActions',
 	'prc-email-builder/header-actions',
-	(actions) => (getScope() ? <EmailHeaderActions /> : actions)
+	(actions) => {
+		const scope = getScope();
+		return scope ? <EmailHeaderActions scope={scope} /> : actions;
+	}
 );
 
 addFilter(
 	'prcWpAdminDataview.pageDescription',
 	'prc-email-builder/page-description',
-	(description) => (getScope() ? <EmailFills /> : description)
+	(description) => {
+		const scope = getScope();
+		return scope ? <EmailFills scope={scope} /> : description;
+	}
 );
 
 addFilter(
@@ -222,6 +259,9 @@ addFilter(
 		const scope = getScope();
 		if (!scope) {
 			return args;
+		}
+		if (scope === 'audience') {
+			return mapAudienceQuery(args, view.sort?.field);
 		}
 
 		const mappedArgs = {

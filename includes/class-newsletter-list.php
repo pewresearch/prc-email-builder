@@ -39,6 +39,7 @@ class Newsletter_List {
 		$loader->add_action( "{$taxonomy}_edit_form_fields", $this, 'render_edit_form_fields' );
 		$loader->add_action( "created_{$taxonomy}", $this, 'save_term_meta' );
 		$loader->add_action( "edited_{$taxonomy}", $this, 'save_term_meta' );
+		$loader->add_action( "rest_after_insert_{$taxonomy}", $this, 'normalize_rest_term_meta' );
 		$loader->add_action( 'admin_enqueue_scripts', $this, 'enqueue_term_admin_assets' );
 		$loader->add_filter( "manage_edit-{$taxonomy}_columns", $this, 'add_term_list_columns' );
 		$loader->add_filter( "manage_{$taxonomy}_custom_column", $this, 'render_term_list_column', 10, 3 );
@@ -651,6 +652,29 @@ class Newsletter_List {
 		update_term_meta( $term_id, self::ACCENT_COLOR_META_KEY, $accent_color );
 		update_term_meta( $term_id, self::CAMPAIGN_PATTERN_META_KEY, $campaign_pattern );
 		update_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, $preview_campaign );
+	}
+
+	/**
+	 * Apply the term-form targeting rules to terms created or updated over REST.
+	 *
+	 * REST writes each meta key independently, so a segment can arrive without
+	 * an audience, and a preview campaign can name a post outside the list.
+	 *
+	 * @hook rest_after_insert_prc_newsletter_list
+	 *
+	 * @param \WP_Term $term Saved term.
+	 */
+	public function normalize_rest_term_meta( \WP_Term $term ): void {
+		$term_id     = (int) $term->term_id;
+		$audience_id = (string) get_term_meta( $term_id, 'prc_newsletter_list_audience_id', true );
+		if ( '' === $audience_id && '' !== (string) get_term_meta( $term_id, 'prc_newsletter_list_segment_id', true ) ) {
+			update_term_meta( $term_id, 'prc_newsletter_list_segment_id', '' );
+		}
+
+		$preview_campaign_id = absint( get_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, true ) );
+		if ( $preview_campaign_id > 0 && ! self::campaign_belongs_to_list( $preview_campaign_id, $term_id ) ) {
+			update_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, '' );
+		}
 	}
 
 	/**

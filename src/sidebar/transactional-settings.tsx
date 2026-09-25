@@ -13,9 +13,16 @@ import {
 	TextControl,
 	Notice,
 	Spinner,
+	Button,
+	__experimentalVStack as VStack,
 } from '@wordpress/components';
+import { external, update } from '@wordpress/icons';
 
-import { useNewsletterMeta, useSystemAudiences } from './use-newsletter-data';
+import {
+	config,
+	useNewsletterMeta,
+	useSystemAudiences,
+} from './use-newsletter-data';
 
 export function TransactionalSettings() {
 	const {
@@ -30,14 +37,30 @@ export function TransactionalSettings() {
 	const {
 		audiences: systemAudiences,
 		loading: systemAudiencesLoading,
+		isRefreshing: systemAudiencesRefreshing,
 		error: systemAudiencesError,
+		refresh: refreshSystemAudiences,
 	} = useSystemAudiences();
 
+	const selectedAudienceIsMissing =
+		Boolean(audienceOptionKey) &&
+		!systemAudiences.some((audience) => audience.key === audienceOptionKey);
 	const systemAudienceOptions = [
 		{
 			value: '',
 			label: __('— Select audience —', 'prc-email-builder'),
 		},
+		...(selectedAudienceIsMissing
+			? [
+					{
+						value: audienceOptionKey,
+						label: `${__(
+							'Unavailable audience',
+							'prc-email-builder'
+						)} — ${audienceOptionKey}`,
+					},
+				]
+			: []),
 		...systemAudiences.map((a) => ({
 			value: a.key,
 			label: `${a.label} — ${a.count.toLocaleString()} recipients${
@@ -88,11 +111,43 @@ export function TransactionalSettings() {
 							options={systemAudienceOptions}
 							onChange={setAudienceOptionKey}
 							help={__(
-								'Pick a list built from Emails → Transactional → Build audience, or from a quiz or dataset inspector. Use a fresh list before sending.',
+								'Pick a list built from Emails → Audiences, or from a quiz or dataset inspector. Use a fresh list before sending.',
 								'prc-email-builder'
 							)}
 						/>
 					)}
+					{!systemAudiencesLoading && selectedAudienceIsMissing ? (
+						<Notice status="warning" isDismissible={false}>
+							{__(
+								'The selected audience no longer exists. Choose another audience before you send this email.',
+								'prc-email-builder'
+							)}
+						</Notice>
+					) : null}
+					<VStack spacing={2} alignment="flex-start">
+						{config.audiencesPageUrl ? (
+							<Button
+								__next40pxDefaultSize
+								variant="secondary"
+								icon={external}
+								href={config.audiencesPageUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								{__('Manage audiences', 'prc-email-builder')}
+							</Button>
+						) : null}
+						<Button
+							__next40pxDefaultSize
+							variant="tertiary"
+							icon={update}
+							onClick={() => void refreshSystemAudiences()}
+							isBusy={systemAudiencesRefreshing}
+							disabled={systemAudiencesRefreshing}
+						>
+							{__('Refresh lists', 'prc-email-builder')}
+						</Button>
+					</VStack>
 				</>
 			)}
 

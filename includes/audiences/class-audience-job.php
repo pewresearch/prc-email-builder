@@ -386,6 +386,70 @@ final class Audience_Job {
 	}
 
 	/**
+	 * Return active audience jobs the current user may access.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function active(): array {
+		global $wpdb;
+
+		$option_names = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name ASC",
+				$wpdb->esc_like( self::JOB_OPTION_PREFIX ) . '%'
+			)
+		);
+		$jobs         = array();
+
+		foreach ( $option_names as $option_name ) {
+			$job = get_option( $option_name, null );
+			if (
+				! is_array( $job )
+				|| ! in_array( $job['phase'] ?? null, array( 'queued', 'scanning' ), true )
+				|| ! self::current_user_can_access( $job )
+			) {
+				continue;
+			}
+			$jobs[] = self::to_list_row( $job );
+		}
+
+		return $jobs;
+	}
+
+	/**
+	 * Shape an active job as an Audiences DataViews row.
+	 *
+	 * @param array<string, mixed> $job Internal job.
+	 * @return array<string, mixed>
+	 */
+	public static function to_list_row( array $job ): array {
+		$builder_slug = is_string( $job['builder'] ?? null ) ? $job['builder'] : '';
+		$builder      = Audience_Builder_Registry::get( $builder_slug );
+		$requested_at = is_string( $job['requestedAt'] ?? null ) ? $job['requestedAt'] : null;
+
+		return array(
+			'recordType'     => 'job',
+			'id'             => 'job:' . (string) $job['jobId'],
+			'jobId'          => (string) $job['jobId'],
+			'title'          => (string) $job['label'],
+			'count'          => isset( $job['matchedUsers'] ) ? (int) $job['matchedUsers'] : null,
+			'builder'        => '' !== $builder_slug ? $builder_slug : null,
+			'builderLabel'   => null === $builder ? __( 'Other', 'prc-email-builder' ) : (string) $builder['label'],
+			'verification'   => is_string( $job['query']['verification'] ?? null ) ? $job['query']['verification'] : null,
+			'sourceId'       => ! empty( $job['sourcePostId'] ) ? (int) $job['sourcePostId'] : null,
+			'sourceTitle'    => is_string( $job['query']['sourceTitle'] ?? null ) ? $job['query']['sourceTitle'] : null,
+			'builtAt'        => $requested_at,
+			'datasetId'      => isset( $job['query']['datasetId'] ) ? (int) $job['query']['datasetId'] : null,
+			'status'         => (string) $job['phase'],
+			'requestedAt'    => $requested_at,
+			'scannedUsers'   => isset( $job['scannedUsers'] ) ? (int) $job['scannedUsers'] : null,
+			'matchedUsers'   => isset( $job['matchedUsers'] ) ? (int) $job['matchedUsers'] : null,
+			'referenceCount' => 0,
+			'analytics'      => Audience_Analytics::empty_block(),
+		);
+	}
+
+	/**
 	 * Shape an internal job record for REST / CLI.
 	 *
 	 * @param array<string, mixed> $job Internal job record.
@@ -393,12 +457,13 @@ final class Audience_Job {
 	 */
 	public static function to_rest( array $job ): array {
 		$view = array(
-			'jobId'   => $job['jobId'],
-			'builder' => $job['builder'] ?? 'auth-domain',
-			'phase'   => $job['phase'],
-			'label'   => $job['label'],
-			'query'   => $job['query'],
-			'dryRun'  => ! empty( $job['dryRun'] ),
+			'jobId'       => $job['jobId'],
+			'builder'     => $job['builder'] ?? 'auth-domain',
+			'phase'       => $job['phase'],
+			'label'       => $job['label'],
+			'query'       => $job['query'],
+			'dryRun'      => ! empty( $job['dryRun'] ),
+			'requestedAt' => $job['requestedAt'] ?? null,
 		);
 
 		switch ( $job['phase'] ) {

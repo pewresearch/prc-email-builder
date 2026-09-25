@@ -22,7 +22,7 @@ interface BlockPatternRecord {
 
 interface WpBlockRecord {
 	id: number;
-	title?: { rendered?: string };
+	title?: { raw?: string; rendered?: string };
 	content?: { raw?: string };
 	wp_pattern_category?: number[];
 }
@@ -91,7 +91,8 @@ function mapWpBlockPattern(
 
 	return {
 		name: `wp-block-${block.id}`,
-		title: block.title?.rendered ?? '',
+		// The blocks endpoint returns only title.raw, even with context=edit.
+		title: block.title?.raw ?? block.title?.rendered ?? '',
 		content,
 	};
 }
@@ -136,6 +137,43 @@ async function fetchAllWpBlocks(): Promise<WpBlockRecord[]> {
 	return [blocks, ...restPages].flat();
 }
 
+/**
+ * Registered and Site Editor email patterns for a category, sorted by title.
+ *
+ * @param categorySlug Pattern category slug.
+ */
+export async function fetchEmailPatterns(
+	categorySlug: string
+): Promise<EmailPatternItem[]> {
+	const [registeredPatterns, wpBlocks, categories] = await Promise.all([
+		apiFetch({
+			path: '/wp/v2/block-patterns/patterns',
+		}) as Promise<BlockPatternRecord[]>,
+		fetchAllWpBlocks(),
+		apiFetch({
+			path: '/wp/v2/wp_pattern_category?per_page=100',
+		}) as Promise<PatternCategoryRecord[]>,
+	]);
+
+	const idToSlug: Record<number, string> = {};
+	categories.forEach((term) => {
+		idToSlug[term.id] = term.slug;
+	});
+
+	const fromRegistered = registeredPatterns
+		.filter((pattern) => matchesCategory(pattern.categories, categorySlug))
+		.map(mapRegisteredPattern)
+		.filter(Boolean) as EmailPatternItem[];
+
+	const fromSiteEditor = wpBlocks
+		.map((block) => mapWpBlockPattern(block, idToSlug, categorySlug))
+		.filter(Boolean) as EmailPatternItem[];
+
+	return dedupePatterns([...fromRegistered, ...fromSiteEditor]).sort((a, b) =>
+		a.title.localeCompare(b.title)
+	);
+}
+
 export function useEmailPatterns(categorySlug: string, enabled: boolean) {
 	const [patterns, setPatterns] = useState<EmailPatternItem[]>([]);
 	const [isLoading, setIsLoading] = useState(enabled);
@@ -161,44 +199,11 @@ export function useEmailPatterns(categorySlug: string, enabled: boolean) {
 			setError(null);
 
 			try {
-				const [registeredPatterns, wpBlocks, categories] =
-					await Promise.all([
-						apiFetch({
-							path: '/wp/v2/block-patterns/patterns',
-						}) as Promise<BlockPatternRecord[]>,
-						fetchAllWpBlocks(),
-						apiFetch({
-							path: '/wp/v2/wp_pattern_category?per_page=100',
-						}) as Promise<PatternCategoryRecord[]>,
-					]);
-
+				const loaded = await fetchEmailPatterns(categorySlug);
 				if (cancelled) {
 					return;
 				}
-
-				const idToSlug: Record<number, string> = {};
-				categories.forEach((term) => {
-					idToSlug[term.id] = term.slug;
-				});
-
-				const fromRegistered = registeredPatterns
-					.filter((pattern) =>
-						matchesCategory(pattern.categories, categorySlug)
-					)
-					.map(mapRegisteredPattern)
-					.filter(Boolean) as EmailPatternItem[];
-
-				const fromSiteEditor = wpBlocks
-					.map((block) =>
-						mapWpBlockPattern(block, idToSlug, categorySlug)
-					)
-					.filter(Boolean) as EmailPatternItem[];
-
-				setPatterns(
-					dedupePatterns([...fromRegistered, ...fromSiteEditor]).sort(
-						(a, b) => a.title.localeCompare(b.title)
-					)
-				);
+				setPatterns(loaded);
 			} catch (err) {
 				if (cancelled) {
 					return;

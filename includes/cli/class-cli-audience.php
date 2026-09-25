@@ -187,7 +187,7 @@ class CLI_Audience {
 	 * @param array $assoc_args Associative arguments (unused).
 	 */
 	public function list( $args, $assoc_args ): void {
-		$audiences = $this->fetch_audience_meta_rows();
+		$audiences = Audience_Catalog::all();
 
 		if ( empty( $audiences ) ) {
 			WP_CLI::warning( 'No system-email audiences found.' );
@@ -879,55 +879,6 @@ class CLI_Audience {
 		}
 
 		return self::AUDIENCE_OPTION_PREFIX . $slug;
-	}
-
-	/**
-	 * Fetch audience metadata rows (same discovery as REST list_system_audiences).
-	 *
-	 * @return array<int, array{key: string, label: string, count: int, built_at: string|null}>
-	 */
-	private function fetch_audience_meta_rows(): array {
-		global $wpdb;
-
-		$results = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s ORDER BY option_name ASC",
-				$wpdb->esc_like( self::AUDIENCE_OPTION_PREFIX ) . '%' . $wpdb->esc_like( '_meta' ),
-				$wpdb->esc_like( self::LEGACY_AUDIENCE_OPTION_PREFIX ) . '%' . $wpdb->esc_like( '_meta' )
-			)
-		);
-
-		$audiences = array();
-		foreach ( $results as $meta_option_name ) {
-			$meta = get_option( $meta_option_name, array() );
-			if ( empty( $meta ) || ! is_array( $meta ) || ! $this->is_audience_meta_array( $meta ) ) {
-				continue;
-			}
-
-			$audience_key = substr( $meta_option_name, 0, -5 );
-			$audiences[]  = array(
-				'key'      => $audience_key,
-				'label'    => (string) ( $meta['label'] ?? $audience_key ),
-				'count'    => (int) ( $meta['count'] ?? 0 ),
-				'built_at' => isset( $meta['built_at'] ) ? (string) $meta['built_at'] : null,
-			);
-		}
-
-		return $audiences;
-	}
-
-	/**
-	 * Distinguish meta companion options from audience email lists (slug may end in "_meta").
-	 *
-	 * @param array $meta Option value.
-	 * @return bool
-	 */
-	private function is_audience_meta_array( array $meta ): bool {
-		if ( array_is_list( $meta ) ) {
-			return false;
-		}
-
-		return isset( $meta['label'] ) || isset( $meta['built_at'] ) || isset( $meta['source'] );
 	}
 
 	/**

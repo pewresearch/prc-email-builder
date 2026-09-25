@@ -199,6 +199,18 @@ Do not use markdown fences or extra prose. Example:
 			++$option_count;
 		}
 
+		if ( function_exists( '\PRC\Platform\AI\Utils\evaluate_generate_output' ) ) {
+			$encoded = wp_json_encode( $options );
+			$guard   = \PRC\Platform\AI\Utils\evaluate_generate_output(
+				false === $encoded ? '' : $encoded,
+				$prompt,
+				'email-preview'
+			);
+			if ( is_wp_error( $guard ) ) {
+				return new WP_Error( 'no_options', __( 'Could not generate preview text options.', 'prc-email-builder' ) );
+			}
+		}
+
 		return array( 'options' => $options );
 	}
 

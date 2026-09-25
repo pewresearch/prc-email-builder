@@ -10,6 +10,11 @@ module.exports = {
 		...baseConfig.output,
 		path: path.resolve(__dirname, 'build/admin-dataview'),
 	},
+	// Reuse the shell's DataForm; this script depends on prc-wp-admin-dataview.
+	externals: {
+		...(baseConfig.externals || {}),
+		'@wordpress/dataviews/wp': 'prcWpAdminDataviewsWp',
+	},
 	plugins: baseConfig.plugins
 		.filter(Boolean)
 		.filter((plugin) => plugin.constructor.name !== 'CopyPlugin'),

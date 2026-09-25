@@ -98,6 +98,9 @@ class Plugin {
 		// Transactional Firebase audience builds.
 		require_once $includes . 'audiences/class-domain-contains-query.php';
 		require_once $includes . 'audiences/class-audience-builder-registry.php';
+		require_once $includes . 'audiences/class-audience-catalog.php';
+		require_once $includes . 'audiences/class-audience-analytics.php';
+		require_once $includes . 'audiences/class-newsletter-list-catalog.php';
 		require_once $includes . 'audiences/class-audience-job.php';
 		require_once $includes . 'audiences/class-auth-domain-audience-importer.php';
 		require_once $includes . 'audiences/class-auth-domain-audience-build.php';
@@ -215,6 +218,7 @@ class Plugin {
 		First_Day_Campaign_Stats::init();
 		Automation_Scheduler::init();
 		Auth_Domain_Audience_Build::init();
+		Newsletter_List_Catalog::init();
 		Mandrill_Event_Ledger::init();
 		\PRC\Platform\Email_Builder\Reports\Report_Sync::init();
 

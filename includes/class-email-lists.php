@@ -1,6 +1,6 @@
 <?php
 /**
- * Scoped Campaign / Transactional DataViews admin list pages.
+ * Scoped Campaign / Transactional / Audiences DataViews admin list pages.
  *
  * @package    PRC\Platform\Email_Builder
  */
@@ -22,6 +22,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Email_Lists {
 	public const CAMPAIGNS_PAGE_SLUG     = 'prc-email-builder-campaigns';
 	public const TRANSACTIONAL_PAGE_SLUG = 'prc-email-builder-transactional';
+	public const AUDIENCES_PAGE_SLUG     = 'prc-email-builder-audiences';
+	public const AUDIENCE_LIST_ID        = 'prc_email_audience';
 	public const SCRIPT_HANDLE           = 'prc-email-builder-admin-dataview';
 
 	/**
@@ -38,12 +40,14 @@ class Email_Lists {
 	/**
 	 * Admin URL for a scoped DataViews page.
 	 *
-	 * @param string $scope campaign or txn.
+	 * @param string $scope campaign, txn, or audience.
 	 */
 	public static function get_page_url( string $scope ): string {
-		$page = 'txn' === $scope
-			? self::TRANSACTIONAL_PAGE_SLUG
-			: self::CAMPAIGNS_PAGE_SLUG;
+		$page = match ( $scope ) {
+			'txn' => self::TRANSACTIONAL_PAGE_SLUG,
+			'audience' => self::AUDIENCES_PAGE_SLUG,
+			default => self::CAMPAIGNS_PAGE_SLUG,
+		};
 
 		return admin_url(
 			'edit.php?post_type=' . Post_Type::CAMPAIGN_POST_TYPE . '&page=' . $page
@@ -59,12 +63,13 @@ class Email_Lists {
 		return match ( $page_slug ) {
 			self::CAMPAIGNS_PAGE_SLUG => 'campaign',
 			self::TRANSACTIONAL_PAGE_SLUG => 'txn',
+			self::AUDIENCES_PAGE_SLUG => 'audience',
 			default => null,
 		};
 	}
 
 	/**
-	 * Register campaign and transactional lists with the shared shell.
+	 * Register campaign, transactional, and audience lists with the shared shell.
 	 *
 	 * @param object $lists Shared list registry.
 	 */
@@ -113,6 +118,26 @@ class Email_Lists {
 				'duplicate'            => $duplicate,
 			)
 		);
+
+		$lists->register(
+			array(
+				'postType'          => self::AUDIENCE_LIST_ID,
+				'kind'              => 'collection',
+				'pageSlug'          => self::AUDIENCES_PAGE_SLUG,
+				'menuTitle'         => __( 'Audiences', 'prc-email-builder' ),
+				'pageTitle'         => __( 'Audiences', 'prc-email-builder' ),
+				'singularLabel'     => __( 'Audience', 'prc-email-builder' ),
+				'restPath'          => '/prc-email-builder/v1/audiences-system/library',
+				'menuParent'        => $parent,
+				'menuAfter'         => 'post-new.php?post_type=' . Post_Type::TRANSACTIONAL_POST_TYPE,
+				'postTypeScope'     => 'audience',
+				'refreshIntervalMs' => 120000,
+				'defaultSort'       => array(
+					'field'     => 'builtAt',
+					'direction' => 'desc',
+				),
+			)
+		);
 	}
 
 	/**
@@ -123,6 +148,21 @@ class Email_Lists {
 	 * @return array
 	 */
 	public function localize_provider( $localize, $post_type ) {
+		if ( self::AUDIENCE_LIST_ID === $post_type ) {
+			$localize['email'] = array(
+				'postTypeScope'               => 'audience',
+				'postEditUrl'                 => esc_url_raw( admin_url( 'post.php' ) ),
+				'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
+				'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
+				'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
+				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
+				'canManageLists'              => current_user_can( 'manage_categories' ),
+				'mailchimpConnected'          => ( new Mailchimp() )->is_connected(),
+				'audienceBuilders'            => Audience_Builder_Registry::to_js(),
+			);
+			return $localize;
+		}
+
 		if ( ! Post_Type::is_email_post_type( $post_type ) ) {
 			return $localize;
 		}
@@ -154,9 +194,6 @@ class Email_Lists {
 			'transactionalPostType'       => Post_Type::TRANSACTIONAL_POST_TYPE,
 			'newsletterListTaxonomy'      => Post_Type::TAXONOMY,
 			'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
-			'audienceBuilders'            => 'txn' === $scope
-				? Audience_Builder_Registry::to_js()
-				: array(),
 		);
 
 		return $localize;

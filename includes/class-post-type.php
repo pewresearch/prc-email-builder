@@ -102,6 +102,31 @@ class Post_Type {
 		$loader->add_filter( 'prc_taxonomy_formats_post_types', $this, 'opt_campaign_into_formats_taxonomy' );
 		$loader->add_filter( 'prc_platform_pub_listing_default_visibility', $this, 'default_campaign_visibility' );
 		$loader->add_action( 'prc_platform_on_incremental_save', $this, 'enforce_campaign_newsletter_format', 10, 1 );
+		$loader->add_filter( 'wp_insert_post_empty_content', $this, 'allow_empty_campaign_draft', 10, 2 );
+	}
+
+	/**
+	 * Let an empty campaign draft through core's empty-content guard.
+	 *
+	 * Create campaign on a newsletter list without a default pattern inserts an
+	 * empty draft so the editor opens its pattern picker. Campaigns support
+	 * excerpts, so core would otherwise reject that draft as empty. Trashing
+	 * reruns this guard, so an empty campaign may also move to the trash.
+	 *
+	 * @hook wp_insert_post_empty_content
+	 *
+	 * @param bool                 $maybe_empty Whether core treats the post as empty.
+	 * @param array<string, mixed> $postarr     Sanitized post data.
+	 */
+	public function allow_empty_campaign_draft( bool $maybe_empty, array $postarr ): bool {
+		if ( ! $maybe_empty ) {
+			return false;
+		}
+
+		$is_campaign_draft = self::CAMPAIGN_POST_TYPE === ( $postarr['post_type'] ?? '' )
+			&& in_array( $postarr['post_status'] ?? '', array( 'draft', 'trash' ), true );
+
+		return ! $is_campaign_draft;
 	}
 
 	/**

@@ -23,6 +23,7 @@ use function PRC\Platform\Wp_Admin_Dataview\plain_text;
  *  GET /prc-email-builder/v1/connection                      — connection status + sender info
  *  GET /prc-email-builder/v1/audiences/{id}/segments         — Mailchimp saved segments for an audience
  *  GET /prc-email-builder/v1/audiences-system                — System-email audiences from wp_options
+ *  GET /prc-email-builder/v1/audiences-system/library        — Paged Audiences DataViews rows
  *  POST /prc-email-builder/v1/audience-jobs                  — Start a registry-backed audience job
  *  GET /prc-email-builder/v1/audience-jobs/{jobId}           — Poll an audience job
  *  POST /prc-email-builder/v1/audience-jobs/{jobId}/draft    — Draft a transactional email from a ready job
@@ -77,6 +78,90 @@ class REST_API {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'list_system_audiences' ),
 				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audiences-system/library',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'list_audience_library' ),
+				'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+				'args'                => array(
+					'search'   => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'type'     => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'builder'  => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'orderby'  => array(
+						'type'    => 'string',
+						'default' => 'builtAt',
+						'enum'    => array( 'title', 'count', 'builtAt' ),
+					),
+					'order'    => array(
+						'type'    => 'string',
+						'default' => 'desc',
+						'enum'    => array( 'asc', 'desc' ),
+					),
+					'page'     => array(
+						'type'    => 'integer',
+						'default' => 1,
+						'minimum' => 1,
+					),
+					'per_page' => array(
+						'type'    => 'integer',
+						'default' => 20,
+						'minimum' => 1,
+						'maximum' => Audience_Catalog::MAX_PER_PAGE,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/audiences-system/(?P<audience_key>(?:prc_email_audience|prc_newsletter_audience)_[a-z0-9_-]+)',
+			array(
+				array(
+					'methods'             => 'PATCH',
+					'callback'            => array( $this, 'rename_system_audience' ),
+					'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+					'args'                => array(
+						'audience_key' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_key',
+						),
+						'label'        => array(
+							'required'          => true,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+					),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'delete_system_audience' ),
+					'permission_callback' => fn() => current_user_can( 'edit_posts' ),
+					'args'                => array(
+						'audience_key' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_key',
+						),
+					),
+				),
 			)
 		);
 
@@ -767,38 +852,95 @@ class REST_API {
 	 * @return WP_REST_Response
 	 */
 	public function list_system_audiences( WP_REST_Request $request ): WP_REST_Response {
-		global $wpdb;
+		unset( $request );
 
-		// Fetch all _meta option names whose base key starts with prc_email_audience_
-		// or legacy prc_newsletter_audience_. We query only the meta siblings to avoid
-		// loading the (potentially large) email arrays.
-		$results = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s ORDER BY option_name ASC",
-				$wpdb->esc_like( 'prc_email_audience_' ) . '%' . $wpdb->esc_like( '_meta' ),
-				$wpdb->esc_like( 'prc_newsletter_audience_' ) . '%' . $wpdb->esc_like( '_meta' )
+		return rest_ensure_response( Audience_Catalog::all() );
+	}
+
+	/**
+	 * GET /audiences-system/library — paged rows for the Audiences DataViews list.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function list_audience_library( WP_REST_Request $request ): WP_REST_Response {
+		$audiences          = Audience_Catalog::all();
+		$keys               = array_column( $audiences, 'key' );
+		$reference_counts   = Audience_Catalog::reference_counts( $keys );
+		$recipient_rollups  = Audience_Analytics::for_recipient_lists();
+		$newsletter_rollups = Audience_Analytics::for_newsletter_lists();
+		$rows               = array_map(
+			static fn( array $audience ): array => Audience_Catalog::to_list_row(
+				$audience,
+				$reference_counts[ $audience['key'] ] ?? 0,
+				$recipient_rollups[ $audience['key'] ] ?? array()
+			),
+			$audiences
+		);
+		$rows               = array_merge(
+			Newsletter_List_Catalog::all( $newsletter_rollups ),
+			$rows,
+			Audience_Job::active()
+		);
+		$result             = Audience_Catalog::query(
+			$rows,
+			array(
+				'search'   => $request->get_param( 'search' ),
+				'type'     => $request->get_param( 'type' ),
+				'builder'  => $request->get_param( 'builder' ),
+				'orderby'  => $request->get_param( 'orderby' ),
+				'order'    => $request->get_param( 'order' ),
+				'page'     => $request->get_param( 'page' ),
+				'per_page' => $request->get_param( 'per_page' ),
 			)
 		);
 
-		$audiences = array();
-		foreach ( $results as $meta_option_name ) {
-			$meta = get_option( $meta_option_name, array() );
-			// Mirror CLI_Audience::is_audience_meta_array(): skip empty / list-shaped
-			// options (e.g. a raw email list whose key happens to end in "_meta") so
-			// the picker never surfaces non-audience options the CLI would ignore.
-			if (
-				empty( $meta ) || ! is_array( $meta )
-				|| array_is_list( $meta )
-				|| ! ( isset( $meta['label'] ) || isset( $meta['built_at'] ) || isset( $meta['source'] ) )
-			) {
-				continue;
-			}
-			// The base audience key is the meta key without the _meta suffix.
-			$audience_key = substr( $meta_option_name, 0, -5 );
-			$audiences[]  = Audience_Builder_Registry::describe_audience( $audience_key, $meta );
+		$per_page = max( 1, min( Audience_Catalog::MAX_PER_PAGE, (int) $request->get_param( 'per_page' ) ) );
+		$response = rest_ensure_response( $result['rows'] );
+		$response->header( 'X-WP-Total', (string) $result['total'] );
+		$response->header( 'X-WP-TotalPages', (string) max( 1, (int) ceil( $result['total'] / $per_page ) ) );
+
+		return $response;
+	}
+
+	/**
+	 * PATCH /audiences-system/{key} — rename a stored audience label.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function rename_system_audience( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$audience = Audience_Catalog::rename(
+			(string) $request['audience_key'],
+			(string) $request->get_param( 'label' )
+		);
+		if ( is_wp_error( $audience ) ) {
+			return $audience;
 		}
 
-		return rest_ensure_response( $audiences );
+		$reference_count = Audience_Catalog::reference_counts( array( (string) $audience['key'] ) );
+
+		return rest_ensure_response(
+			Audience_Catalog::to_list_row(
+				$audience,
+				$reference_count[ $audience['key'] ] ?? 0
+			)
+		);
+	}
+
+	/**
+	 * DELETE /audiences-system/{key} — permanently remove an unreferenced audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|\WP_Error
+	 */
+	public function delete_system_audience( WP_REST_Request $request ): WP_REST_Response|\WP_Error {
+		$result = Audience_Catalog::delete( (string) $request['audience_key'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( array( 'deleted' => true ) );
 	}
 
 	/**

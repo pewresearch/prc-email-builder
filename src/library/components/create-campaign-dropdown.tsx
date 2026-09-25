@@ -11,9 +11,9 @@ import {
 	Notice,
 	Spinner,
 } from '@wordpress/components';
-import apiFetch from '@wordpress/api-fetch';
 import { decodeEntities } from '@wordpress/html-entities';
 import { useEmailPatterns } from '../../sidebar/pattern-selector/use-email-patterns';
+import { createCampaignDraft } from '../create-campaign-draft';
 import { getEmailConfig } from '../types';
 
 interface NewsletterListOption {
@@ -90,17 +90,7 @@ export default function CreateCampaignDropdown() {
 			onClose();
 
 			try {
-				const post = await apiFetch<{ id: number }>({
-					path: `/wp/v2/${postType}`,
-					method: 'POST',
-					data: {
-						status: 'draft',
-						...data,
-					},
-				});
-
-				const editUrl = `${config?.postEditUrl || 'post.php'}?post=${post.id}&action=edit`;
-				window.location.href = editUrl;
+				window.location.href = await createCampaignDraft(data);
 			} catch (err) {
 				const message =
 					err instanceof Error
@@ -113,7 +103,7 @@ export default function CreateCampaignDropdown() {
 				setIsCreating(false);
 			}
 		},
-		[config?.postEditUrl, isCreating, postType]
+		[isCreating]
 	);
 
 	const handleCreate = useCallback(

@@ -6,7 +6,7 @@ import { __ } from '@wordpress/i18n';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';
 import { store as coreStore, useEntityProp } from '@wordpress/core-data';
-import { useState, useEffect, useCallback } from '@wordpress/element';
+import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 
 export interface Audience {
@@ -55,6 +55,7 @@ export const config: {
 	postTypes: string[];
 	campaignPostType: string;
 	transactionalPostType: string;
+	audiencesPageUrl?: string;
 	campaignPatternCategorySlug?: string;
 	transactionalPatternCategorySlug?: string;
 	nonce: string;
@@ -386,37 +387,47 @@ export function useSegments(audienceId: string) {
 export function useSystemAudiences() {
 	const [audiences, setAudiences] = useState<SystemAudience[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const requestId = useRef(0);
 
-	useEffect(() => {
-		let cancelled = false;
-		apiFetch<SystemAudience[]>({
-			path: `/${config.restNamespace}/audiences-system`,
-		})
-			.then((data) => {
-				if (!cancelled) {
-					setAudiences(data);
-					setLoading(false);
-				}
-			})
-			.catch((err) => {
-				if (!cancelled) {
-					setError(
-						err?.message ??
-							__(
-								'Could not load system audiences.',
-								'prc-email-builder'
-							)
-					);
-					setLoading(false);
-				}
+	const refresh = useCallback(async () => {
+		const currentRequest = ++requestId.current;
+		setIsRefreshing(true);
+		try {
+			const data = await apiFetch<SystemAudience[]>({
+				path: `/${config.restNamespace}/audiences-system`,
 			});
-		return () => {
-			cancelled = true;
-		};
+			if (currentRequest === requestId.current) {
+				setAudiences(data);
+				setError(null);
+			}
+		} catch (err) {
+			if (currentRequest === requestId.current) {
+				setError(
+					err?.message ??
+						__(
+							'Could not load system audiences.',
+							'prc-email-builder'
+						)
+				);
+			}
+		} finally {
+			if (currentRequest === requestId.current) {
+				setLoading(false);
+				setIsRefreshing(false);
+			}
+		}
 	}, []);
 
-	return { audiences, loading, error };
+	useEffect(() => {
+		void refresh();
+		return () => {
+			requestId.current += 1;
+		};
+	}, [refresh]);
+
+	return { audiences, loading, isRefreshing, error, refresh };
 }
 
 /**
