@@ -67,6 +67,7 @@ export interface NewsletterListRow extends AudienceListRowBase {
 	readonly segmentName: string | null;
 	readonly campaignPattern: string;
 	readonly editUrl: string | null;
+	readonly viewUrl: string | null;
 	readonly jobId: null;
 	readonly requestedAt: null;
 	readonly scannedUsers: null;

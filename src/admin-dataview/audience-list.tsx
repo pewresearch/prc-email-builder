@@ -1,7 +1,7 @@
 import apiFetch from '@wordpress/api-fetch';
 import { dispatch } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
-import { edit, trash } from '@wordpress/icons';
+import { edit, external, trash } from '@wordpress/icons';
 import { store as noticesStore } from '@wordpress/notices';
 
 import {
@@ -358,6 +358,18 @@ export function getAudienceActions(onRefresh?: () => void) {
 						item.termId,
 						item.campaignPattern
 					);
+				}
+			},
+		},
+		{
+			id: 'view-newsletter-list',
+			label: __('View', 'prc-email-builder'),
+			icon: external,
+			isEligible: (item: AudienceListRow) =>
+				isNewsletterList(item) && !!item.viewUrl,
+			callback: ([item]: AudienceListRow[]) => {
+				if (isNewsletterList(item) && item.viewUrl) {
+					window.open(item.viewUrl, '_blank', 'noopener');
 				}
 			},
 		},

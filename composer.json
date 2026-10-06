@@ -7,7 +7,7 @@
 		"php": ">=8.2",
 		"automattic/jetpack-autoloader": "^5.0",
 		"mailchimp/marketing": "^3.0",
-		"prc/primitives": "^2.0"
+		"prc/primitives": "^2.1"
 	},
 	"config": {
 		"allow-plugins": {

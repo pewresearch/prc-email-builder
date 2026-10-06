@@ -94,6 +94,7 @@ class Plugin {
 		require_once $includes . 'class-campaign-email-preview.php';
 		require_once $includes . 'class-latest-campaign-query.php';
 		require_once $includes . 'class-campaign-query.php';
+		require_once $includes . 'class-campaign-content-date.php';
 
 		// Transactional Firebase audience builds.
 		require_once $includes . 'audiences/class-domain-contains-query.php';
@@ -213,6 +214,7 @@ class Plugin {
 		new Campaign_Query( $this->loader );
 		new Email_Block_Integration( $this->loader );
 
+		Campaign_Content_Date::init();
 		Campaign_Status_Sync::init();
 		Campaign_Linkage::init();
 		First_Day_Campaign_Stats::init();

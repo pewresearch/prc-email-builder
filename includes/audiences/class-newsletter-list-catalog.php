@@ -88,6 +88,7 @@ final class Newsletter_List_Catalog {
 					'count'        => self::cached_count( (int) $term->term_id ),
 					'syncedAt'     => '' !== $synced_at ? $synced_at : null,
 					'editUrl'      => $can_edit ? self::edit_url( (int) $term->term_id ) : null,
+					'viewUrl'      => self::archive_url( $term ),
 					'analytics'    => $analytics[ (int) $term->term_id ] ?? Audience_Analytics::empty_block(),
 				)
 			);
@@ -123,6 +124,7 @@ final class Newsletter_List_Catalog {
 			'segmentName'           => $resolved['segmentName'],
 			'campaignPattern'       => $targeting['pattern'],
 			'editUrl'               => $resolved['editUrl'],
+			'viewUrl'               => $resolved['viewUrl'],
 			'verification'          => null,
 			'sourceId'              => null,
 			'sourceTitle'           => null,
@@ -250,6 +252,17 @@ final class Newsletter_List_Catalog {
 	 */
 	private static function edit_url( int $term_id ): ?string {
 		$url = get_edit_term_link( $term_id, Post_Type::TAXONOMY, Post_Type::CAMPAIGN_POST_TYPE );
+
+		return is_string( $url ) && '' !== $url ? html_entity_decode( $url, ENT_QUOTES ) : null;
+	}
+
+	/**
+	 * Public term archive URL.
+	 *
+	 * @param \WP_Term $term Newsletter list term.
+	 */
+	private static function archive_url( \WP_Term $term ): ?string {
+		$url = get_term_link( $term );
 
 		return is_string( $url ) && '' !== $url ? html_entity_decode( $url, ENT_QUOTES ) : null;
 	}
