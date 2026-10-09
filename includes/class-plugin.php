@@ -78,6 +78,7 @@ class Plugin {
 		require_once $includes . 'class-transactional-draft.php';
 		require_once $includes . 'class-ready-subject.php';
 		require_once $includes . 'class-email-subject.php';
+		require_once $includes . 'class-campaign-title.php';
 		require_once $includes . 'class-newsletter-list.php';
 		require_once $includes . 'class-newsletter-list-archive.php';
 		require_once $includes . 'templates/class-template-resolver.php';
@@ -193,6 +194,7 @@ class Plugin {
 
 		new Post_Type( $this->loader );
 		new Email_Subject( $this->loader );
+		new Campaign_Title( $this->loader );
 		new Rewrites( $this->loader );
 		new Newsletter_List( $this->loader );
 		new Newsletter_List_Archive( $this->loader );
