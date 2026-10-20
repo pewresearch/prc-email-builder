@@ -10,6 +10,7 @@ export interface NewsletterListInput {
 	readonly fromName: string;
 	readonly fromEmail: string;
 	readonly campaignPattern: string;
+	readonly enforcedBylineTermId: string;
 }
 
 export const INITIAL_NEWSLETTER_LIST: NewsletterListInput = {
@@ -20,6 +21,7 @@ export const INITIAL_NEWSLETTER_LIST: NewsletterListInput = {
 	fromName: '',
 	fromEmail: '',
 	campaignPattern: '',
+	enforcedBylineTermId: '',
 };
 
 /**
@@ -73,6 +75,10 @@ export function fromNewsletterListTerm(
 			meta,
 			'prc_newsletter_list_campaign_pattern'
 		),
+		enforcedBylineTermId: metaString(
+			meta,
+			'prc_newsletter_list_enforced_byline_term_id'
+		),
 	};
 }
 
@@ -96,6 +102,8 @@ export function toNewsletterListPayload(input: NewsletterListInput): {
 			prc_newsletter_list_from_name: input.fromName.trim(),
 			prc_newsletter_list_from_email: input.fromEmail.trim(),
 			prc_newsletter_list_campaign_pattern: input.campaignPattern,
+			prc_newsletter_list_enforced_byline_term_id:
+				input.enforcedBylineTermId,
 		},
 	};
 }

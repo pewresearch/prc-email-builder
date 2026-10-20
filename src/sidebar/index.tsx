@@ -1,5 +1,6 @@
+import domReady from '@wordpress/dom-ready';
 import { registerPlugin } from '@wordpress/plugins';
-import { useSelect } from '@wordpress/data';
+import { dispatch, useSelect } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';
 
 import EmailSettingsPanel from './email-settings-panel';
@@ -34,4 +35,9 @@ function NewsletterBuilderSidebar() {
 
 registerPlugin('prc-email-builder', {
 	render: NewsletterBuilderSidebar,
+});
+
+// Campaign bylines come only from the newsletter list's enforced byline.
+domReady(() => {
+	dispatch(editorStore).removeEditorPanel('taxonomy-panel-bylines');
 });

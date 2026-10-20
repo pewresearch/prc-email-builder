@@ -44,7 +44,8 @@ class Transactional_Draft {
 			);
 		}
 
-		if ( ! is_array( get_option( $audience_key, false ) ) ) {
+		$stored = get_option( $audience_key, false );
+		if ( ! is_array( $stored ) || ! array_is_list( $stored ) ) {
 			return new \WP_Error(
 				'audience_not_found',
 				sprintf( 'Audience option "%s" does not exist.', $audience_key ),
@@ -127,18 +128,13 @@ class Transactional_Draft {
 	 * Whether a wp_options name is a Mandrill audience list key.
 	 *
 	 * Accepts current `prc_email_audience_*` keys and legacy
-	 * `prc_newsletter_audience_*` keys. Rejects `_meta` companions and any
-	 * other option name so REST/CLI callers cannot target arbitrary options.
+	 * `prc_newsletter_audience_*` keys. Rejects `_meta` companions, build
+	 * records under `prc_email_audience_job_`, and any other option name.
 	 *
 	 * @param string $audience_key Trimmed option name.
 	 * @return bool
 	 */
 	private static function is_audience_option_key( string $audience_key ): bool {
-		if ( '' === $audience_key || str_ends_with( $audience_key, '_meta' ) ) {
-			return false;
-		}
-
-		return str_starts_with( $audience_key, 'prc_email_audience_' )
-			|| str_starts_with( $audience_key, 'prc_newsletter_audience_' );
+		return '' !== $audience_key && Audience_Catalog::is_valid_key( $audience_key );
 	}
 }

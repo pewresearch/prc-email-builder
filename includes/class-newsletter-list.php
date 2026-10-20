@@ -103,6 +103,7 @@ class Newsletter_List {
 		$segment_id       = (string) get_term_meta( $term->term_id, 'prc_newsletter_list_segment_id', true );
 		$campaign_pattern = (string) get_term_meta( $term->term_id, self::CAMPAIGN_PATTERN_META_KEY, true );
 		$preview_campaign = (string) get_term_meta( $term->term_id, self::PREVIEW_CAMPAIGN_META_KEY, true );
+		$enforced_byline  = (string) get_term_meta( $term->term_id, Newsletter_List_Byline::META_KEY, true );
 
 		echo '<tr class="form-field">';
 		echo '<th scope="row"><label>' . esc_html__( 'Default From', 'prc-email-builder' ) . '</label></th>';
@@ -129,6 +130,13 @@ class Newsletter_List {
 		echo '<th scope="row"><label>' . esc_html__( 'Preview newsletter', 'prc-email-builder' ) . '</label></th>';
 		echo '<td>';
 		$this->render_preview_campaign_field( $preview_campaign );
+		echo '</td>';
+		echo '</tr>';
+
+		echo '<tr class="form-field">';
+		echo '<th scope="row"><label>' . esc_html__( 'Staff byline', 'prc-email-builder' ) . '</label></th>';
+		echo '<td>';
+		$this->render_enforced_byline_field( $enforced_byline );
 		echo '</td>';
 		echo '</tr>';
 
@@ -189,6 +197,24 @@ class Newsletter_List {
 		echo '<div id="prc-newsletter-list-preview-campaign-root"></div>';
 		echo '<p class="description">' . esc_html__(
 			'Optional. Search by title or paste a campaign URL to pin this list\'s Latest Newsletter Preview. Leave empty to show the most recent published newsletter for this list. The campaign must belong to this list.',
+			'prc-email-builder'
+		) . '</p>';
+	}
+
+	/**
+	 * Mount point + hidden input for the enforced staff byline picker.
+	 *
+	 * @param string $enforced_byline Saved bylines term ID (edit form).
+	 */
+	private function render_enforced_byline_field( string $enforced_byline = '' ): void {
+		printf(
+			'<input type="hidden" name="%1$s" id="%1$s" value="%2$s" />',
+			esc_attr( Newsletter_List_Byline::META_KEY ),
+			esc_attr( Newsletter_List_Byline::sanitize_term_id( $enforced_byline ) )
+		);
+		echo '<div id="prc-newsletter-list-enforced-byline-root"></div>';
+		echo '<p class="description">' . esc_html__(
+			'Optional. Every campaign on this list is added to this staff member\'s page when it is saved. The name does not print in the email.',
 			'prc-email-builder'
 		) . '</p>';
 	}
@@ -652,6 +678,13 @@ class Newsletter_List {
 		update_term_meta( $term_id, self::ACCENT_COLOR_META_KEY, $accent_color );
 		update_term_meta( $term_id, self::CAMPAIGN_PATTERN_META_KEY, $campaign_pattern );
 		update_term_meta( $term_id, self::PREVIEW_CAMPAIGN_META_KEY, $preview_campaign );
+
+		if ( isset( $_POST[ Newsletter_List_Byline::META_KEY ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$enforced_byline = Newsletter_List_Byline::sanitize_term_id(
+				sanitize_text_field( wp_unslash( (string) $_POST[ Newsletter_List_Byline::META_KEY ] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			);
+			update_term_meta( $term_id, Newsletter_List_Byline::META_KEY, $enforced_byline );
+		}
 	}
 
 	/**
@@ -757,6 +790,8 @@ class Newsletter_List {
 				'campaignPatternCategorySlug' => Patterns::CAMPAIGN_CATEGORY_SLUG,
 				'campaignPatternMetaKey'      => self::CAMPAIGN_PATTERN_META_KEY,
 				'previewCampaignMetaKey'      => self::PREVIEW_CAMPAIGN_META_KEY,
+				'enforcedBylineMetaKey'       => Newsletter_List_Byline::META_KEY,
+				'bylineTaxonomy'              => Newsletter_List_Byline::TAXONOMY,
 				'campaignPostType'            => Post_Type::CAMPAIGN_POST_TYPE,
 				'listTaxonomy'                => Post_Type::TAXONOMY,
 				'termId'                      => $term_id,

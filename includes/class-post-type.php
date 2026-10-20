@@ -389,13 +389,14 @@ class Post_Type {
 					'with_front' => false,
 				),
 				'capability_type' => 'post',
-				// `_post_visibility` and `workflow-status` must be listed here:
-				// the campaign CPT registers at init/20, after those taxonomies
-				// bind to get_post_types_by_support() (publication-listing at
-				// init/10, workflow-status at init/11). Without this, Hide on
-				// Publications Archive and workflow status look saved in the
-				// editor but are dropped by REST on reload.
-				'taxonomies'      => array( self::TAXONOMY, 'category', '_post_visibility', 'workflow-status' ),
+				// `_post_visibility`, `workflow-status`, and `bylines` must be
+				// listed here: the campaign CPT registers at init/20, after those
+				// taxonomies bind to their enabled post types (bylines at init/5,
+				// publication-listing at init/10, workflow-status at init/11).
+				// Without this, Hide on Publications Archive and workflow status
+				// look saved in the editor but are dropped by REST on reload, and
+				// the enforced list byline is never indexed by ElasticPress.
+				'taxonomies'      => array( self::TAXONOMY, 'category', '_post_visibility', 'workflow-status', 'bylines' ),
 			)
 		);
 
@@ -576,12 +577,13 @@ class Post_Type {
 
 	/** Term meta on prc_newsletter_list (Mailchimp list + segment + default From). */
 	const TERM_META_KEYS = array(
-		'prc_newsletter_list_audience_id'         => 'Mailchimp audience (list) ID for this newsletter list.',
-		'prc_newsletter_list_segment_id'          => 'Mailchimp saved-segment ID; empty = entire audience.',
-		'prc_newsletter_list_from_name'           => 'Default From name for campaigns using this list.',
-		'prc_newsletter_list_from_email'          => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
-		'prc_newsletter_list_campaign_pattern'    => 'Default campaign pattern name used when creating a draft from this list.',
-		'prc_newsletter_list_preview_campaign_id' => 'Campaign post ID shown by Latest Newsletter Preview on this list archive. Empty = latest published.',
+		'prc_newsletter_list_audience_id'             => 'Mailchimp audience (list) ID for this newsletter list.',
+		'prc_newsletter_list_segment_id'              => 'Mailchimp saved-segment ID; empty = entire audience.',
+		'prc_newsletter_list_from_name'               => 'Default From name for campaigns using this list.',
+		'prc_newsletter_list_from_email'              => 'Default From email (reply-to on Mailchimp sends) for campaigns using this list.',
+		'prc_newsletter_list_campaign_pattern'        => 'Default campaign pattern name used when creating a draft from this list.',
+		'prc_newsletter_list_preview_campaign_id'     => 'Campaign post ID shown by Latest Newsletter Preview on this list archive. Empty = latest published.',
+		'prc_newsletter_list_enforced_byline_term_id' => 'Bylines term ID added to every campaign on this list so it appears on that staff page. Empty = none.',
 	);
 
 	/**
@@ -603,14 +605,18 @@ class Post_Type {
 	 */
 	private function register_term_meta(): void {
 		$sanitizers = array(
-			'prc_newsletter_list_from_email'          => 'sanitize_email',
-			'prc_newsletter_list_campaign_pattern'    => array(
+			'prc_newsletter_list_from_email'              => 'sanitize_email',
+			'prc_newsletter_list_campaign_pattern'        => array(
 				Newsletter_List::class,
 				'sanitize_campaign_pattern',
 			),
-			'prc_newsletter_list_preview_campaign_id' => array(
+			'prc_newsletter_list_preview_campaign_id'     => array(
 				Newsletter_List::class,
 				'sanitize_preview_campaign_id',
+			),
+			'prc_newsletter_list_enforced_byline_term_id' => array(
+				Newsletter_List_Byline::class,
+				'sanitize_term_id',
 			),
 		);
 

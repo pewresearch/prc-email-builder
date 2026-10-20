@@ -6,6 +6,7 @@ import apiFetch from '@wordpress/api-fetch';
 import { registerCoreBlocks } from '@wordpress/block-library';
 import { getBlockType } from '@wordpress/blocks';
 import { mountCampaignPatternControl } from './campaign-pattern-control';
+import { mountEnforcedBylineControl } from './enforced-byline-control';
 import { mountPreviewCampaignControl } from './preview-campaign-control';
 import './style.scss';
 
@@ -303,6 +304,7 @@ function init(): void {
 	initAccentColorPicker();
 	mountCampaignPatternControl();
 	mountPreviewCampaignControl();
+	mountEnforcedBylineControl();
 
 	const audienceSelect = getAudienceSelect();
 	const segmentSelect = getSegmentSelect();

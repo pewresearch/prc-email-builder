@@ -1,6 +1,6 @@
 import apiFetch from '@wordpress/api-fetch';
 import { Button, Flex, Notice } from '@wordpress/components';
-import type { Field } from '@wordpress/dataviews';
+import type { DataFormControlProps, Field } from '@wordpress/dataviews';
 import { DataForm } from '@wordpress/dataviews/wp';
 import { useEffect, useMemo, useState } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
@@ -13,6 +13,7 @@ import {
 } from './newsletter-list-input';
 import { useEmailPatterns } from '../sidebar/pattern-selector/use-email-patterns';
 import { getEmailConfig } from '../library/types';
+import { StaffBylinePicker } from '../staff-byline-picker';
 
 interface MailchimpAudience {
 	readonly id: string;
@@ -330,7 +331,41 @@ function getNewsletterListFields({
 				isLoadingPatterns ? '' : input.campaignPattern
 			),
 		},
+		{
+			id: 'enforcedBylineTermId',
+			type: 'text',
+			label: __('Staff byline (optional)', 'prc-email-builder'),
+			description: __(
+				'Every campaign on this list is added to this staff member\u2019s page when it is saved. The name does not print in the email.',
+				'prc-email-builder'
+			),
+			Edit: EnforcedBylineEdit,
+			isDisabled: disabled,
+		},
 	];
+}
+
+function EnforcedBylineEdit({
+	data,
+	onChange,
+	field,
+}: DataFormControlProps<NewsletterListInput>) {
+	return (
+		<Flex direction="column" gap={2} align="stretch">
+			<StaffBylinePicker
+				value={data.enforcedBylineTermId}
+				onChange={(termId) =>
+					onChange({ enforcedBylineTermId: termId })
+				}
+				disabled={field.isDisabled({ item: data, field })}
+			/>
+			{field.description ? (
+				<p className="components-base-control__help">
+					{field.description}
+				</p>
+			) : null}
+		</Flex>
+	);
 }
 
 const NEWSLETTER_LIST_FORM = {
@@ -343,6 +378,7 @@ const NEWSLETTER_LIST_FORM = {
 		'fromName',
 		'fromEmail',
 		'campaignPattern',
+		'enforcedBylineTermId',
 	],
 };
 

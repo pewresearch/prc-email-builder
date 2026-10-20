@@ -175,7 +175,7 @@ class First_Day_Campaign_Stats {
 			return;
 		}
 
-		if ( ! function_exists( '\PRC\Platform\Slack\notify_in_post_thread' ) ) {
+		if ( ! function_exists( '\PRC\Platform\Slack\notify_in_post_thread' ) || ! function_exists( '\PRC\Platform\Slack\mrkdwn_text' ) ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log(
 				sprintf(
@@ -302,7 +302,7 @@ class First_Day_Campaign_Stats {
 			if ( '' === $url ) {
 				continue;
 			}
-			$lines[] = sprintf( '%d. %s — %s', $listed + 1, $url, self::format_count( $clicks ) );
+			$lines[] = sprintf( '%d. %s — %s', $listed + 1, \PRC\Platform\Slack\mrkdwn_text( $url ), self::format_count( $clicks ) );
 			++$listed;
 		}
 		if ( 0 === $listed ) {

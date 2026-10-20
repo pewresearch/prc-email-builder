@@ -15,8 +15,18 @@ namespace PRC\Platform\Email_Builder;
 final class Audience_Catalog {
 	public const OPTION_PREFIX        = 'prc_email_audience_';
 	public const LEGACY_OPTION_PREFIX = 'prc_newsletter_audience_';
-	public const OTHER_BUILDER        = 'other';
-	public const MAX_PER_PAGE         = 100;
+
+	/**
+	 * Build ledgers written by Audience_Job. Not recipient lists.
+	 *
+	 * Audience_Job::job_option_key() must keep this prefix.
+	 *
+	 * @var string
+	 */
+	public const JOB_OPTION_PREFIX = 'prc_email_audience_job_';
+
+	public const OTHER_BUILDER = 'other';
+	public const MAX_PER_PAGE  = 100;
 
 	private const ORDERBY = array( 'title', 'count', 'builtAt' );
 
@@ -24,6 +34,7 @@ final class Audience_Catalog {
 	 * Every stored audience, described from its `_meta` companion option.
 	 *
 	 * Only meta siblings are read so the (potentially large) email arrays stay unloaded.
+	 * Build records under `prc_email_audience_job_` are skipped.
 	 *
 	 * @return array<int, array<string, mixed>> Rows from Audience_Builder_Registry::describe_audience().
 	 */
@@ -40,36 +51,50 @@ final class Audience_Catalog {
 
 		$audiences = array();
 		foreach ( $meta_option_names as $meta_option_name ) {
+			$audience_key = substr( $meta_option_name, 0, -5 );
+			if ( ! self::is_valid_key( $audience_key ) ) {
+				continue;
+			}
 			$meta = get_option( $meta_option_name, array() );
 			if ( ! self::is_meta_array( $meta ) ) {
 				continue;
 			}
-			$audiences[] = Audience_Builder_Registry::describe_audience( substr( $meta_option_name, 0, -5 ), $meta );
+			$audiences[] = Audience_Builder_Registry::describe_audience( $audience_key, $meta );
 		}
 
 		return $audiences;
 	}
 
 	/**
-	 * Whether a key can identify an audience option.
+	 * Whether a key can identify a stored audience option.
+	 *
+	 * Rejects `_meta` companions and build records stored under
+	 * `prc_email_audience_job_`.
 	 *
 	 * @param string $key Option key.
 	 */
 	public static function is_valid_key( string $key ): bool {
-		return ! str_ends_with( $key, '_meta' )
-			&& ( str_starts_with( $key, self::OPTION_PREFIX )
-				|| str_starts_with( $key, self::LEGACY_OPTION_PREFIX ) );
+		if ( str_ends_with( $key, '_meta' ) || str_starts_with( $key, self::JOB_OPTION_PREFIX ) ) {
+			return false;
+		}
+
+		return str_starts_with( $key, self::OPTION_PREFIX )
+			|| str_starts_with( $key, self::LEGACY_OPTION_PREFIX );
 	}
 
 	/**
-	 * Fetch one stored audience description.
+	 * Fetch one stored recipient list.
+	 *
+	 * The option must be a list. Associative build records, including keys
+	 * under `prc_email_audience_job_`, are not audiences.
 	 *
 	 * @param string $key Audience option key.
 	 * @return array<string, mixed>|\WP_Error
 	 */
 	public static function get( string $key ): array|\WP_Error {
-		$key = trim( $key );
-		if ( ! self::is_valid_key( $key ) || ! is_array( get_option( $key, null ) ) ) {
+		$key    = trim( $key );
+		$stored = get_option( $key, null );
+		if ( ! self::is_valid_key( $key ) || ! is_array( $stored ) || ! array_is_list( $stored ) ) {
 			return new \WP_Error(
 				'audience_not_found',
 				__( 'Audience not found.', 'prc-email-builder' ),

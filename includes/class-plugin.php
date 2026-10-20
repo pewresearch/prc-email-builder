@@ -80,6 +80,7 @@ class Plugin {
 		require_once $includes . 'class-email-subject.php';
 		require_once $includes . 'class-campaign-title.php';
 		require_once $includes . 'class-newsletter-list.php';
+		require_once $includes . 'class-newsletter-list-byline.php';
 		require_once $includes . 'class-newsletter-list-archive.php';
 		require_once $includes . 'templates/class-template-resolver.php';
 		require_once $includes . 'templates/class-template-registry.php';
@@ -169,6 +170,7 @@ class Plugin {
 			require_once $includes . 'cli/class-cli-resend.php';
 			require_once $includes . 'cli/class-cli-automations.php';
 			require_once $includes . 'cli/class-cli-system-key-migrate.php';
+			require_once $includes . 'cli/class-cli-backfill-list-bylines.php';
 			require_once $includes . 'cli/class-cli-first-day-stats.php';
 		}
 
@@ -197,6 +199,7 @@ class Plugin {
 		new Campaign_Title( $this->loader );
 		new Rewrites( $this->loader );
 		new Newsletter_List( $this->loader );
+		new Newsletter_List_Byline( $this->loader );
 		new Newsletter_List_Archive( $this->loader );
 		new Mailchimp( $this->loader );
 		new Mandrill_Sender( $this->loader );
@@ -230,6 +233,9 @@ class Plugin {
 
 		if ( defined( 'WP_CLI' ) && \WP_CLI ) {
 			\WP_CLI::add_command( 'prc email migrate-system-keys', CLI_System_Key_Migrate::class );
+			if ( class_exists( CLI_Backfill_List_Bylines::class, false ) ) {
+				\WP_CLI::add_command( 'prc email backfill-list-bylines', CLI_Backfill_List_Bylines::class );
+			}
 			\WP_CLI::add_command( 'prc email audience', CLI_Audience::class );
 			\WP_CLI::add_command( 'prc email resend', CLI_Resend::class );
 			\WP_CLI::add_command( 'prc email automations', CLI_Automations::class );

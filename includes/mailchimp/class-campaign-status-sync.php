@@ -261,7 +261,7 @@ class Campaign_Status_Sync {
 			return;
 		}
 
-		if ( ! function_exists( '\PRC\Platform\Slack\notify_in_post_thread' ) ) {
+		if ( ! function_exists( '\PRC\Platform\Slack\notify_in_post_thread' ) || ! function_exists( '\PRC\Platform\Slack\mrkdwn_text' ) ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log(
 				sprintf(
@@ -284,11 +284,11 @@ class Campaign_Status_Sync {
 			} elseif ( is_object( $settings ) && isset( $settings->title ) ) {
 				$raw_title = $settings->title;
 			}
-			$mc_title = is_string( $raw_title ) ? sanitize_text_field( $raw_title ) : '';
+			$mc_title = is_string( $raw_title ) ? \PRC\Platform\Slack\mrkdwn_text( sanitize_text_field( $raw_title ) ) : '';
 		}
 
-		$title        = sanitize_text_field( wp_strip_all_tags( get_the_title( $post_id ) ) );
-		$subject_meta = sanitize_text_field( (string) get_post_meta( $post_id, 'prc_email_subject', true ) );
+		$title        = sanitize_text_field( get_the_title( $post_id ) );
+		$subject_meta = \PRC\Platform\Slack\mrkdwn_text( sanitize_text_field( (string) get_post_meta( $post_id, 'prc_email_subject', true ) ) );
 		$edit_url     = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 
 		$lines   = array();
@@ -297,9 +297,8 @@ class Campaign_Status_Sync {
 			$campaign_id
 		);
 		$lines[] = sprintf(
-			'*Newsletter:* <%s|%s>',
-			esc_url_raw( $edit_url ),
-			'' !== $title ? $title : __( '(no title)', 'prc-email-builder' )
+			'*Newsletter:* %s',
+			\PRC\Platform\Slack\mrkdwn_link( $edit_url, '' !== $title ? $title : __( '(no title)', 'prc-email-builder' ) )
 		);
 		if ( '' !== $subject_meta ) {
 			$lines[] = sprintf( '*Subject:* %s', $subject_meta );
