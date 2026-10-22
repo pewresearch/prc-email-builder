@@ -20,8 +20,10 @@ if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command
  */
 class CLI_Backfill_List_Bylines extends \WPCOM_VIP_CLI_Command {
 
-	private const BATCH_SIZE    = 100;
 	private const BATCH_SLEEP_S = 2;
+
+	/** Campaigns per batch. Larger than the scheduled batches because the operator is watching. */
+	private const BATCH_SIZE = 100;
 
 	/**
 	 * Attribute a newsletter list's existing campaigns to the list's enforced byline.
@@ -69,40 +71,31 @@ class CLI_Backfill_List_Bylines extends \WPCOM_VIP_CLI_Command {
 			WP_CLI::log( 'DRY RUN — no campaigns will be modified. Use --dry-run=false to execute.' );
 		}
 
-		$counts = array(
-			Newsletter_List_Byline::RESULT_ENFORCED    => 0,
-			Newsletter_List_Byline::RESULT_CURRENT     => 0,
-			Newsletter_List_Byline::RESULT_NO_LIST     => 0,
-			Newsletter_List_Byline::RESULT_NO_BYLINE   => 0,
-			Newsletter_List_Byline::RESULT_UNAVAILABLE => 0,
-		);
+		$counts = array();
 
 		$this->start_bulk_operation();
 
-		$page    = 1;
-		$is_full = false;
+		$after_id = 0;
 		do {
-			$post_ids = $this->get_campaign_ids( $list_term_id, $page );
-			$is_full  = count( $post_ids ) === self::BATCH_SIZE;
+			$batch = Newsletter_List_Byline_Backfill::run_batch( $list_term_id, $after_id, self::BATCH_SIZE, $dry_run );
 
-			foreach ( $post_ids as $post_id ) {
-				$result = Newsletter_List_Byline::apply( (int) $post_id, $dry_run );
-				++$counts[ $result ];
-				if ( Newsletter_List_Byline::RESULT_ENFORCED === $result ) {
-					WP_CLI::log( sprintf( '%s campaign %d.', $dry_run ? 'Would update' : 'Updated', $post_id ) );
-				}
+			foreach ( $batch['counts'] as $result => $count ) {
+				$counts[ $result ] = ( $counts[ $result ] ?? 0 ) + $count;
+			}
+			foreach ( $batch['changed_ids'] as $post_id ) {
+				WP_CLI::log( sprintf( '%s campaign %d.', $dry_run ? 'Would update' : 'Updated', $post_id ) );
 			}
 
 			$this->vip_inmemory_cleanup();
-			if ( $is_full ) {
+			if ( $batch['has_more'] ) {
 				sleep( self::BATCH_SLEEP_S );
 			}
-			++$page;
-		} while ( $is_full );
+			$after_id = $batch['last_id'];
+		} while ( $batch['has_more'] );
 
 		$this->end_bulk_operation();
 
-		if ( $counts[ Newsletter_List_Byline::RESULT_UNAVAILABLE ] > 0 ) {
+		if ( ( $counts[ Newsletter_List_Byline::RESULT_UNAVAILABLE ] ?? 0 ) > 0 ) {
 			WP_CLI::warning( 'The PRC Staff Bylines plugin is not active, so no campaigns were changed.' );
 		}
 
@@ -132,39 +125,5 @@ class CLI_Backfill_List_Bylines extends \WPCOM_VIP_CLI_Command {
 			: get_term_by( 'slug', $slug_or_id, Post_Type::TAXONOMY );
 
 		return $term instanceof \WP_Term ? (int) $term->term_id : 0;
-	}
-
-	/**
-	 * One page of campaign IDs on the list. Enforcement never changes list
-	 * membership, so page numbers stay stable across batches.
-	 *
-	 * @param int $list_term_id Newsletter list term ID.
-	 * @param int $page         1-based page.
-	 * @return int[]
-	 */
-	private function get_campaign_ids( int $list_term_id, int $page ): array {
-		$query = new \WP_Query(
-			array(
-				'post_type'              => Post_Type::CAMPAIGN_POST_TYPE,
-				'post_status'            => array( 'publish', 'future', 'pending', 'draft', 'private' ),
-				'posts_per_page'         => self::BATCH_SIZE,
-				'paged'                  => $page,
-				'orderby'                => 'ID',
-				'order'                  => 'ASC',
-				'fields'                 => 'ids',
-				'no_found_rows'          => true,
-				'update_post_meta_cache' => false,
-				'update_post_term_cache' => false,
-				'tax_query'              => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
-					array(
-						'taxonomy' => Post_Type::TAXONOMY,
-						'field'    => 'term_id',
-						'terms'    => array( $list_term_id ),
-					),
-				),
-			)
-		);
-
-		return array_map( 'intval', $query->posts );
 	}
 }

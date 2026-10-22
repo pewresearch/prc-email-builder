@@ -81,6 +81,7 @@ class Plugin {
 		require_once $includes . 'class-campaign-title.php';
 		require_once $includes . 'class-newsletter-list.php';
 		require_once $includes . 'class-newsletter-list-byline.php';
+		require_once $includes . 'class-newsletter-list-byline-backfill.php';
 		require_once $includes . 'class-newsletter-list-archive.php';
 		require_once $includes . 'templates/class-template-resolver.php';
 		require_once $includes . 'templates/class-template-registry.php';
