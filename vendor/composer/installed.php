@@ -3,7 +3,7 @@
         'name' => 'prc/email-builder',
         'pretty_version' => 'dev-trunk',
         'version' => 'dev-trunk',
-        'reference' => '861240fd7fb443940476b0b80931a1dbc49dd611',
+        'reference' => 'f601608f1fe337667fb88e916ead134909a14748',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -148,7 +148,7 @@
         'prc/email-builder' => array(
             'pretty_version' => 'dev-trunk',
             'version' => 'dev-trunk',
-            'reference' => '861240fd7fb443940476b0b80931a1dbc49dd611',
+            'reference' => 'f601608f1fe337667fb88e916ead134909a14748',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
