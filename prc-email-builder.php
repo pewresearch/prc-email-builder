@@ -19,7 +19,7 @@
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       prc-email-builder
- * Requires Plugins:  prc-scripts, prc-post-publish-pipeline, prc-block-forms
+ * Requires Plugins:  prc-shared, prc-block-forms
  */
 
 namespace PRC\Platform\Email_Builder;
