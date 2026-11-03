@@ -1,6 +1,6 @@
 import { StatusDotBadge, STATUS_DOT_COLORS } from '@prc/components';
 
-import type { SendStatusTone } from '../utils/send-status';
+import type { SendStatusTone } from '../types';
 
 interface SendStatusBadgeProps {
 	label: string;

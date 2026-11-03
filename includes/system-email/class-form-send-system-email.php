@@ -28,8 +28,10 @@ use WP_Error;
  *      Turnstile captcha token carried in the form envelope (see {@see verify_captcha()})
  *   2. reads the recipient address from the first `email` field
  *   3. resolves the target dynamic newsletter from a `newsletter_post_id` or
- *      `system_email_key` field (set on the form by the consumer, e.g. mapped
- *      from quiz state)
+ *      `system_email_key` field. Public submissions may only use the values an
+ *      editor authored on the form, signed into actionConfig at render (see
+ *      {@see trusted_form_fields()}); consumers can still map other submitted
+ *      fields to an allowlisted newsletter through the resolve filter
  *   4. enforces per-IP and per-recipient send throttling on public submissions
  *      so a single client cannot automate unsolicited outbound sends (see
  *      {@see enforce_send_throttle()})
@@ -65,6 +67,12 @@ class Form_Send_System_Email {
 	const THROTTLE_EMAIL_WINDOW = HOUR_IN_SECONDS;
 
 	/**
+	 * Fields that choose what gets sent and where a public submitter is
+	 * subscribed. Public submissions take these from the authored form only.
+	 */
+	const TRUSTED_FIELD_NAMES = array( 'newsletter_post_id', 'system_email_key', 'mailchimp_signup' );
+
+	/**
 	 * Construct.
 	 *
 	 * @param Loader $loader Loader.
@@ -74,6 +82,117 @@ class Form_Send_System_Email {
 			return;
 		}
 		$loader->add_action( 'rest_api_init', $this, 'register_rest_endpoints' );
+		$loader->add_filter( 'prc_block_form_action_config', $this, 'sign_authored_fields', 10, 3 );
+	}
+
+	/**
+	 * Bake the form's authored trusted fields and their HMAC into actionConfig
+	 * so a public submission cannot swap the newsletter or Mailchimp audience.
+	 *
+	 * @hook prc_block_form_action_config
+	 *
+	 * @param array          $action_config Form actionConfig.
+	 * @param string         $form_action   Form action name.
+	 * @param \WP_Block|null $block         Rendered prc-block/form block.
+	 * @return array
+	 */
+	public function sign_authored_fields( $action_config, $form_action, $block = null ) {
+		if ( 'sendSystemEmail' !== $form_action || ! is_object( $block ) ) {
+			return $action_config;
+		}
+		$authored                              = self::authored_fields_from_blocks( $block->parsed_block['innerBlocks'] ?? array() );
+		$action_config['systemEmailFields']    = $authored;
+		$action_config['systemEmailFieldsSig'] = self::sign_fields( $authored );
+		return $action_config;
+	}
+
+	/**
+	 * Collect the authored values of trusted fields from a form's inner blocks.
+	 *
+	 * @param array $blocks Parsed inner blocks.
+	 * @return array<string, array{value: string, audienceId?: string}>
+	 */
+	public static function authored_fields_from_blocks( array $blocks ): array {
+		$fields = array();
+		foreach ( $blocks as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+			$attrs    = is_array( $block['attrs'] ?? null ) ? $block['attrs'] : array();
+			$metadata = is_array( $attrs['metadata'] ?? null ) ? $attrs['metadata'] : array();
+			$name     = (string) ( $metadata['name'] ?? '' );
+			$value    = (string) ( $attrs['value'] ?? '' );
+
+			$tag = new \WP_HTML_Tag_Processor( (string) ( $block['innerHTML'] ?? '' ) );
+			if ( $tag->next_tag( 'input' ) ) {
+				$name  = '' !== $name ? $name : (string) $tag->get_attribute( 'name' );
+				$value = (string) ( $tag->get_attribute( 'value' ) ?? $value );
+			}
+
+			if ( in_array( $name, self::TRUSTED_FIELD_NAMES, true ) && ! isset( $fields[ $name ] ) ) {
+				$fields[ $name ] = array( 'value' => $value );
+				if ( 'mailchimp_signup' === $name ) {
+					$fields[ $name ]['audienceId'] = (string) ( $metadata['audienceId'] ?? '' );
+				}
+			}
+
+			$inner   = is_array( $block['innerBlocks'] ?? null ) ? $block['innerBlocks'] : array();
+			$fields += self::authored_fields_from_blocks( $inner );
+		}
+		ksort( $fields );
+		return $fields;
+	}
+
+	/**
+	 * Replace client values of trusted fields with the signed authored values.
+	 *
+	 * Fields without a valid signature are dropped. The client keeps control of
+	 * every other field and of whether the signup box is checked.
+	 *
+	 * @param array $form_fields Submitted form fields.
+	 * @param array $form_data   Parsed form envelope.
+	 * @return array
+	 */
+	public static function trusted_form_fields( array $form_fields, array $form_data ): array {
+		$config   = is_array( $form_data['actionConfig'] ?? null ) ? $form_data['actionConfig'] : array();
+		$claimed  = is_array( $config['systemEmailFields'] ?? null ) ? $config['systemEmailFields'] : array();
+		$sig      = is_string( $config['systemEmailFieldsSig'] ?? null ) ? $config['systemEmailFieldsSig'] : '';
+		$authored = '' !== $sig && hash_equals( self::sign_fields( $claimed ), $sig ) ? $claimed : array();
+
+		$trusted = array();
+		$seen    = array();
+		foreach ( $form_fields as $field ) {
+			$name = is_array( $field ) ? (string) ( $field['name'] ?? '' ) : '';
+			if ( ! in_array( $name, self::TRUSTED_FIELD_NAMES, true ) ) {
+				$trusted[] = $field;
+				continue;
+			}
+			if ( isset( $authored[ $name ] ) && is_array( $authored[ $name ] ) ) {
+				$trusted[]     = array_merge( $field, $authored[ $name ] );
+				$seen[ $name ] = true;
+			}
+		}
+
+		foreach ( array( 'newsletter_post_id', 'system_email_key' ) as $name ) {
+			if ( ! isset( $seen[ $name ] ) && isset( $authored[ $name ]['value'] ) ) {
+				$trusted[] = array(
+					'name'  => $name,
+					'type'  => 'hidden',
+					'value' => (string) $authored[ $name ]['value'],
+				);
+			}
+		}
+
+		return $trusted;
+	}
+
+	/**
+	 * HMAC over a form's authored trusted fields.
+	 *
+	 * @param array $fields Authored fields.
+	 */
+	private static function sign_fields( array $fields ): string {
+		return hash_hmac( 'sha256', 'prc-system-email-fields|' . wp_json_encode( $fields ), wp_salt( 'auth' ) );
 	}
 
 	/**
@@ -118,7 +237,14 @@ class Form_Send_System_Email {
 			return new WP_Error( 'invalid_email', 'A valid email address is required.', array( 'status' => 400 ) );
 		}
 
-		$post_id = $this->resolve_post_id( $form_fields );
+		// Editors testing a template they can edit may target it directly.
+		// Everyone else is limited to the targets authored on the form.
+		$post_id       = $this->resolve_post_id( $form_fields );
+		$is_privileged = null !== $post_id && current_user_can( 'edit_post', $post_id );
+		if ( ! $is_privileged ) {
+			$form_fields = self::trusted_form_fields( $form_fields, $form_data );
+			$post_id     = $this->resolve_post_id( $form_fields );
+		}
 		if ( null === $post_id ) {
 			return new WP_Error(
 				'newsletter_not_found',
@@ -139,7 +265,6 @@ class Form_Send_System_Email {
 		// for them and their merge:* fields are ignored in favor of the server-side
 		// typology filter. A lower-privileged user who can edit some posts but not
 		// this template is likewise treated as public (captcha + throttle enforced).
-		$is_privileged      = current_user_can( 'edit_post', $post_id );
 		$allow_client_merge = $is_privileged;
 
 		// Captcha gate: for non-privileged submissions we require a valid Cloudflare
@@ -534,9 +659,7 @@ class Form_Send_System_Email {
 		}
 
 		if ( '' === $list_id ) {
-			$list_id = defined( '\PRC\Platform\Mailchimp\DEFAULT_LIST_ID' )
-				? \PRC\Platform\Mailchimp\DEFAULT_LIST_ID
-				: '3e953b9b70';
+			$list_id = \PRC\Platform\Mailchimp\DEFAULT_LIST_ID;
 		}
 
 		$origin_url = $this->resolve_origin_url( $form_data, $request );

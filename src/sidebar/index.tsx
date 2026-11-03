@@ -6,6 +6,7 @@ import { store as editorStore } from '@wordpress/editor';
 import EmailSettingsPanel from './email-settings-panel';
 import { EmailPreviewMenuItem } from './preview/index';
 import { SendSidebar } from './send/index';
+import { DelayedSendEditorNotice } from './send/delayed-send-editor-notice';
 import EmailPatternSelector from './pattern-selector';
 import { EngagementPanel } from './engagement';
 import { EmailSubjectPrePublishPanel } from './pre-publish-panel';
@@ -23,6 +24,7 @@ function NewsletterBuilderSidebar() {
 
 	return (
 		<>
+			<DelayedSendEditorNotice />
 			<EmailPatternSelector />
 			<EmailSettingsPanel />
 			<EngagementPanel />

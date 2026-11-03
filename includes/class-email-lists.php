@@ -102,6 +102,7 @@ class Email_Lists {
 				'hideDefaultNewButton' => true,
 				'postTypeScope'        => 'campaign',
 				'duplicate'            => $duplicate,
+				'refreshIntervalMs'    => 60000,
 			)
 		);
 

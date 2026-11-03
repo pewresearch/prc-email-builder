@@ -43,8 +43,6 @@ class Email_Block_Converter {
 		'core/columns',
 	);
 
-	private const STORY_ITEM_BLOCK = 'prc-block/story-item';
-
 	/**
 	 * Convert a newsletter post's content to an email HTML fragment.
 	 *
@@ -189,8 +187,21 @@ class Email_Block_Converter {
 			return;
 		}
 
-		if ( self::STORY_ITEM_BLOCK === $block_name && self::STORY_ITEM_BLOCK === $last_emitted_block_name ) {
-			$parts[] = Email_Block_Integration::hairline_row( 'story-item-divider' );
+		if ( null !== $block_name && null !== $last_emitted_block_name ) {
+			/**
+			 * Filter the markup emitted between two adjacent sibling blocks.
+			 *
+			 * Return an email-safe fragment, such as a hairline row, to render
+			 * it between the siblings. Return an empty string for no separator.
+			 *
+			 * @param string $separator Separator HTML. Default empty.
+			 * @param string $previous  Name of the previous emitted sibling.
+			 * @param string $current   Name of the sibling about to be emitted.
+			 */
+			$separator = (string) apply_filters( 'prc_email_builder_sibling_separator', '', $last_emitted_block_name, $block_name );
+			if ( '' !== $separator ) {
+				$parts[] = $separator;
+			}
 		}
 
 		$parts[]                 = $fragment;

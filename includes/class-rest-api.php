@@ -1696,10 +1696,7 @@ class REST_API {
 		$clauses = array();
 
 		if ( ! empty( $mailchimp_values ) ) {
-			$clauses[] = $this->build_status_meta_clause(
-				'prc_email_mailchimp_campaign_status',
-				$mailchimp_values
-			);
+			$clauses[] = $this->build_campaign_status_meta_clause( $mailchimp_values );
 		}
 
 		if ( ! empty( $mandrill_values ) ) {
@@ -1753,10 +1750,7 @@ class REST_API {
 				'meta_query' => array_merge(
 					$existing_meta,
 					array(
-						$this->build_status_meta_clause(
-							'prc_email_mailchimp_campaign_status',
-							$mailchimp_values
-						),
+						$this->build_campaign_status_meta_clause( $mailchimp_values ),
 					)
 				),
 			)
@@ -1883,6 +1877,68 @@ class REST_API {
 	}
 
 	/**
+	 * Campaign status filter.
+	 *
+	 * `pending` is the delayed-send meta, so it stays distinct from No Campaign and MC Draft.
+	 *
+	 * @param string[] $values Allowed Mailchimp status values, including `pending`.
+	 * @return array<string, mixed>
+	 */
+	private function build_campaign_status_meta_clause( array $values ): array {
+		$wants_pending = in_array( Send_Status::MAILCHIMP_PENDING, $values, true );
+		$others        = array_values(
+			array_filter(
+				$values,
+				static fn( string $value ) => Send_Status::MAILCHIMP_PENDING !== $value
+			)
+		);
+
+		$pending_clause = array(
+			'key'     => Campaign_Linkage::META_PENDING_SEND_AT,
+			'value'   => 0,
+			'compare' => '>',
+			'type'    => 'NUMERIC',
+		);
+
+		if ( $wants_pending && empty( $others ) ) {
+			return $pending_clause;
+		}
+
+		$not_pending = array(
+			'relation' => 'OR',
+			array(
+				'key'     => Campaign_Linkage::META_PENDING_SEND_AT,
+				'compare' => 'NOT EXISTS',
+			),
+			array(
+				'key'     => Campaign_Linkage::META_PENDING_SEND_AT,
+				'value'   => 0,
+				'compare' => '<=',
+				'type'    => 'NUMERIC',
+			),
+		);
+
+		$stored = array(
+			'relation' => 'AND',
+			$this->build_status_meta_clause(
+				Campaign_Linkage::META_CAMPAIGN_STATUS,
+				$others
+			),
+			$not_pending,
+		);
+
+		if ( ! $wants_pending ) {
+			return $stored;
+		}
+
+		return array(
+			'relation' => 'OR',
+			$pending_clause,
+			$stored,
+		);
+	}
+
+	/**
 	 * Shape a WP_Post into a library row for the DataViews UI.
 	 *
 	 * @param \WP_Post $post Post object.
@@ -1907,8 +1963,15 @@ class REST_API {
 			$terms
 		);
 
-		$type  = Post_Type::CAMPAIGN_POST_TYPE === $post->post_type ? 'campaign' : 'txn';
-		$stats = Email_Reports::row_stats( $post->ID );
+		$type            = Post_Type::CAMPAIGN_POST_TYPE === $post->post_type ? 'campaign' : 'txn';
+		$stats           = Email_Reports::row_stats( $post->ID );
+		$mandrill_status = (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true );
+		$delivery_mode   = Post_Type::is_transactional_post( $post )
+			? Post_Type::transactional_delivery_mode( $post )
+			: '';
+		$raw_status      = 'campaign' === $type
+			? Send_Status::campaign_raw_status( $post->ID )
+			: $mandrill_status;
 
 		return array(
 			'id'                => $post->ID,
@@ -1921,11 +1984,10 @@ class REST_API {
 			'edit_url'          => get_edit_post_link( $post->ID, 'raw' ),
 			'newsletter_lists'  => $newsletter_lists,
 			'subject'           => (string) get_post_meta( $post->ID, 'prc_email_subject', true ),
-			'mailchimp_status'  => (string) get_post_meta( $post->ID, 'prc_email_mailchimp_campaign_status', true ),
-			'mandrill_status'   => (string) get_post_meta( $post->ID, 'prc_email_mandrill_send_status', true ),
-			'delivery_mode'     => Post_Type::is_transactional_post( $post )
-				? Post_Type::transactional_delivery_mode( $post )
-				: '',
+			'mailchimp_status'  => (string) get_post_meta( $post->ID, Campaign_Linkage::META_CAMPAIGN_STATUS, true ),
+			'mandrill_status'   => $mandrill_status,
+			'delivery_mode'     => $delivery_mode,
+			'send_status'       => Send_Status::resolve( $type, $raw_status, $delivery_mode ),
 			'open_rate'         => $stats['open_rate'],
 			'click_rate'        => $stats['click_rate'],
 			'stats_available'   => $stats['stats_available'],

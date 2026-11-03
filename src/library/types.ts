@@ -3,6 +3,7 @@ import type { AudienceBuilder } from '../admin-dataview/audience-catalog';
 
 export type EmailListScope = 'campaign' | 'txn';
 export type EmailPageScope = EmailListScope | 'audience';
+export type SendStatusTone = 'success' | 'warning' | 'error' | 'neutral';
 
 export interface EmailLibraryRow {
 	id: number;
@@ -18,6 +19,11 @@ export interface EmailLibraryRow {
 	mailchimp_status: string;
 	mandrill_status: string;
 	delivery_mode: string;
+	send_status: {
+		label: string;
+		tone: SendStatusTone;
+		raw: string;
+	};
 	open_rate: number | null;
 	click_rate: number | null;
 	report_sync_state?: string;

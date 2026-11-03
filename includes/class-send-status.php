@@ -22,6 +22,8 @@ class Send_Status {
 	public const TONE_ERROR   = 'error';
 	public const TONE_NEUTRAL = 'neutral';
 
+	public const MAILCHIMP_PENDING = 'pending';
+
 	/**
 	 * Resolve display label and tone for a campaign or transactional email.
 	 *
@@ -74,7 +76,7 @@ class Send_Status {
 	public static function tone_for_mailchimp( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
 			'sent' => self::TONE_SUCCESS,
-			'save', 'sending', 'schedule', 'paused', '' => self::TONE_WARNING,
+			'save', 'sending', 'schedule', 'paused', self::MAILCHIMP_PENDING, '' => self::TONE_WARNING,
 			'unavailable' => self::TONE_ERROR,
 			default => self::TONE_WARNING,
 		};
@@ -108,6 +110,10 @@ class Send_Status {
 			array(
 				'value' => 'save',
 				'label' => __( 'MC Draft', 'prc-email-builder' ),
+			),
+			array(
+				'value' => self::MAILCHIMP_PENDING,
+				'label' => __( 'MC Pending Send', 'prc-email-builder' ),
 			),
 			array(
 				'value' => 'sent',
@@ -247,6 +253,21 @@ class Send_Status {
 			'prc_email_mandrill_' . $status,
 			$labels[ $status ],
 		);
+	}
+
+	/**
+	 * Raw campaign status for display.
+	 *
+	 * A queued delayed send wins over the stored Mailchimp status.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 */
+	public static function campaign_raw_status( int $post_id ): string {
+		if ( Campaign_Linkage::pending_send_at( $post_id ) > 0 ) {
+			return self::MAILCHIMP_PENDING;
+		}
+
+		return (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_STATUS, true );
 	}
 
 	/**

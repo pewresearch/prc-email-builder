@@ -69,26 +69,21 @@ if ( '' !== $white_pair['light'] && '' !== $white_pair['dark'] && $white_pair['l
 	.body-link-plain, .body-link-plain:link, .body-link-plain:visited { text-decoration: none !important; }
 	/* Custom Color → Link — underline without locking colour */
 	.body-link-custom, .body-link-custom:link, .body-link-custom:visited { text-decoration: underline !important; }
-	/* Story-item left/right cards — stack on narrow viewports (Mailchimp parity) */
-	@media only screen and (max-width: 480px) {
-	td.story-item-image,
-	td.story-item-text {
-		display: block !important;
-		width: 100% !important;
-		max-width: 100% !important;
-		padding-left: 0 !important;
-		padding-right: 0 !important;
-		box-sizing: border-box;
-	}
-	td.story-item-image {
-		padding-bottom: 12px !important;
-	}
-	td.story-item-image img {
-		width: 100% !important;
-		max-width: 100% !important;
-		height: auto !important;
-	}
-	}
+<?php
+/**
+ * Filter extra CSS appended to the email `<style>` block in the document head.
+ *
+ * Plugins that own an email block use this for rules inline styles cannot
+ * express, such as `@media` queries. Do not pass web stylesheets here.
+ *
+ * @param string $css CSS rules. Default empty.
+ */
+$extra_head_css = (string) apply_filters( 'prc_email_builder_extra_head_css', '' );
+if ( '' !== $extra_head_css ) {
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CSS from a trusted server-side filter, never user input.
+	echo $extra_head_css . "\n";
+}
+?>
 	@media (prefers-color-scheme: dark) {
 <?php
 	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated from trusted preset registry.

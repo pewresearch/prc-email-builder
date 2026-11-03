@@ -7,10 +7,7 @@ import {
 	type EmailLibraryRow,
 	type EmailListScope,
 } from '../types';
-import {
-	getSendStatusFilterElements,
-	resolveSendStatus,
-} from '../utils/send-status';
+import { getSendStatusFilterElements } from '../utils/send-status';
 
 function rowStatsAvailable(item: EmailLibraryRow): boolean {
 	if (typeof item.stats_available === 'boolean') {
@@ -112,16 +109,13 @@ export function getFieldsForScope(
 			id: 'sendStatus',
 			label: __('Send Status', 'prc-email-builder'),
 			getValue: ({ item }: { item: EmailLibraryRow }) =>
-				resolveSendStatus(item).label,
-			render: ({ item }: { item: EmailLibraryRow }) => {
-				const resolved = resolveSendStatus(item);
-				return (
-					<SendStatusBadge
-						label={resolved.label}
-						tone={resolved.tone}
-					/>
-				);
-			},
+				item.send_status.label,
+			render: ({ item }: { item: EmailLibraryRow }) => (
+				<SendStatusBadge
+					label={item.send_status.label}
+					tone={item.send_status.tone}
+				/>
+			),
 			elements: getSendStatusFilterElements(scope),
 			filterBy: {
 				operators: ['isAny'],

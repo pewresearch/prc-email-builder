@@ -347,6 +347,38 @@ class Newsletter_List {
 	}
 
 	/**
+	 * Newest published, previewable campaign in a list, by post date.
+	 *
+	 * @param int $term_id Newsletter list term ID.
+	 * @return int Campaign post ID, or 0 when the list has no published campaign.
+	 */
+	public static function get_latest_campaign_id( int $term_id ): int {
+		if ( $term_id <= 0 ) {
+			return 0;
+		}
+
+		$query = new \WP_Query(
+			array_merge(
+				self::get_previewable_campaign_query_args( $term_id ),
+				array(
+					'posts_per_page'         => 1,
+					'orderby'                => array(
+						'date' => 'DESC',
+						'ID'   => 'DESC',
+					),
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'ignore_sticky_posts'    => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			)
+		);
+
+		return empty( $query->posts ) ? 0 : (int) $query->posts[0];
+	}
+
+	/**
 	 * REST collection param so campaign search can pin only this list's previewable posts.
 	 *
 	 * @param array<string, mixed> $query_params Collection params.

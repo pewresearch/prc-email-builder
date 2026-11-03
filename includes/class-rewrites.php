@@ -14,6 +14,7 @@ namespace PRC\Platform\Email_Builder;
  *
  * List archive:  /newsletter/{list-slug}/
  * Campaign single: /newsletter/{list-slug}/{campaign-slug}/
+ * Latest issue:   /newsletter/{list-slug}/latest/ (302 to the newest published campaign)
  */
 class Rewrites {
 	const NEWSLETTER_URL_PREFIX = 'newsletter';
@@ -22,7 +23,16 @@ class Rewrites {
 	const LISTLESS_FALLBACK_SLUG = 'campaign';
 
 	const REWRITE_FLUSH_OPTION  = 'prc_email_builder_rewrite_version';
-	const REWRITE_FLUSH_VERSION = 1;
+	const REWRITE_FLUSH_VERSION = 2;
+
+	/** Query var set by /newsletter/{list-slug}/latest/. Holds the list slug. */
+	const LATEST_QUERY_VAR = 'prc_newsletter_latest';
+
+	/** Path segment appended to a list URL to reach its newest campaign. */
+	const LATEST_URL_SEGMENT = 'latest';
+
+	/** Browser/edge cache lifetime for the /latest redirect, in seconds. */
+	const LATEST_REDIRECT_MAX_AGE = 300;
 
 	/**
 	 * Construct.
@@ -30,11 +40,89 @@ class Rewrites {
 	 * @param Loader $loader Loader.
 	 */
 	public function __construct( Loader $loader ) {
+		$loader->add_action( 'init', $this, 'register_latest_rewrite_rule' );
+		$loader->add_filter( 'query_vars', $this, 'register_latest_query_var' );
+		// Priority 5 so the redirect runs before core redirect_canonical (priority 10).
+		$loader->add_action( 'template_redirect', $this, 'redirect_to_latest_campaign', 5 );
 		$loader->add_filter( 'post_type_link', $this, 'filter_campaign_permalink', 10, 2 );
 		$loader->add_action( 'template_redirect', $this, 'redirect_canonical_list_segment' );
 		$loader->add_filter( 'prc_research_teams_excluded_url_slugs', $this, 'exclude_newsletter_slug' );
 		$loader->add_action( 'pre_get_posts', $this, 'restrict_list_archive_to_campaigns' );
 		$loader->add_action( 'admin_init', $this, 'maybe_flush_rewrite_rules', 99999 );
+	}
+
+	/**
+	 * Route /newsletter/{list-slug}/latest/ ahead of the campaign single rule.
+	 *
+	 * Added at the top so the campaign rule (newsletter/{list}/{slug}) cannot claim it.
+	 */
+	public function register_latest_rewrite_rule(): void {
+		add_rewrite_rule(
+			'^' . self::NEWSLETTER_URL_PREFIX . '/([^/]+)/' . self::LATEST_URL_SEGMENT . '/?$',
+			'index.php?' . self::LATEST_QUERY_VAR . '=$matches[1]',
+			'top'
+		);
+	}
+
+	/**
+	 * Allow the latest-campaign query var.
+	 *
+	 * @param string[] $query_vars Public query vars.
+	 * @return string[]
+	 */
+	public function register_latest_query_var( array $query_vars ): array {
+		$query_vars[] = self::LATEST_QUERY_VAR;
+		return $query_vars;
+	}
+
+	/**
+	 * 302 /newsletter/{list-slug}/latest/ to the list's newest published campaign.
+	 *
+	 * 302, not 301: the target changes on every publish. The redirect carries a short
+	 * public Cache-Control so the VIP edge can absorb repeat hits.
+	 *
+	 * A list that does not exist gets a normal 404. A list with no published
+	 * campaign yet falls back to the list archive URL.
+	 */
+	public function redirect_to_latest_campaign(): void {
+		$list_slug = sanitize_title( (string) get_query_var( self::LATEST_QUERY_VAR ) );
+		if ( '' === $list_slug ) {
+			return;
+		}
+
+		$term = get_term_by( 'slug', $list_slug, Post_Type::TAXONOMY );
+		if ( ! $term instanceof \WP_Term ) {
+			$this->set_not_found();
+			return;
+		}
+
+		$campaign_id = Newsletter_List::get_latest_campaign_id( (int) $term->term_id );
+		$target      = $campaign_id > 0 ? get_permalink( $campaign_id ) : get_term_link( $term );
+		if ( ! is_string( $target ) || '' === $target ) {
+			$this->set_not_found();
+			return;
+		}
+
+		/**
+		 * Filters the Cache-Control max-age (seconds) sent with the /latest redirect.
+		 *
+		 * @param int $max_age Seconds. Default 300.
+		 */
+		$max_age = max( 0, (int) apply_filters( 'prc_email_builder_latest_redirect_max_age', self::LATEST_REDIRECT_MAX_AGE ) );
+		header( 'Cache-Control: public, max-age=' . $max_age );
+
+		wp_safe_redirect( $target, 302 );
+		exit;
+	}
+
+	/**
+	 * Render the theme 404 for the current request.
+	 */
+	private function set_not_found(): void {
+		global $wp_query;
+		$wp_query->set_404();
+		status_header( 404 );
+		nocache_headers();
 	}
 
 	/**

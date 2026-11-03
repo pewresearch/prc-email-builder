@@ -6,6 +6,8 @@ import {
 	__experimentalText as Text,
 } from '@wordpress/components';
 
+import { formatCountdown, remainingSeconds } from './delayed-send-countdown';
+
 const FULL_WIDTH_STYLE = {
 	width: '100%',
 	justifyContent: 'center',
@@ -15,14 +17,32 @@ export function delayMinutesFromSeconds(seconds: number): number {
 	return Math.max(1, Math.round(seconds / 60));
 }
 
-function formatCountdown(secondsLeft: number): string {
-	const minutes = Math.floor(secondsLeft / 60);
-	const seconds = secondsLeft % 60;
-	return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
+export function useDelayedSendCountdown(pendingSendAt: number): number {
+	const [, setTick] = useState(0);
 
-function remainingSeconds(pendingSendAt: number, nowMs: number): number {
-	return Math.max(0, pendingSendAt - Math.floor(nowMs / 1000));
+	useEffect(() => {
+		if (pendingSendAt <= 0) {
+			return;
+		}
+		let timer: ReturnType<typeof setTimeout>;
+		// Tick on the wall-clock second so every mounted countdown (editor
+		// notice and Campaign Setup) flips together instead of drifting apart.
+		const scheduleTick = () => {
+			timer = setTimeout(
+				() => {
+					setTick((tick) => tick + 1);
+					scheduleTick();
+				},
+				1000 - (Date.now() % 1000)
+			);
+		};
+		scheduleTick();
+		return () => {
+			clearTimeout(timer);
+		};
+	}, [pendingSendAt]);
+
+	return remainingSeconds(pendingSendAt, Date.now());
 }
 
 interface DelayedSendStatusProps {
@@ -40,19 +60,8 @@ export function DelayedSendStatus({
 	onCancel,
 	onSendImmediately,
 }: DelayedSendStatusProps) {
-	const [nowMs, setNowMs] = useState(() => Date.now());
+	const secondsLeft = useDelayedSendCountdown(pendingSendAt);
 	const busy = isCancelling || isSendingImmediately;
-
-	useEffect(() => {
-		const timer = setInterval(() => {
-			setNowMs(Date.now());
-		}, 1000);
-		return () => {
-			clearInterval(timer);
-		};
-	}, []);
-
-	const secondsLeft = remainingSeconds(pendingSendAt, nowMs);
 
 	return (
 		<>
