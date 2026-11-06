@@ -22,7 +22,8 @@ class Send_Status {
 	public const TONE_ERROR   = 'error';
 	public const TONE_NEUTRAL = 'neutral';
 
-	public const MAILCHIMP_PENDING = 'pending';
+	public const MAILCHIMP_PENDING        = 'pending';
+	public const MAILCHIMP_SEND_SCHEDULED = 'send_scheduled';
 
 	/**
 	 * Resolve display label and tone for a campaign or transactional email.
@@ -76,7 +77,7 @@ class Send_Status {
 	public static function tone_for_mailchimp( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
 			'sent' => self::TONE_SUCCESS,
-			'save', 'sending', 'schedule', 'paused', self::MAILCHIMP_PENDING, '' => self::TONE_WARNING,
+			'save', 'sending', 'schedule', 'paused', self::MAILCHIMP_PENDING, self::MAILCHIMP_SEND_SCHEDULED, '' => self::TONE_WARNING,
 			'unavailable' => self::TONE_ERROR,
 			default => self::TONE_WARNING,
 		};
@@ -258,20 +259,33 @@ class Send_Status {
 	/**
 	 * Raw campaign status for display.
 	 *
-	 * A queued delayed send wins over the stored Mailchimp status.
+	 * A queued delayed send wins. A post scheduled to publish, with auto-send
+	 * on and a stored status of empty or save, reports send_scheduled.
 	 *
 	 * @param int $post_id Campaign post ID.
 	 */
 	public static function campaign_raw_status( int $post_id ): string {
+		$stored = (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_STATUS, true );
+
 		if ( Campaign_Linkage::pending_send_at( $post_id ) > 0 ) {
 			return self::MAILCHIMP_PENDING;
 		}
 
-		return (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_STATUS, true );
+		if (
+			'future' === get_post_status( $post_id )
+			&& Mailchimp::is_auto_send_on_publish_enabled()
+			&& in_array( $stored, array( '', 'save' ), true )
+		) {
+			return self::MAILCHIMP_SEND_SCHEDULED;
+		}
+
+		return $stored;
 	}
 
 	/**
 	 * Mailchimp labels.
+	 *
+	 * The send_scheduled status is display-only. It is absent from the filter options.
 	 *
 	 * @return array<string, string>
 	 */
@@ -280,6 +294,7 @@ class Send_Status {
 		foreach ( self::mailchimp_options() as $option ) {
 			$labels[ $option['value'] ] = $option['label'];
 		}
+		$labels[ self::MAILCHIMP_SEND_SCHEDULED ] = __( 'Send Scheduled', 'prc-email-builder' );
 		return $labels;
 	}
 
