@@ -17,10 +17,14 @@ namespace PRC\Platform\Email_Builder;
 use WP_CLI;
 use WP_CLI\Utils;
 
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command' ) ) {
+	return;
+}
+
 /**
  * CLI Resend class.
  */
-class CLI_Resend {
+class CLI_Resend extends \WPCOM_VIP_CLI_Command {
 
 	const EMAIL_PROVIDER = 'email';
 
@@ -82,6 +86,11 @@ class CLI_Resend {
 		if ( $status_only ) {
 			$this->print_status( $sender, $post_id );
 			return;
+		}
+
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			WP_CLI::error( $allowed->get_error_message() );
 		}
 
 		if ( $reset ) {

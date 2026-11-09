@@ -11,10 +11,14 @@ namespace PRC\Platform\Email_Builder;
 
 use WP_CLI;
 
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command' ) ) {
+	return;
+}
+
 /**
  * Run the first-day Mailchimp Slack follow-up for a campaign now.
  */
-class CLI_First_Day_Stats {
+class CLI_First_Day_Stats extends \WPCOM_VIP_CLI_Command {
 
 	/**
 	 * Post the Mailchimp first-24-hours reply in the campaign's Slack thread.

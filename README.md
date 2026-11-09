@@ -350,6 +350,25 @@ if ( ! getenv( 'PRC_PLATFORM_MAILCHIMP_KEY' ) ) {
 }
 ```
 
+## Non-production safety
+
+Staging, preprod, test slots, and local dev-envs hold copies of the production database and keys. `Send_Guard` (`includes/class-send-guard.php`) makes sure these environments do not email subscribers. A real send needs `wp_get_environment_type()` to return `production`. Any other value, or a missing function, counts as non-production.
+
+On non-production:
+
+| Path                                                                    | Behavior                                                                                    |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Mailchimp campaign (publish auto-send, delayed send, `/campaigns/send`) | Sent only when the live campaign targets the saved segment named exactly `Staging (TEST)`   |
+| Mandrill bulk (`/send`, `wp prc email resend`)                          | Blocked                                                                                     |
+| System email (`/send-system-email`, form action) and automations        | Blocked. The automation dispatcher skips its run, so due enrollments are not marked failed. |
+| Preview test send (`/test-send`)                                        | Allowed                                                                                     |
+
+A blocked send returns `WP_Error` `email_send_blocked_non_production` (HTTP 403).
+
+The `sendSystemEmail` form action checks the environment before the throttle and the render. The visitor sees "This is the staging site, and sending email is turned off here. No email was sent. Emails are only sent from the production site." The message uses the VIP environment name (`VIP_GO_APP_ENVIRONMENT`) when it is set. The form log records the status `send_blocked_non_production`, not `send_failed`.
+
+For Mailchimp, the check reads the campaign and the segment live from Mailchimp, right before `campaigns/send`. Stale post meta cannot widen the audience. A lookup error blocks the send. The segment name must be exactly `Staging (TEST)` (surrounding whitespace is ignored). If someone renames the segment in Mailchimp, staging sends stop working. If someone gives a different segment that name, staging can send to it. So keep that segment small.
+
 ## Development
 
 ```bash

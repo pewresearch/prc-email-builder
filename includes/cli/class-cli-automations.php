@@ -17,10 +17,14 @@ namespace PRC\Platform\Email_Builder;
 use WP_CLI;
 use WP_CLI\Utils;
 
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command' ) ) {
+	return;
+}
+
 /**
  * CLI Automations class.
  */
-class CLI_Automations {
+class CLI_Automations extends \WPCOM_VIP_CLI_Command {
 
 	/**
 	 * List enrollment records.

@@ -17,7 +17,7 @@ use PRC\Platform\CLI_Audience_Verification;
 use WP_CLI;
 use WP_CLI\Utils;
 
-if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command' ) ) {
 	return;
 }
 
@@ -28,7 +28,7 @@ if ( ! trait_exists( '\\PRC\\Platform\\CLI_Audience_Verification' ) ) {
 /**
  * Create, list, and delete system-email audience lists for Mandrill newsletters.
  */
-class CLI_Audience {
+class CLI_Audience extends \WPCOM_VIP_CLI_Command {
 
 	use CLI_Audience_Verification;
 

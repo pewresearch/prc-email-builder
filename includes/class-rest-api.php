@@ -1109,6 +1109,11 @@ class REST_API {
 			);
 		}
 
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		$current_status = (string) get_post_meta( $post_id, Mandrill_Sender::STATUS_META, true );
 		if ( 'sent' === $current_status && ! $reset ) {
 			return new \WP_Error(
@@ -1145,7 +1150,7 @@ class REST_API {
 				$scheduled->add_data( array( 'status' => 409 ) );
 			} elseif ( Email_Subject::ERROR_CODE === $code ) {
 				$scheduled->add_data( array( 'status' => 400 ) );
-			} else {
+			} elseif ( Send_Guard::ERROR_CODE !== $code ) {
 				$scheduled->add_data( array( 'status' => 500 ) );
 			}
 			return $scheduled;

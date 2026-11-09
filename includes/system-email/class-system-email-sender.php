@@ -74,6 +74,11 @@ class System_Email_Sender {
 			return new WP_Error( 'invalid_email', 'A valid recipient email address is required.', array( 'status' => 400 ) );
 		}
 
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		/**
 		 * Filter the merge context before rendering a dynamic system email.
 		 *
@@ -160,6 +165,11 @@ class System_Email_Sender {
 		);
 		if ( empty( $recipients ) ) {
 			return new WP_Error( 'invalid_email', 'At least one valid recipient email address is required.', array( 'status' => 400 ) );
+		}
+
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
 		}
 
 		/** This filter is documented in {@see self::send()}; for batch sends the third argument is the recipient list. */
@@ -324,6 +334,11 @@ class System_Email_Sender {
 	 *         and nothing was dispatched.
 	 */
 	private static function dispatch( array $to_emails, string $subject, string $html, int $post_id = 0 ): array|WP_Error {
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		$api_key = self::get_api_key();
 		if ( '' === $api_key ) {
 			return new WP_Error( 'mandrill_not_configured', 'Mandrill API key is not set.', array( 'status' => 500 ) );

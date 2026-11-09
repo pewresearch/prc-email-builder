@@ -50,6 +50,11 @@ class Form_Send_System_Email {
 	const ROUTE = 'form/send-system-email';
 
 	/**
+	 * Form response log status for a submission refused outside production.
+	 */
+	const STATUS_BLOCKED_NON_PRODUCTION = 'send_blocked_non_production';
+
+	/**
 	 * Object-cache group for the public send throttle buckets.
 	 */
 	const THROTTLE_CACHE_GROUP = 'prc_email_system_email_throttle';
@@ -304,6 +309,11 @@ class Form_Send_System_Email {
 			);
 		}
 
+		if ( ! Send_Guard::is_production() ) {
+			$this->log_response( $form_data, $form_fields, self::STATUS_BLOCKED_NON_PRODUCTION );
+			return Send_Guard::form_blocked_error();
+		}
+
 		// Defense in depth: throttle public sends per-IP and per-recipient so a
 		// single client cannot fan out unsolicited mail even with a valid captcha.
 		// Editors are exempt. Counted here, immediately before dispatch, so only
@@ -347,7 +357,7 @@ class Form_Send_System_Email {
 	 *
 	 * @param array<string, mixed> $form_data         Parsed form envelope.
 	 * @param array                $form_fields       Raw submitted form fields.
-	 * @param string               $status            Response status: 'sent' or 'send_failed'.
+	 * @param string               $status            Response status: 'sent', 'send_failed', or 'send_blocked_non_production'.
 	 * @param string|null          $newsletter_signup Mailchimp opt-in outcome, when a signup field was present.
 	 */
 	private function log_response( array $form_data, array $form_fields, string $status, ?string $newsletter_signup = null ): void {

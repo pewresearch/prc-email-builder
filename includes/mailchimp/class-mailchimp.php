@@ -792,6 +792,12 @@ class Mailchimp {
 		}
 
 		if ( '' === $campaign_id ) {
+			// Stops a draft from being created in Mailchimp for a target that send_campaign() would refuse.
+			$allowed = $this->assert_targeting_allowed_for_post( $post_id );
+			if ( is_wp_error( $allowed ) ) {
+				return $allowed;
+			}
+
 			$html = Cached_Email_Html::resolve( $post_id );
 			if ( is_wp_error( $html ) ) {
 				return $html;
@@ -1082,6 +1088,21 @@ class Mailchimp {
 	 * @return true|WP_Error
 	 */
 	public function send_campaign( string $campaign_id ): true|WP_Error {
+		$allowed = $this->assert_campaign_send_allowed( $campaign_id );
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
+		return $this->dispatch_campaign_send( $campaign_id );
+	}
+
+	/**
+	 * Call Mailchimp campaigns/send. Only send_campaign() may call this.
+	 *
+	 * @param string $campaign_id Mailchimp campaign ID.
+	 * @return true|WP_Error
+	 */
+	protected function dispatch_campaign_send( string $campaign_id ): true|WP_Error {
 		$client = $this->get_client();
 		if ( is_wp_error( $client ) ) {
 			return $client;
@@ -1094,6 +1115,117 @@ class Mailchimp {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Refuse a campaign send on non-production unless Mailchimp itself reports
+	 * that the campaign targets the "Staging (TEST)" saved segment.
+	 *
+	 * Reads the campaign and segment live so stale post meta or a draft linked
+	 * before a targeting change cannot widen the audience. Any lookup failure
+	 * blocks the send.
+	 *
+	 * @param string $campaign_id Mailchimp campaign ID.
+	 * @return true|WP_Error
+	 */
+	public function assert_campaign_send_allowed( string $campaign_id ): true|WP_Error {
+		if ( Send_Guard::is_production() ) {
+			return true;
+		}
+
+		$campaign = $this->get_campaign( $campaign_id );
+		if ( is_wp_error( $campaign ) ) {
+			return Send_Guard::blocked_error( 'Could not verify the campaign recipients: ' . $campaign->get_error_message() );
+		}
+
+		$recipients = self::campaign_recipients( $campaign );
+		if ( '' === $recipients['list_id'] || $recipients['segment_id'] <= 0 ) {
+			return Send_Guard::blocked_error( 'This campaign targets an entire audience.' );
+		}
+
+		return $this->assert_segment_is_staging_test( $recipients['list_id'], $recipients['segment_id'] );
+	}
+
+	/**
+	 * Non-production pre-check on the post's stored targeting, run before a
+	 * Mailchimp draft is created.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return true|WP_Error
+	 */
+	private function assert_targeting_allowed_for_post( int $post_id ): true|WP_Error {
+		if ( Send_Guard::is_production() ) {
+			return true;
+		}
+
+		$targeting   = Newsletter_List::resolve_mailchimp_targeting( $post_id );
+		$audience_id = (string) $targeting['audience_id'];
+		$segment_id  = (int) $targeting['segment_id'];
+		if ( '' === $audience_id || $segment_id <= 0 ) {
+			return Send_Guard::blocked_error( 'This campaign targets an entire audience.' );
+		}
+
+		return $this->assert_segment_is_staging_test( $audience_id, $segment_id );
+	}
+
+	/**
+	 * Block unless the live Mailchimp segment is named "Staging (TEST)".
+	 *
+	 * @param string $audience_id Mailchimp list ID.
+	 * @param int    $segment_id  Saved segment ID.
+	 * @return true|WP_Error
+	 */
+	private function assert_segment_is_staging_test( string $audience_id, int $segment_id ): true|WP_Error {
+		$name = $this->fetch_segment_name( $audience_id, $segment_id );
+		if ( is_wp_error( $name ) ) {
+			return Send_Guard::blocked_error( 'Could not verify the campaign segment: ' . $name->get_error_message() );
+		}
+
+		if ( ! Send_Guard::is_staging_test_segment_name( $name ) ) {
+			return Send_Guard::blocked_error( sprintf( 'This campaign targets the "%s" segment.', $name ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Fetch a saved segment's name from Mailchimp, bypassing the segment cache.
+	 *
+	 * @param string $audience_id Mailchimp list ID.
+	 * @param int    $segment_id  Saved segment ID.
+	 * @return string|WP_Error
+	 */
+	protected function fetch_segment_name( string $audience_id, int $segment_id ): string|WP_Error {
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		try {
+			$response = $client->lists->getSegment( $audience_id, (string) $segment_id, 'name' );
+		} catch ( \Exception $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_segment_get_error' );
+		}
+
+		return (string) ( $response->name ?? '' );
+	}
+
+	/**
+	 * Extract list ID and saved segment ID from a campaigns/get response.
+	 *
+	 * @param array $campaign Campaign response (array or nested stdClass).
+	 * @return array{list_id: string, segment_id: int}
+	 */
+	private static function campaign_recipients( array $campaign ): array {
+		$recipients = json_decode( (string) wp_json_encode( $campaign['recipients'] ?? array() ), true );
+		if ( ! is_array( $recipients ) ) {
+			$recipients = array();
+		}
+
+		return array(
+			'list_id'    => (string) ( $recipients['list_id'] ?? '' ),
+			'segment_id' => (int) ( $recipients['segment_opts']['saved_segment_id'] ?? 0 ),
+		);
 	}
 
 	// -------------------------------------------------------------------------

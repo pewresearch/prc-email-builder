@@ -12,16 +12,18 @@ namespace PRC\Platform\Email_Builder;
 use WP_CLI;
 use WP_CLI\Utils;
 
-if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+if ( ! defined( 'WP_CLI' ) || ! WP_CLI || ! class_exists( 'WPCOM_VIP_CLI_Command' ) ) {
 	return;
 }
 
 /**
  * Align transactional email post slugs with legacy system email keys, then drop the meta.
  */
-class CLI_System_Key_Migrate {
+class CLI_System_Key_Migrate extends \WPCOM_VIP_CLI_Command {
 
 	private const LEGACY_META_KEY = 'prc_email_system_email_key';
+	private const BATCH_SIZE      = 50;
+	private const BATCH_SLEEP_S   = 2;
 
 	/**
 	 * Migrate legacy system email keys to post slugs.
@@ -67,9 +69,18 @@ class CLI_System_Key_Migrate {
 			return;
 		}
 
-		foreach ( $rows as $row ) {
+		$this->start_bulk_operation();
+
+		foreach ( $rows as $index => $row ) {
 			$results[] = $this->migrate_row( $row, $dry_run );
+
+			if ( 0 === ( $index + 1 ) % self::BATCH_SIZE ) {
+				$this->vip_inmemory_cleanup();
+				sleep( self::BATCH_SLEEP_S );
+			}
 		}
+
+		$this->end_bulk_operation();
 
 		WP_CLI\Utils\format_items(
 			'table',

@@ -153,6 +153,11 @@ class Automation_Scheduler {
 			'groups' => 0,
 		);
 
+		// Leave due rows untouched so they do not accrue send failures.
+		if ( ! Send_Guard::is_production() ) {
+			return $summary;
+		}
+
 		// Claim the dispatcher lock so a concurrent run can't read and send the
 		// same due rows before we advance them. If another run holds it, bail.
 		if ( ! self::acquire_lock() ) {

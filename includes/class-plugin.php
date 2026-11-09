@@ -114,6 +114,9 @@ class Plugin {
 		// Shared options-table CAS lock (Mandrill send + report sync).
 		require_once $includes . 'class-option-lock.php';
 
+		// Production-only gate for Mailchimp / Mandrill delivery.
+		require_once $includes . 'class-send-guard.php';
+
 		// Mailchimp integration.
 		require_once $includes . 'mailchimp/class-mailchimp.php';
 		require_once $includes . 'mailchimp/class-campaign-status-sync.php';
@@ -233,14 +236,19 @@ class Plugin {
 		$this->loader->add_action( 'plugins_loaded', $this, 'register_wp_ai_features', 11 );
 
 		if ( defined( 'WP_CLI' ) && \WP_CLI ) {
-			\WP_CLI::add_command( 'prc email migrate-system-keys', CLI_System_Key_Migrate::class );
-			if ( class_exists( CLI_Backfill_List_Bylines::class, false ) ) {
-				\WP_CLI::add_command( 'prc email backfill-list-bylines', CLI_Backfill_List_Bylines::class );
+			$cli_commands = array(
+				'prc email migrate-system-keys'   => CLI_System_Key_Migrate::class,
+				'prc email backfill-list-bylines' => CLI_Backfill_List_Bylines::class,
+				'prc email audience'              => CLI_Audience::class,
+				'prc email resend'                => CLI_Resend::class,
+				'prc email automations'           => CLI_Automations::class,
+				'prc email first-day-stats'       => CLI_First_Day_Stats::class,
+			);
+			foreach ( $cli_commands as $name => $class_name ) {
+				if ( class_exists( $class_name, false ) ) {
+					\WP_CLI::add_command( $name, $class_name );
+				}
 			}
-			\WP_CLI::add_command( 'prc email audience', CLI_Audience::class );
-			\WP_CLI::add_command( 'prc email resend', CLI_Resend::class );
-			\WP_CLI::add_command( 'prc email automations', CLI_Automations::class );
-			\WP_CLI::add_command( 'prc email first-day-stats', CLI_First_Day_Stats::class );
 		}
 	}
 

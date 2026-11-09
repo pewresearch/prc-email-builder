@@ -94,6 +94,11 @@ class Mandrill_Sender {
 	 * @return int|WP_Error Action Scheduler action ID, or WP_Error on failure.
 	 */
 	public function schedule_send( int $post_id ): int|WP_Error {
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		$ready = Email_Subject::require_for_send( $post_id );
 		if ( is_wp_error( $ready ) ) {
 			return $ready;
@@ -133,6 +138,16 @@ class Mandrill_Sender {
 	 */
 	public function run_scheduled_send( int $post_id ): void {
 		if ( Migration::is_migrated( $post_id ) ) {
+			return;
+		}
+
+		if ( ! Send_Guard::is_production() ) {
+			error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- record refused sends for ops.
+				sprintf(
+					'[prc-email-builder] Mandrill scheduled send for post %d skipped: sends are disabled outside production.',
+					$post_id
+				)
+			);
 			return;
 		}
 
@@ -192,6 +207,11 @@ class Mandrill_Sender {
 	 * @return array|WP_Error Rollup summary array or WP_Error on failure.
 	 */
 	public function send_to_audience( int $post_id, string $html ): array|WP_Error {
+		$allowed = Send_Guard::assert_can_send();
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
 		if ( ! Post_Type::is_transactional_post( $post_id ) ) {
 			return new WP_Error( 'wrong_post_type', 'Post is not a transactional email.' );
 		}
