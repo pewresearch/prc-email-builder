@@ -7,6 +7,7 @@ import apiFetch from '@wordpress/api-fetch';
 
 import { config } from '../use-newsletter-data';
 import { delayMinutesFromSeconds } from './delayed-send-status';
+import { useApplyServerMeta } from './server-meta';
 
 export interface MailchimpLinkageResponse {
 	success: boolean;
@@ -34,34 +35,39 @@ export function useDelayedMailchimpSend(postId: number) {
 		useState(false);
 	const [isSendingImmediately, setIsSendingImmediately] = useState(false);
 	const delayMinutes = delayMinutesFromSeconds(config.delayedSendSeconds);
+	const applyServerMeta = useApplyServerMeta(postId);
 
 	const persistPendingSendAt = useCallback(
 		(timestamp: number, delayedSendCancelled = false) => {
+			applyServerMeta({
+				prc_email_mailchimp_pending_send_at:
+					timestamp > 0 ? String(timestamp) : '',
+			});
 			editPost({
 				meta: {
-					prc_email_mailchimp_pending_send_at:
-						timestamp > 0 ? String(timestamp) : '',
 					prc_email_mailchimp_delayed_send_cancelled:
 						delayedSendCancelled ? '1' : '',
 				},
 			});
 		},
-		[editPost]
+		[applyServerMeta, editPost]
 	);
 
 	const persistMailchimpLinkage = useCallback(
 		(response: MailchimpLinkageResponse) => {
+			applyServerMeta({
+				prc_email_mailchimp_pending_send_at: '',
+				prc_email_mailchimp_campaign_status: response.status ?? '',
+			});
 			editPost({
 				meta: {
 					prc_email_mailchimp_campaign_id: response.campaign_id,
 					prc_email_mailchimp_campaign_admin_url: response.admin_url,
-					prc_email_mailchimp_campaign_status: response.status,
-					prc_email_mailchimp_pending_send_at: '',
 					prc_email_mailchimp_delayed_send_cancelled: '',
 				},
 			});
 		},
-		[editPost]
+		[applyServerMeta, editPost]
 	);
 
 	const handleQueueSend = useCallback(async () => {
@@ -138,6 +144,9 @@ export function useDelayedMailchimpSend(postId: number) {
 				{ type: 'snackbar' }
 			);
 		} catch (err: unknown) {
+			if ((err as { code?: string })?.code === 'no_pending_send') {
+				persistPendingSendAt(0);
+			}
 			createErrorNotice(
 				(err as { message?: string })?.message ??
 					__(

@@ -91,7 +91,7 @@ class Send_Status {
 	public static function tone_for_mandrill( string $status ): string {
 		return match ( sanitize_text_field( $status ) ) {
 			'sent', 'active' => self::TONE_SUCCESS,
-			'sending', 'queued', '' => self::TONE_WARNING,
+			'sending', 'queued', 'needs_review', '' => self::TONE_WARNING,
 			'failed', 'partial' => self::TONE_ERROR,
 			default => self::TONE_WARNING,
 		};
@@ -173,6 +173,10 @@ class Send_Status {
 			array(
 				'value' => 'partial',
 				'label' => __( 'Partial', 'prc-email-builder' ),
+			),
+			array(
+				'value' => 'needs_review',
+				'label' => __( 'Needs Review', 'prc-email-builder' ),
 			),
 		);
 	}

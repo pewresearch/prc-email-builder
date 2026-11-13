@@ -32,6 +32,7 @@ import { AutomationsSettings } from '../automations';
 import { parseEmailSubject } from '../subject-readiness';
 import { TransactionalSettings } from '../transactional-settings';
 import { MailchimpDispatchPanel } from './mailchimp-dispatch';
+import { MandrillSendStatusNotice } from './mandrill-send-status';
 
 const PLUGIN_NAME = 'prc-email-builder';
 const SIDEBAR_NAME = `${PLUGIN_NAME}/send`;
@@ -43,21 +44,6 @@ interface SendResponse {
 
 interface SendPanelProps {
 	postId: number;
-}
-
-function getMandrillNoticeStatus(
-	status: string
-): 'success' | 'warning' | 'error' | 'info' {
-	if (status === 'sent') {
-		return 'success';
-	}
-	if (status === 'partial') {
-		return 'warning';
-	}
-	if (status === 'failed') {
-		return 'error';
-	}
-	return 'info';
 }
 
 export function SendSidebar() {
@@ -117,6 +103,7 @@ function TransactionalSendPanel({ postId }: SendPanelProps) {
 		audienceOptionKey,
 		mandrillSendStatus,
 		mandrillSendSummary,
+		mandrillSendSummaryRaw,
 	} = useNewsletterMeta();
 	const isTransactional = isTransactionalPostType(postType);
 	const parsed = parseEmailSubject(subject);
@@ -126,8 +113,14 @@ function TransactionalSendPanel({ postId }: SendPanelProps) {
 	const shouldSyncMandrillSend =
 		isTransactional &&
 		deliveryMode === 'mandrill' &&
-		mandrillSendStatus === 'sending';
-	useSyncMandrillSendMeta(postId, shouldSyncMandrillSend);
+		(mandrillSendStatus === 'sending' ||
+			mandrillSendStatus === 'needs_review');
+	useSyncMandrillSendMeta(
+		postId,
+		shouldSyncMandrillSend,
+		mandrillSendStatus,
+		mandrillSendSummaryRaw
+	);
 	const { editPost } = useDispatch(editorStore);
 	const { createSuccessNotice, createErrorNotice } =
 		useDispatch(noticesStore);
@@ -172,6 +165,14 @@ function TransactionalSendPanel({ postId }: SendPanelProps) {
 								'Newsletter sent via Mandrill.',
 								'prc-email-builder'
 							),
+					{ type: 'snackbar' }
+				);
+			} else if (response.status === 'needs_review') {
+				createErrorNotice(
+					__(
+						'Some batches were not confirmed by Mandrill. They are not sent again. Review them in the send status.',
+						'prc-email-builder'
+					),
 					{ type: 'snackbar' }
 				);
 			} else if (response.status === 'partial') {
@@ -247,6 +248,7 @@ function TransactionalSendPanel({ postId }: SendPanelProps) {
 		!isSending &&
 		!mandrillSendInProgress &&
 		mandrillSendStatus !== 'sent' &&
+		mandrillSendStatus !== 'needs_review' &&
 		recipientCount > 0 &&
 		Boolean(audienceOptionKey);
 
@@ -297,18 +299,10 @@ function TransactionalSendPanel({ postId }: SendPanelProps) {
 						)}
 					</Notice>
 				)}
-				{mandrillSendStatus && (
-					<Notice
-						status={getMandrillNoticeStatus(mandrillSendStatus)}
-						isDismissible={false}
-					>
-						{sprintf(
-							/* translators: %s: send status */
-							__('Send status: %s', 'prc-email-builder'),
-							mandrillSendStatus
-						)}
-					</Notice>
-				)}
+				<MandrillSendStatusNotice
+					status={mandrillSendStatus}
+					summary={mandrillSendSummary}
+				/>
 				{mandrillSendSummary && (
 					<Text variant="muted">
 						{sprintf(

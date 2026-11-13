@@ -3,6 +3,8 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import { store as editorStore } from '@wordpress/editor';
 import apiFetch from '@wordpress/api-fetch';
 
+import { useApplyServerMeta } from './send/server-meta';
+
 const MAILCHIMP_SYNC_POLL_MS = 3000;
 const MAILCHIMP_QUEUE_MAX_ATTEMPTS = 20;
 const MAILCHIMP_PENDING_MAX_ATTEMPTS = 240;
@@ -35,6 +37,7 @@ export function useSyncMailchimpCampaignMeta(
 		[]
 	);
 	const { editPost } = useDispatch(editorStore);
+	const applyServerMeta = useApplyServerMeta(postId);
 
 	useEffect(() => {
 		if (!shouldSync || !postId || !postType) {
@@ -62,14 +65,14 @@ export function useSyncMailchimpCampaignMeta(
 			adminUrl: string;
 			pendingSendAt: number;
 		}) => {
+			applyServerMeta({
+				prc_email_mailchimp_pending_send_at:
+					draft.pendingSendAt > 0 ? String(draft.pendingSendAt) : '',
+				prc_email_mailchimp_campaign_status: draft.status,
+			});
 			editPost({
 				meta: {
 					prc_email_mailchimp_campaign_id: draft.id,
-					prc_email_mailchimp_campaign_status: draft.status,
-					prc_email_mailchimp_pending_send_at:
-						draft.pendingSendAt > 0
-							? String(draft.pendingSendAt)
-							: '',
 					...(draft.adminUrl
 						? {
 								prc_email_mailchimp_campaign_admin_url:
@@ -183,7 +186,7 @@ export function useSyncMailchimpCampaignMeta(
 			cancelled = true;
 			stopPolling();
 		};
-	}, [postId, postType, shouldSync, editPost]);
+	}, [postId, postType, shouldSync, editPost, applyServerMeta]);
 
 	return { syncTimedOut };
 }

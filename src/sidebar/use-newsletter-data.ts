@@ -293,6 +293,7 @@ export function useNewsletterMeta() {
 		audienceOptionKey,
 		mandrillSendStatus,
 		mandrillSendSummary,
+		mandrillSendSummaryRaw,
 		templateSlug,
 		slug,
 		selectedListTermId,
@@ -482,92 +483,7 @@ export function useTransformStatus(postId: number) {
 
 export { useSyncMailchimpCampaignMeta } from './use-sync-mailchimp-campaign-meta';
 
-const MANDRILL_SYNC_POLL_MS = 3000;
-const MANDRILL_SYNC_MAX_ATTEMPTS = 40;
-
-const MANDRILL_TERMINAL_STATUSES = new Set(['sent', 'partial', 'failed']);
-
-/**
- * Poll server post meta while a Mandrill send runs in Action Scheduler.
- *
- * @param postId     Newsletter post ID.
- * @param shouldSync When true, poll until send status leaves "sending".
- */
-export function useSyncMandrillSendMeta(
-	postId: number,
-	shouldSync: boolean
-): void {
-	const postType = useSelect(
-		(select) => select(editorStore).getCurrentPostType(),
-		[]
-	);
-	const { editPost } = useDispatch(editorStore);
-
-	useEffect(() => {
-		if (!shouldSync || !postId || !postType) {
-			return undefined;
-		}
-
-		let cancelled = false;
-		let attempts = 0;
-		let timer: ReturnType<typeof setInterval> | undefined;
-
-		const stopPolling = () => {
-			if (timer) {
-				clearInterval(timer);
-				timer = undefined;
-			}
-		};
-
-		const sync = () => {
-			if (cancelled) {
-				return;
-			}
-			attempts += 1;
-			if (attempts > MANDRILL_SYNC_MAX_ATTEMPTS) {
-				stopPolling();
-				return;
-			}
-
-			apiFetch<{ meta?: Record<string, string> }>({
-				path: `/wp/v2/${postType}/${postId}?context=edit&_fields=meta`,
-			})
-				.then((data) => {
-					if (cancelled) {
-						return;
-					}
-					const status =
-						data.meta?.prc_email_mandrill_send_status ?? '';
-					if (!status || !MANDRILL_TERMINAL_STATUSES.has(status)) {
-						return;
-					}
-					stopPolling();
-					editPost({
-						meta: {
-							prc_email_mandrill_send_status: status,
-							...(data.meta?.prc_email_mandrill_send_summary
-								? {
-										prc_email_mandrill_send_summary:
-											data.meta
-												.prc_email_mandrill_send_summary,
-									}
-								: {}),
-						},
-					});
-				})
-				.catch(() => {
-					// Keep polling through transient REST errors.
-				});
-		};
-
-		sync();
-		timer = setInterval(sync, MANDRILL_SYNC_POLL_MS);
-		return () => {
-			cancelled = true;
-			stopPolling();
-		};
-	}, [postId, postType, shouldSync, editPost]);
-}
+export { useSyncMandrillSendMeta } from './use-sync-mandrill-send-meta';
 
 // Re-export for convenience of panel files.
 export { __ };

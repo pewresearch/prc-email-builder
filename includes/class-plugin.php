@@ -111,21 +111,22 @@ class Plugin {
 		require_once $includes . 'audiences/class-csv-email-list.php';
 		require_once $includes . 'audiences/class-csv-audience-build.php';
 
-		// Shared options-table CAS lock (Mandrill send + report sync).
-		require_once $includes . 'class-option-lock.php';
-
 		// Production-only gate for Mailchimp / Mandrill delivery.
 		require_once $includes . 'class-send-guard.php';
 
 		// Mailchimp integration.
+		require_once $includes . 'mailchimp/enum-campaign-status.php';
 		require_once $includes . 'mailchimp/class-mailchimp.php';
 		require_once $includes . 'mailchimp/class-campaign-status-sync.php';
 		require_once $includes . 'mailchimp/class-first-day-campaign-stats.php';
 		require_once $includes . 'mailchimp/class-campaign-linkage.php';
 
 		// Mandrill delivery.
+		require_once $includes . 'mandrill/enum-mandrill-send-status.php';
+		require_once $includes . 'mandrill/class-mandrill-send-state.php';
 		require_once $includes . 'mandrill/class-mandrill-sender.php';
 		require_once $includes . 'mandrill/class-mandrill-send-key.php';
+		require_once $includes . 'mandrill/class-mandrill-batch-search.php';
 		require_once $includes . 'mandrill/class-mandrill-event-ledger.php';
 		require_once $includes . 'mandrill/class-mandrill-activity-export.php';
 
@@ -172,6 +173,7 @@ class Plugin {
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			require_once $includes . 'cli/class-cli-audience.php';
 			require_once $includes . 'cli/class-cli-resend.php';
+			require_once $includes . 'cli/class-cli-send.php';
 			require_once $includes . 'cli/class-cli-automations.php';
 			require_once $includes . 'cli/class-cli-system-key-migrate.php';
 			require_once $includes . 'cli/class-cli-backfill-list-bylines.php';
@@ -231,6 +233,7 @@ class Plugin {
 		Auth_Domain_Audience_Build::init();
 		Newsletter_List_Catalog::init();
 		Mandrill_Event_Ledger::init();
+		Mandrill_Send_State::init();
 		\PRC\Platform\Email_Builder\Reports\Report_Sync::init();
 
 		$this->loader->add_action( 'plugins_loaded', $this, 'register_wp_ai_features', 11 );
@@ -241,6 +244,7 @@ class Plugin {
 				'prc email backfill-list-bylines' => CLI_Backfill_List_Bylines::class,
 				'prc email audience'              => CLI_Audience::class,
 				'prc email resend'                => CLI_Resend::class,
+				'prc email send'                  => CLI_Send::class,
 				'prc email automations'           => CLI_Automations::class,
 				'prc email first-day-stats'       => CLI_First_Day_Stats::class,
 			);

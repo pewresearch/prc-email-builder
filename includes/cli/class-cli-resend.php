@@ -139,6 +139,14 @@ class CLI_Resend extends \WPCOM_VIP_CLI_Command {
 					$post_id
 				) 
 			);
+		} elseif ( 'needs_review' === $status ) {
+			WP_CLI::warning(
+				sprintf(
+					'Post %d has %d batch(es) that were attempted and never confirmed. They are not resent. They move to accepted when Mandrill reports events for them.',
+					$post_id,
+					(int) ( $result['needs_review_batches'] ?? 0 )
+				)
+			);
 		} else {
 			WP_CLI::warning( sprintf( 'Post %d send status: %s.', $post_id, (string) $status ) );
 		}
@@ -161,6 +169,7 @@ class CLI_Resend extends \WPCOM_VIP_CLI_Command {
 		WP_CLI::line( sprintf( 'Status:     %s', is_string( $status ) && '' !== $status ? $status : '(none)' ) );
 		WP_CLI::line( sprintf( 'Locked:     %s', $sender->is_locked( $post_id ) ? 'yes' : 'no' ) );
 		WP_CLI::line( sprintf( 'Batches:    %d / %d completed', $completed, $total ) );
+		WP_CLI::line( sprintf( 'Needs review: %d', count( (array) ( $progress['attempted_batches'] ?? array() ) ) ) );
 		WP_CLI::line( sprintf( 'Updated:    %s', $progress['updated_at'] ?? '(n/a)' ) );
 		WP_CLI::line( sprintf( 'Summary:    %s', is_string( $summary ) && '' !== $summary ? $summary : '(none)' ) );
 	}

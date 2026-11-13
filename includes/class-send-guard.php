@@ -5,9 +5,9 @@
  * Staging, preprod, test slots, and local dev-envs carry copies of the
  * production database and the Mailchimp / Mandrill keys. Every code path that
  * delivers to a real audience calls this guard so those environments never
- * email subscribers. The only non-production exceptions are Preview test sends
- * (not guarded) and Mailchimp campaigns whose live recipients are the
- * "Staging (TEST)" saved segment.
+ * email subscribers on their own. The non-production exceptions are Preview
+ * test sends (not guarded) and Mailchimp campaigns that a person sends by hand.
+ * Mailchimp auto-send never runs outside production.
  *
  * @package PRC\Platform\Email_Builder
  */
@@ -23,11 +23,6 @@ use WP_Error;
  */
 class Send_Guard {
 	public const ERROR_CODE = 'email_send_blocked_non_production';
-
-	/**
-	 * Mailchimp saved segment name that non-production environments may send to.
-	 */
-	public const STAGING_TEST_SEGMENT_NAME = 'Staging (TEST)';
 
 	/**
 	 * Environment type pinned by standalone tests; null reads WordPress.
@@ -54,16 +49,6 @@ class Send_Guard {
 	}
 
 	/**
-	 * Whether a Mailchimp segment name is the staging test segment.
-	 *
-	 * @param string $name Segment name as returned by Mailchimp.
-	 * @return bool
-	 */
-	public static function is_staging_test_segment_name( string $name ): bool {
-		return self::STAGING_TEST_SEGMENT_NAME === trim( $name );
-	}
-
-	/**
 	 * Error returned when a send is refused on non-production.
 	 *
 	 * @param string $detail Optional reason appended to the message.
@@ -71,9 +56,8 @@ class Send_Guard {
 	 */
 	public static function blocked_error( string $detail = '' ): WP_Error {
 		$message = sprintf(
-			'Email sends are disabled on the %1$s environment; only production sends email. Here, only Preview test sends and Mailchimp campaigns targeting the "%2$s" segment are delivered.',
-			self::environment_name(),
-			self::STAGING_TEST_SEGMENT_NAME
+			'Email sends are disabled on the %s environment; only production sends email. Here, only Preview test sends and manually sent Mailchimp campaigns are delivered.',
+			self::environment_name()
 		);
 		if ( '' !== $detail ) {
 			$message .= ' ' . $detail;
@@ -129,6 +113,17 @@ class Send_Guard {
 	 */
 	public static function assert_can_send(): true|WP_Error {
 		return self::is_production() ? true : self::blocked_error();
+	}
+
+	/**
+	 * Refuse an automatic Mailchimp send (publish or scheduled publish) on non-production.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function assert_can_auto_send(): true|WP_Error {
+		return self::is_production()
+			? true
+			: self::blocked_error( 'Auto-send is only available on production.' );
 	}
 
 	/**

@@ -171,6 +171,8 @@ class Mandrill_Event_Ledger {
 	 * @return int Rows stored (inserts that affected a row).
 	 */
 	public static function ingest_events( array $events ): int {
+		self::reconcile_batches( $events );
+
 		self::maybe_create_table();
 		if ( ! self::table_exists() ) {
 			return 0;
@@ -235,6 +237,45 @@ class Mandrill_Event_Ledger {
 		}
 
 		return $stored;
+	}
+
+	/**
+	 * Move unconfirmed send batches to accepted when Mandrill reports events for them.
+	 *
+	 * An event for a message means Mandrill took the API call that carried it.
+	 * Events match on `metadata.email_post_id` and `metadata.email_attempt_id`.
+	 * A batch key repeats across sends of the same audience, so it only identifies
+	 * a batch that has no attempt id on record.
+	 * Never throws: a webhook must not fail because a checkpoint write did.
+	 *
+	 * @param array<int, mixed> $events Mandrill event objects.
+	 * @return int Batches moved to accepted.
+	 */
+	public static function reconcile_batches( array $events ): int {
+		$keys = array();
+		foreach ( $events as $event ) {
+			$msg      = is_array( $event ) && isset( $event['msg'] ) && is_array( $event['msg'] ) ? $event['msg'] : array();
+			$metadata = isset( $msg['metadata'] ) && is_array( $msg['metadata'] ) ? $msg['metadata'] : array();
+			$post_id  = (int) ( $metadata[ Mandrill_Send_Key::METADATA_FIELD ] ?? 0 );
+			$key      = (string) ( $metadata[ Mandrill_Send_Key::METADATA_BATCH ] ?? '' );
+			$attempt  = (string) ( $metadata[ Mandrill_Send_Key::METADATA_ATTEMPT ] ?? '' );
+			if ( $post_id > 0 && '' !== $key ) {
+				$keys[ $post_id ][ $key . '|' . $attempt ] = array(
+					'key'        => $key,
+					'attempt_id' => $attempt,
+				);
+			}
+		}
+
+		$moved = 0;
+		foreach ( $keys as $post_id => $marks ) {
+			try {
+				$moved += ( new Mandrill_Sender() )->reconcile_batches( (int) $post_id, array_values( $marks ) );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf( '[prc-email-builder] Mandrill batch reconcile failed for post %d: %s', $post_id, $e->getMessage() ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- persist so ops can find a stuck needs-review send.
+			}
+		}
+		return $moved;
 	}
 
 	/**

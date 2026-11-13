@@ -1375,7 +1375,7 @@ class REST_API {
 		$mailchimp = new Mailchimp();
 		$result    = $immediate
 			? $mailchimp->send_immediately( $post_id )
-			: $mailchimp->queue_delayed_send( $post_id );
+			: $mailchimp->queue_manual_delayed_send( $post_id );
 		if ( is_wp_error( $result ) ) {
 			return $this->normalize_rest_error( $result );
 		}

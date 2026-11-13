@@ -20,6 +20,7 @@ import {
 	useDelayedMailchimpSend,
 	type MailchimpLinkageResponse,
 } from './use-delayed-mailchimp-send';
+import { useApplyServerMeta } from './server-meta';
 
 const MAILCHIMP_FALLBACK_URL = 'https://admin.mailchimp.com/campaigns/';
 
@@ -142,6 +143,7 @@ export function useMailchimpDispatch(postId: number): MailchimpDispatchState {
 		shouldPollAutoSendMeta
 	);
 	const { editPost } = useDispatch(editorStore);
+	const applyServerMeta = useApplyServerMeta(postId);
 	const { createSuccessNotice, createErrorNotice } =
 		useDispatch(noticesStore);
 	const [isUnlinkConfirmOpen, setIsUnlinkConfirmOpen] = useState(false);
@@ -237,10 +239,8 @@ export function useMailchimpDispatch(postId: number): MailchimpDispatchState {
 				method: 'POST',
 				data: { post_id: postId },
 			});
-			editPost({
-				meta: {
-					prc_email_mailchimp_campaign_status: response.status,
-				},
+			applyServerMeta({
+				prc_email_mailchimp_campaign_status: response.status ?? '',
 			});
 			createSuccessNotice(
 				__(
@@ -264,7 +264,7 @@ export function useMailchimpDispatch(postId: number): MailchimpDispatchState {
 	}, [
 		postId,
 		isUpdatingDraft,
-		editPost,
+		applyServerMeta,
 		createSuccessNotice,
 		createErrorNotice,
 	]);
@@ -281,12 +281,14 @@ export function useMailchimpDispatch(postId: number): MailchimpDispatchState {
 				method: 'POST',
 				data: { post_id: postId },
 			});
+			applyServerMeta({
+				prc_email_mailchimp_pending_send_at: '',
+				prc_email_mailchimp_campaign_status: '',
+			});
 			editPost({
 				meta: {
 					prc_email_mailchimp_campaign_id: '',
 					prc_email_mailchimp_campaign_admin_url: '',
-					prc_email_mailchimp_campaign_status: '',
-					prc_email_mailchimp_pending_send_at: '',
 					prc_email_mailchimp_delayed_send_cancelled: '',
 				},
 			});
@@ -310,7 +312,14 @@ export function useMailchimpDispatch(postId: number): MailchimpDispatchState {
 		} finally {
 			setIsUnlinking(false);
 		}
-	}, [postId, isUnlinking, editPost, createSuccessNotice, createErrorNotice]);
+	}, [
+		postId,
+		isUnlinking,
+		applyServerMeta,
+		editPost,
+		createSuccessNotice,
+		createErrorNotice,
+	]);
 
 	return {
 		autoSendOnPublish,

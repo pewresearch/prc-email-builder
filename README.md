@@ -173,6 +173,40 @@ wp prc email migrate-system-keys --dry-run=false
 
 Both `build-from-mandrill` and `build-from-log` accept `--create-post` to draft a `prc_email_txn` newsletter pre-targeted at the new audience. `build-from-auth-domain` defaults to **not** creating a post (operators usually already have a transactional email); pass `--create-post` when you want a draft.
 
+### Recovering a Mandrill batch
+
+A bulk send posts the list in batches of 500. It writes each batch as **attempted** before it posts. A batch that is attempted and not accepted is in **needs review**. The send never posts such a batch again by itself, because Mandrill may have taken it. Two things cause this state:
+
+- The POST timed out, or Mandrill gave a gateway answer. Mandrill may have the batch. A Mandrill webhook event for the batch moves it to accepted.
+- The process died after the attempt mark and before the POST. Mandrill never got the batch. No webhook comes, so the editor shows "Needs review: 1 batch" and Send stays disabled.
+
+A dead run also leaves the row in `sending`. `wp prc email resend --post-id=<id>` moves it to `needs_review`. `retry-batch` also settles it.
+
+```bash
+# 1. Read the state. Each batch is accepted, needs_review, or not_sent.
+wp prc email send status 12345
+
+# 2. Recover one batch. The command asks for confirmation. Add --yes to skip it.
+wp prc email send retry-batch 12345 0
+```
+
+`retry-batch` does this, in order:
+
+1. Takes the same send lease as the bulk run. It refuses when a send is running.
+2. Refuses a batch that is not attempted, or that is already accepted, or when the recipient list changed.
+3. Asks Mandrill (`messages/search`, 5 second limit) whether a message of this post and this attempt exists. The query is `u_email_post_id:<post> AND u_email_attempt_id:<attempt>`. Mandrill addresses an indexed custom metadata field as `u_<field>` (Lucene syntax). The `metadata.<field>` form is for view templates and finds nothing in a search. A mark from an older build has no attempt id, so the query uses `u_email_batch_key` instead. The batch key does not name the post, so the query never uses it alone.
+4. If Mandrill has the batch, marks it accepted and does not post. When every batch is accepted, the status moves to `sent`.
+5. If Mandrill does not have the batch, writes a new attempt mark, posts the batch once, and checkpoints it like a normal send. The new attempt id replaces the previous attempt id of that batch. A kill during the retry leaves the batch in needs review again, never sent twice.
+6. If Mandrill cannot answer (error or timeout), refuses and says a duplicate is possible. `--force` posts the batch anyway. With `--force` the command always prints a duplicate warning, with or without `--yes`. Answer `n` at the prompt and it prints `Cancelled. Nothing sent.`
+
+An empty answer is only trusted when it is safe. The command refuses an empty answer when the attempt is younger than 15 minutes. It also refuses when the same kind of search does not find a batch of this send that Mandrill already accepted. That check looks back 30 days, the time Mandrill keeps messages, so it does not depend on when the attempt happened. A send with no accepted batch has nothing to check against, so it needs `--force` after you check the Mandrill activity log by hand.
+
+The editor's Send button stays disabled after a batch recovers to `sent`: the editor does not allow Send in `sent`, by design. It comes back only when a recovery ends in `partial` or `failed`.
+
+Every action goes to the post meta `prc_email_mandrill_recovery_log` (last 50 entries, shown by `status`) and to the PHP error log.
+
+**Prerequisite.** Mandrill finds a message by metadata only when the field is indexed. In the Mandrill account, open Settings > Custom Metadata and add `email_post_id`, `email_attempt_id` and `email_batch_key`. Use these names without the `u_` prefix; the search adds it. Messages sent before you add the field are not searchable. Mandrill allows 250 bytes of JSON metadata per message. A bulk message carries 106 bytes for a 3-digit post id and 109 bytes for a 6-digit post id (the four fields above and the `prc_email` mark). If a filter on `prc_email_mandrill_message` adds more, the sender drops the extra keys, last first, and keeps the identity fields.
+
 ## Scheduled automations
 
 Dynamic system emails (`prc_email_txn` + `prc_email_delivery_mode = dynamic`) can carry
@@ -356,18 +390,21 @@ Staging, preprod, test slots, and local dev-envs hold copies of the production d
 
 On non-production:
 
-| Path                                                                    | Behavior                                                                                    |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Mailchimp campaign (publish auto-send, delayed send, `/campaigns/send`) | Sent only when the live campaign targets the saved segment named exactly `Staging (TEST)`   |
-| Mandrill bulk (`/send`, `wp prc email resend`)                          | Blocked                                                                                     |
-| System email (`/send-system-email`, form action) and automations        | Blocked. The automation dispatcher skips its run, so due enrollments are not marked failed. |
-| Preview test send (`/test-send`)                                        | Allowed                                                                                     |
+| Path                                                             | Behavior                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Mailchimp manual send (`/campaigns/send`, Send now or immediate) | Allowed for any audience or segment                                                         |
+| Mailchimp auto-send (publish, scheduled publish)                 | Blocked. Nothing is queued.                                                                 |
+| Mandrill bulk (`/send`, `wp prc email resend`)                   | Blocked                                                                                     |
+| System email (`/send-system-email`, form action) and automations | Blocked. The automation dispatcher skips its run, so due enrollments are not marked failed. |
+| Preview test send (`/test-send`)                                 | Allowed                                                                                     |
 
 A blocked send returns `WP_Error` `email_send_blocked_non_production` (HTTP 403).
 
 The `sendSystemEmail` form action checks the environment before the throttle and the render. The visitor sees "This is the staging site, and sending email is turned off here. No email was sent. Emails are only sent from the production site." The message uses the VIP environment name (`VIP_GO_APP_ENVIRONMENT`) when it is set. The form log records the status `send_blocked_non_production`, not `send_failed`.
 
-For Mailchimp, the check reads the campaign and the segment live from Mailchimp, right before `campaigns/send`. Stale post meta cannot widen the audience. A lookup error blocks the send. The segment name must be exactly `Staging (TEST)` (surrounding whitespace is ignored). If someone renames the segment in Mailchimp, staging sends stop working. If someone gives a different segment that name, staging can send to it. So keep that segment small.
+For Mailchimp, a person who clicks Send now can send to any audience or segment on every environment. The environment is the only guard. A real campaign sent from staging reaches real subscribers, so pick the audience with care.
+
+Auto-send never runs outside production. The publish and scheduled-publish hooks queue nothing there, and `queue_delayed_send()` returns the blocked error. A manual Send now uses `queue_manual_delayed_send()`. It stores the environment name in `prc_email_mailchimp_manual_send_env`. Outside production, `run_delayed_send()` runs only when that value equals the current environment name. A staging data sync copies production's queued actions and post meta. A copied action has no stamp, or the `production` stamp, so it does not send. `Cancel` and a finished send clear the stamp.
 
 ## Development
 

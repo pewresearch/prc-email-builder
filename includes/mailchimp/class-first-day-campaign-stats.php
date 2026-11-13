@@ -13,6 +13,7 @@ use PRC\Platform\Email_Builder\Reports\Mailchimp_Report_Provider;
 use PRC\Platform\Email_Builder\Reports\Report_Store;
 use PRC\Platform\Slack\Bot;
 use PRC\Platform\Slack\Posted_Message;
+use PRC\Primitives\Concurrency\Meta_State;
 use WP_Error;
 
 /**
@@ -54,21 +55,24 @@ class First_Day_Campaign_Stats {
 	 * Register hooks.
 	 */
 	public static function init(): void {
-		add_action( 'updated_post_meta', array( __CLASS__, 'maybe_schedule_on_sent' ), 10, 4 );
-		add_action( 'added_post_meta', array( __CLASS__, 'maybe_schedule_on_sent' ), 10, 4 );
+		add_action( Meta_State::TRANSITIONED_ACTION, array( __CLASS__, 'maybe_schedule_on_sent' ), 10, 4 );
 		add_action( self::HOOK, array( __CLASS__, 'handle' ), 10, 3 );
 	}
 
 	/**
 	 * Schedule when campaign status becomes sent.
 	 *
-	 * @param int    $meta_id    Meta ID.
-	 * @param int    $post_id    Post ID.
-	 * @param string $meta_key   Meta key.
-	 * @param mixed  $meta_value New value.
+	 * Runs inside Meta_State::transition(), so it must not throw and must not
+	 * start another transition. Meta_State fires it once, for the winning move.
+	 *
+	 * @param int              $post_id  Post ID.
+	 * @param string           $meta_key Meta key of the state.
+	 * @param \BackedEnum|null $from     Status before the move, or null for the first write.
+	 * @param \BackedEnum      $to       Status after the move.
 	 */
-	public static function maybe_schedule_on_sent( $meta_id, $post_id, $meta_key, $meta_value ): void {
-		if ( Campaign_Linkage::META_CAMPAIGN_STATUS !== $meta_key || 'sent' !== (string) $meta_value ) {
+	public static function maybe_schedule_on_sent( $post_id, $meta_key, $from, $to ): void {
+		unset( $from );
+		if ( Campaign_Linkage::META_CAMPAIGN_STATUS !== $meta_key || Campaign_Status::Sent !== $to ) {
 			return;
 		}
 
@@ -77,8 +81,19 @@ class First_Day_Campaign_Stats {
 			return;
 		}
 
-		$campaign_id = (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_ID, true );
-		self::schedule( $post_id, $campaign_id );
+		try {
+			$campaign_id = (string) get_post_meta( $post_id, Campaign_Linkage::META_CAMPAIGN_ID, true );
+			self::schedule( $post_id, $campaign_id );
+		} catch ( \Throwable $e ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log(
+				sprintf(
+					'[prc-email-builder] Could not schedule first-day stats for post %d: %s',
+					$post_id,
+					$e->getMessage()
+				)
+			);
+		}
 	}
 
 	/**

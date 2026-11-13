@@ -66,8 +66,8 @@ class Post_Type {
 		'prc_email_mailchimp_segment_id'             => 'Mailchimp saved-segment ID; restricts recipients within the audience.',
 		'prc_email_mailchimp_campaign_id'            => 'Mailchimp campaign ID for the linked draft or send.',
 		'prc_email_mailchimp_campaign_admin_url'     => 'Mailchimp admin URL for the campaign.',
-		'prc_email_mailchimp_campaign_status'        => 'Cached Mailchimp campaign status: "save" (draft / send failed), "sent", "schedule", "sending", "paused", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign).',
-		'prc_email_mailchimp_pending_send_at'        => 'Unix timestamp when a queued Mailchimp send should run; empty when none is queued.',
+		'prc_email_mailchimp_campaign_status'        => 'Cached Mailchimp campaign status: "save" (draft / send failed), "schedule", "sending", "sent", "unavailable" (Mailchimp 404 / deleted), or "" (no campaign). Moves forward only, except schedule returns to save when the campaign is unscheduled in Mailchimp. "unavailable" is final: only an unlink clears it. Read-only: only the server writes it.',
+		'prc_email_mailchimp_pending_send_at'        => 'Unix timestamp when a queued Mailchimp send should run; empty when none is queued. Read-only: only the server writes it.',
 		'prc_email_mailchimp_delayed_send_cancelled' => '1 when the author cancelled a queued Mailchimp send and has not queued another.',
 	);
 
@@ -76,7 +76,7 @@ class Post_Type {
 		'prc_email_delivery_mode'         => 'Transactional sub-mode: "mandrill" (fixed recipient list) or "dynamic" (per-recipient template).',
 		'prc_email_audience_option_key'   => 'wp_options key holding the resolved [email,...] recipient list (mandrill sub-mode).',
 		'prc_email_mandrill_template'     => 'Mandrill template slug (optional).',
-		'prc_email_mandrill_send_status'  => 'Last Mandrill send result: "sent", "queued", "failed", "active" (dynamic templates after first send), or "" (not sent / waiting).',
+		'prc_email_mandrill_send_status'  => 'Last Mandrill send result: "sent", "queued", "failed", "needs_review" (a batch was attempted and Mandrill never confirmed it; the sender does not resend it), "active" (dynamic templates after first send), or "" (not sent / waiting).',
 		'prc_email_mandrill_send_summary' => 'JSON summary of last Mandrill send (batches, sent, queued, rejected, invalid, failed_batches, sent_at).',
 	);
 

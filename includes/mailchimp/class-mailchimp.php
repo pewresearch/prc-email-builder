@@ -15,6 +15,7 @@ namespace PRC\Platform\Email_Builder;
 
 use MailchimpMarketing\ApiClient;
 use MailchimpMarketing\ApiException;
+use PRC\Primitives\Concurrency\Lease;
 use PRC\Primitives\DelayedAction\ActionSchedulerGateway;
 use PRC\Primitives\DelayedAction\DelayedAction;
 use WP_Error;
@@ -70,6 +71,17 @@ class Mailchimp {
 	const DELAYED_SEND_DELAY      = 600;
 
 	/**
+	 * Timeout in seconds of each Mailchimp call made under the send lease.
+	 *
+	 * The locked pipeline makes at most SEND_MAX_CALLS calls (segment check,
+	 * create, setContent, campaign read, segment read, send). Their timeouts
+	 * must sum to less than SEND_LOCK_TTL, so the lease cannot run out while
+	 * a call waits. The SDK default is 120s per call.
+	 */
+	const SEND_HTTP_TIMEOUT = 25;
+	const SEND_MAX_CALLS    = 6;
+
+	/**
 	 * Campaign post IDs that transitioned to `publish` during the current REST
 	 * request. Send is deferred to `rest_after_insert` so taxonomy/targeting
 	 * from the same request is applied first. Also gates auto-send so ordinary
@@ -78,6 +90,13 @@ class Mailchimp {
 	 * @var array<int, true>
 	 */
 	private array $pending_publish_dispatch = array();
+
+	/**
+	 * Timeout in seconds for Mailchimp calls from this instance; 0 keeps the SDK default.
+	 *
+	 * @var int
+	 */
+	private int $http_timeout = 0;
 
 	/**
 	 * Register Mailchimp publish hooks when a loader is provided.
@@ -348,6 +367,26 @@ class Mailchimp {
 	 * @return array{ campaign_id: string, admin_url: string }|WP_Error
 	 */
 	public function create_campaign_draft( int $post_id, string $html ): array|WP_Error {
+		$created = $this->create_campaign( $post_id );
+		if ( is_wp_error( $created ) ) {
+			return $created;
+		}
+
+		$content = $this->set_campaign_content( $created['campaign_id'], $html );
+		if ( is_wp_error( $content ) ) {
+			return $content;
+		}
+
+		return $created;
+	}
+
+	/**
+	 * Creates a Mailchimp campaign draft for a newsletter post, without content.
+	 *
+	 * @param int $post_id Newsletter post ID.
+	 * @return array{ campaign_id: string, admin_url: string }|WP_Error
+	 */
+	protected function create_campaign( int $post_id ): array|WP_Error {
 		$targeting    = Newsletter_List::sync_mailchimp_targeting_meta( $post_id );
 		$audience_id  = $targeting['audience_id'];
 		$segment_id   = (int) $targeting['segment_id'];
@@ -394,18 +433,34 @@ class Mailchimp {
 			return new WP_Error( 'campaign_create_failed', 'Mailchimp did not return a campaign ID.' );
 		}
 
-		try {
-			$client->campaigns->setContent( $campaign_id, array( 'html' => $html ) );
-		} catch ( \Exception $e ) {
-			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
-		}
-
 		$web_id = (int) ( $campaign->web_id ?? 0 );
 
 		return array(
 			'campaign_id' => $campaign_id,
 			'admin_url'   => self::build_campaign_admin_url( $web_id ),
 		);
+	}
+
+	/**
+	 * Sets the HTML content of a Mailchimp campaign draft.
+	 *
+	 * @param string $campaign_id Mailchimp campaign ID.
+	 * @param string $html        Email-safe HTML from the content transformer.
+	 * @return true|WP_Error
+	 */
+	protected function set_campaign_content( string $campaign_id, string $html ): true|WP_Error {
+		$client = $this->get_client();
+		if ( is_wp_error( $client ) ) {
+			return $client;
+		}
+
+		try {
+			$client->campaigns->setContent( $campaign_id, array( 'html' => $html ) );
+		} catch ( \Exception $e ) {
+			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
+		}
+
+		return true;
 	}
 
 	/**
@@ -504,7 +559,7 @@ class Mailchimp {
 			return $this->to_wp_error( $e, 'mailchimp_campaign_content_error' );
 		}
 
-		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', 'save' );
+		Campaign_Status_Sync::advance( $post_id, Campaign_Status::Save );
 
 		$admin_url = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
 
@@ -567,10 +622,14 @@ class Mailchimp {
 	/**
 	 * Persists Mailchimp campaign ID, admin URL, and cached status on a newsletter post.
 	 *
+	 * A campaign ID that the post does not link yet goes through
+	 * Campaign_Status_Sync::link(), so the new campaign starts from $status and
+	 * not from a status row left by the old one.
+	 *
 	 * @param int    $post_id     Newsletter post ID.
 	 * @param string $campaign_id Mailchimp campaign ID.
 	 * @param string $admin_url   Mailchimp admin edit URL.
-	 * @param string $status      Cached Mailchimp status (`save`, `sending`, …).
+	 * @param string $status      Cached Mailchimp status (`save`, `sending`, …). It moves forward only, except schedule back to save.
 	 */
 	public static function persist_campaign_meta(
 		int $post_id,
@@ -578,8 +637,12 @@ class Mailchimp {
 		string $admin_url,
 		string $status = 'save'
 	): void {
-		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', $campaign_id );
-		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', sanitize_text_field( $status ) );
+		$reached = Campaign_Status::from_api( $status );
+		if ( (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true ) !== $campaign_id ) {
+			Campaign_Status_Sync::link( $post_id, $campaign_id, $reached ?? Campaign_Status::Save );
+		} elseif ( null !== $reached ) {
+			Campaign_Status_Sync::advance( $post_id, $reached );
+		}
 		update_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', esc_url_raw( $admin_url ) );
 		if ( in_array( $status, array( 'sending', 'sent' ), true ) ) {
 			Campaign_Linkage::clear_pending_send( $post_id );
@@ -634,10 +697,10 @@ class Mailchimp {
 	 * Acquire the per-post Mailchimp send lock, or return send_locked.
 	 *
 	 * @param int $post_id Campaign post ID.
-	 * @return array{ lock: Option_Lock, token: string }|WP_Error
+	 * @return array{ lock: Lease, token: string }|WP_Error
 	 */
 	private function acquire_mailchimp_send_lock( int $post_id ): array|WP_Error {
-		$lock  = new Option_Lock( self::SEND_LOCK_OPTION_PREFIX, self::SEND_LOCK_TTL, 'mc_send_' );
+		$lock  = new Lease( self::SEND_LOCK_OPTION_PREFIX, self::SEND_LOCK_TTL, 'mc_send_' );
 		$token = $lock->acquire( $post_id );
 		if ( '' === $token ) {
 			return new WP_Error(
@@ -651,6 +714,33 @@ class Mailchimp {
 			'lock'  => $lock,
 			'token' => $token,
 		);
+	}
+
+	/**
+	 * Run $work under the per-post send lease, or return send_locked.
+	 *
+	 * Drops the post's meta cache first. A cache this process filled before
+	 * the lease could hide a campaign ID that another request stored. Every
+	 * Mailchimp call in $work uses SEND_HTTP_TIMEOUT.
+	 *
+	 * @param int      $post_id Campaign post ID.
+	 * @param callable $work    Locked work. Receives the held lease.
+	 * @return array|WP_Error
+	 */
+	private function with_send_lease( int $post_id, callable $work ): array|WP_Error {
+		$held = $this->acquire_mailchimp_send_lock( $post_id );
+		if ( is_wp_error( $held ) ) {
+			return $held;
+		}
+
+		wp_cache_delete( $post_id, 'post_meta' );
+		$this->http_timeout = self::SEND_HTTP_TIMEOUT;
+		try {
+			return $work( $held );
+		} finally {
+			$this->http_timeout = 0;
+			$held['lock']->release( $post_id, $held['token'] );
+		}
 	}
 
 	/**
@@ -668,25 +758,20 @@ class Mailchimp {
 			return $ready;
 		}
 
-		$held = $this->acquire_mailchimp_send_lock( $post_id );
-		if ( is_wp_error( $held ) ) {
-			return $held;
-		}
-
-		try {
-			return $this->create_linked_campaign_draft_locked( $post_id );
-		} finally {
-			$held['lock']->release( $post_id, $held['token'] );
-		}
+		return $this->with_send_lease(
+			$post_id,
+			fn( array $held ): array|WP_Error => $this->create_linked_campaign_draft_locked( $post_id, $held )
+		);
 	}
 
 	/**
-	 * Create-only pipeline. Caller must hold the per-post send lock.
+	 * Create-only pipeline. Caller must hold the per-post send lease.
 	 *
-	 * @param int $post_id Campaign post ID.
+	 * @param int                                 $post_id Campaign post ID.
+	 * @param array{ lock: Lease, token: string } $held    Send lease from with_send_lease().
 	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
 	 */
-	private function create_linked_campaign_draft_locked( int $post_id ): array|WP_Error {
+	private function create_linked_campaign_draft_locked( int $post_id, array $held ): array|WP_Error {
 		$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
 		if ( '' !== $campaign_id ) {
 			return new WP_Error(
@@ -713,6 +798,11 @@ class Mailchimp {
 			return $result;
 		}
 
+		$refreshed = self::refresh_before_link( $held, $post_id, $result['campaign_id'] );
+		if ( is_wp_error( $refreshed ) ) {
+			return $refreshed;
+		}
+
 		$campaign_id = $result['campaign_id'];
 		$admin_url   = $result['admin_url'];
 		self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'save' );
@@ -725,12 +815,39 @@ class Mailchimp {
 	}
 
 	/**
+	 * Refresh the send lease before a new campaign ID is linked to the post.
+	 *
+	 * A failed refresh means another request took the lease while Mailchimp
+	 * created the campaign, so the new campaign must not overwrite its link.
+	 *
+	 * @param array{ lock: Lease, token: string } $held        Send lease from with_send_lease().
+	 * @param int                                 $post_id     Campaign post ID.
+	 * @param string                              $campaign_id Campaign ID Mailchimp just created.
+	 * @return true|WP_Error
+	 */
+	private static function refresh_before_link( array $held, int $post_id, string $campaign_id ): true|WP_Error {
+		if ( $held['lock']->refresh( $post_id, $held['token'] ) ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'send_lease_lost',
+			sprintf(
+				'Another request took over this Mailchimp send while campaign %s was created. That campaign was not linked or sent.',
+				$campaign_id
+			),
+			array( 'status' => 409 )
+		);
+	}
+
+	/**
 	 * Create a Mailchimp campaign (when unlinked) and send it to the configured segment.
 	 *
 	 * Idempotent pipeline:
 	 * 1. Guards (campaign CPT, published, not migrated, connected).
 	 * 2. Acquire a per-post send lock; re-read meta under the lock.
-	 * 3. Ensure a Mailchimp campaign exists (create when unlinked).
+	 * 3. Ensure a Mailchimp campaign exists: when unlinked, create it, refresh
+	 *    the lock, link it, then upload its content.
 	 * 4. Send when status is empty/`save`. Never re-send `sending`/`sent`/`schedule`.
 	 * 5. Persist meta with status `sending` on success.
 	 *
@@ -748,29 +865,31 @@ class Mailchimp {
 			return $ready;
 		}
 
-		$held = $this->acquire_mailchimp_send_lock( $post_id );
-		if ( is_wp_error( $held ) ) {
-			return $held;
-		}
-
-		try {
-			return $this->create_and_send_campaign_locked( $post_id, $retry_existing_draft );
-		} finally {
-			$held['lock']->release( $post_id, $held['token'] );
-		}
+		return $this->with_send_lease(
+			$post_id,
+			fn( array $held ): array|WP_Error => $this->create_and_send_campaign_locked( $post_id, $retry_existing_draft, $held )
+		);
 	}
 
 	/**
-	 * Create/send pipeline. Caller must hold the per-post send lock.
+	 * Create/send pipeline. Caller must hold the per-post send lease.
 	 *
 	 * Meta is read here so a loser of the race cannot create or send from a
 	 * stale empty/`save` snapshot taken before the lock was acquired.
 	 *
-	 * @param int  $post_id              Campaign post ID.
-	 * @param bool $retry_existing_draft When true, send an already-linked draft (`save`).
+	 * The campaign ID is linked as soon as Mailchimp creates the campaign, so
+	 * a later run sends that campaign instead of creating another. The lease
+	 * is refreshed first: when another request took it while create waited,
+	 * this run stops and leaves its new draft unlinked. A run that stops
+	 * between linking and setContent leaves the content-pending marker, and
+	 * the next run pushes the HTML before it sends.
+	 *
+	 * @param int                                 $post_id              Campaign post ID.
+	 * @param bool                                $retry_existing_draft When true, send an already-linked draft (`save`).
+	 * @param array{ lock: Lease, token: string } $held                 Send lease from with_send_lease().
 	 * @return array{ campaign_id: string, admin_url: string, status: string }|WP_Error
 	 */
-	private function create_and_send_campaign_locked( int $post_id, bool $retry_existing_draft ): array|WP_Error {
+	private function create_and_send_campaign_locked( int $post_id, bool $retry_existing_draft, array $held ): array|WP_Error {
 		$campaign_id = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_id', true );
 		$admin_url   = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_admin_url', true );
 		$status      = (string) get_post_meta( $post_id, 'prc_email_mailchimp_campaign_status', true );
@@ -791,33 +910,45 @@ class Mailchimp {
 			);
 		}
 
+		$html            = '';
+		$content_pending = true;
 		if ( '' === $campaign_id ) {
-			// Stops a draft from being created in Mailchimp for a target that send_campaign() would refuse.
-			$allowed = $this->assert_targeting_allowed_for_post( $post_id );
-			if ( is_wp_error( $allowed ) ) {
-				return $allowed;
-			}
-
-			$html = Cached_Email_Html::resolve( $post_id );
+			$html = self::resolve_send_html( $post_id );
 			if ( is_wp_error( $html ) ) {
 				return $html;
 			}
-			if ( '' === $html ) {
-				return new WP_Error(
-					'missing_email_html',
-					'Email HTML is not ready. Generate email content before sending to Mailchimp.',
-					array( 'status' => 400 )
-				);
+
+			$created = $this->create_campaign( $post_id );
+			if ( is_wp_error( $created ) ) {
+				return $created;
 			}
 
-			$result = $this->create_campaign_draft( $post_id, $html );
-			if ( is_wp_error( $result ) ) {
-				return $result;
+			$refreshed = self::refresh_before_link( $held, $post_id, $created['campaign_id'] );
+			if ( is_wp_error( $refreshed ) ) {
+				return $refreshed;
 			}
 
-			$campaign_id = $result['campaign_id'];
-			$admin_url   = $result['admin_url'];
+			$campaign_id = $created['campaign_id'];
+			$admin_url   = $created['admin_url'];
+			Campaign_Linkage::mark_content_pending( $post_id );
 			self::persist_campaign_meta( $post_id, $campaign_id, $admin_url, 'save' );
+		} else {
+			$content_pending = Campaign_Linkage::content_pending( $post_id );
+		}
+
+		if ( $content_pending ) {
+			if ( '' === $html ) {
+				$html = self::resolve_send_html( $post_id );
+				if ( is_wp_error( $html ) ) {
+					return $html;
+				}
+			}
+
+			$content = $this->set_campaign_content( $campaign_id, $html );
+			if ( is_wp_error( $content ) ) {
+				return $content;
+			}
+			Campaign_Linkage::clear_content_pending( $post_id );
 		}
 
 		$send = $this->send_campaign( $campaign_id );
@@ -836,16 +967,69 @@ class Mailchimp {
 	}
 
 	/**
+	 * Email HTML for a Mailchimp send, or missing_email_html when it is not ready.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return string|WP_Error
+	 */
+	private static function resolve_send_html( int $post_id ): string|WP_Error {
+		$html = Cached_Email_Html::resolve( $post_id );
+		if ( is_wp_error( $html ) || '' !== $html ) {
+			return $html;
+		}
+
+		return new WP_Error(
+			'missing_email_html',
+			'Email HTML is not ready. Generate email content before sending to Mailchimp.',
+			array( 'status' => 400 )
+		);
+	}
+
+	/**
 	 * Queue create-and-send for DELAYED_SEND_DELAY seconds later.
 	 *
 	 * Action Scheduler 4.x includes args in the unique key (hook + group +
 	 * post ID), so unique=true dedupes per campaign. Missing Action Scheduler
 	 * returns action_scheduler_unavailable; this does not send immediately.
 	 *
+	 * This is the auto-send entry point. It refuses outside production. A person
+	 * who clicks Send now uses queue_manual_delayed_send().
+	 *
 	 * @param int $post_id Campaign post ID.
 	 * @return array{ queued: bool, pending_send_at: int }|WP_Error
 	 */
 	public function queue_delayed_send( int $post_id ): array|WP_Error {
+		return $this->queue_send( $post_id, false );
+	}
+
+	/**
+	 * Queue a send that a person started by hand. Allowed on every environment.
+	 *
+	 * Stamps the environment name so run_delayed_send() can tell this send from
+	 * a queued action copied over from the production database.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return array{ queued: bool, pending_send_at: int }|WP_Error
+	 */
+	public function queue_manual_delayed_send( int $post_id ): array|WP_Error {
+		return $this->queue_send( $post_id, true );
+	}
+
+	/**
+	 * Shared queue steps for auto and manual sends.
+	 *
+	 * @param int  $post_id Campaign post ID.
+	 * @param bool $manual  True when a person started the send.
+	 * @return array{ queued: bool, pending_send_at: int }|WP_Error
+	 */
+	private function queue_send( int $post_id, bool $manual ): array|WP_Error {
+		if ( ! $manual ) {
+			$auto_allowed = Send_Guard::assert_can_auto_send();
+			if ( is_wp_error( $auto_allowed ) ) {
+				return $auto_allowed;
+			}
+		}
+
 		$ready = $this->assert_mailchimp_campaign_action( $post_id );
 		if ( is_wp_error( $ready ) ) {
 			return $ready;
@@ -879,6 +1063,9 @@ class Mailchimp {
 		}
 
 		Campaign_Linkage::set_pending_send_at( $post_id, $result['scheduled_at'] );
+		if ( $manual ) {
+			Campaign_Linkage::mark_manual_send_env( $post_id, Send_Guard::environment_name() );
+		}
 
 		return array(
 			'queued'          => true,
@@ -889,13 +1076,31 @@ class Mailchimp {
 	/**
 	 * Remove a queued Mailchimp send before it runs.
 	 *
+	 * Runs under the send lease, so it never overlaps a send: a held lease is
+	 * send_locked (409). With no queued action left, the job already ran or
+	 * was never queued, so Cancel reports no_pending_send even when
+	 * pending_send_at is still set; a late queue write can leave it behind.
+	 *
 	 * @param int  $post_id         Campaign post ID.
 	 * @param bool $remember_cancel When true, write the cancelled-send marker.
 	 * @return array{ cancelled: bool, pending_send_at: int }|WP_Error
 	 */
 	public function cancel_delayed_send( int $post_id, bool $remember_cancel = true ): array|WP_Error {
-		$pending = Campaign_Linkage::pending_send_at( $post_id );
-		$result  = $this->delayed_action()->cancel(
+		return $this->with_send_lease(
+			$post_id,
+			fn(): array|WP_Error => $this->cancel_delayed_send_locked( $post_id, $remember_cancel )
+		);
+	}
+
+	/**
+	 * Cancel steps. Caller must hold the per-post send lease.
+	 *
+	 * @param int  $post_id         Campaign post ID.
+	 * @param bool $remember_cancel When true, write the cancelled-send marker.
+	 * @return array{ cancelled: bool, pending_send_at: int }|WP_Error
+	 */
+	private function cancel_delayed_send_locked( int $post_id, bool $remember_cancel ): array|WP_Error {
+		$result = $this->delayed_action()->cancel(
 			self::DELAYED_SEND_HOOK,
 			array( $post_id ),
 			self::DELAYED_SEND_GROUP
@@ -911,16 +1116,14 @@ class Mailchimp {
 				);
 			}
 			if ( 'no_pending' === $code ) {
-				if ( $pending <= 0 ) {
-					return new WP_Error(
-						'no_pending_send',
-						'There is no queued Mailchimp send to cancel.',
-						array( 'status' => 409 )
-					);
-				}
-			} else {
-				return $result;
+				Campaign_Linkage::clear_pending_send( $post_id );
+				return new WP_Error(
+					'no_pending_send',
+					'There is no queued Mailchimp send to cancel.',
+					array( 'status' => 409 )
+				);
 			}
+			return $result;
 		}
 
 		Campaign_Linkage::clear_pending_send( $post_id );
@@ -959,12 +1162,28 @@ class Mailchimp {
 	/**
 	 * Action Scheduler callback for a queued Mailchimp send.
 	 *
+	 * Action Scheduler can run an action that Cancel removed a moment
+	 * earlier: process_action() reads the action as pending, then marks it
+	 * in-progress with no status check. Cancel writes its marker under the
+	 * send lease, so this run reads it under the same lease and stops.
+	 *
 	 * @param int $post_id Campaign post ID.
 	 */
 	public function run_delayed_send( int $post_id ): void {
 		try {
-			$result = $this->create_and_send_campaign( $post_id, true );
-			if ( is_wp_error( $result ) ) {
+			$result = $this->assert_delayed_send_allowed( $post_id );
+			if ( ! is_wp_error( $result ) ) {
+				$result = $this->assert_mailchimp_campaign_action( $post_id );
+			}
+			if ( ! is_wp_error( $result ) ) {
+				$result = $this->with_send_lease(
+					$post_id,
+					fn( array $held ): array|WP_Error => Campaign_Linkage::delayed_send_cancelled( $post_id )
+						? new WP_Error( 'delayed_send_cancelled', 'The queued Mailchimp send was cancelled.' )
+						: $this->create_and_send_campaign_locked( $post_id, true, $held )
+				);
+			}
+			if ( is_wp_error( $result ) && 'delayed_send_cancelled' !== $result->get_error_code() ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- operator-visible send failure.
 				error_log(
 					sprintf(
@@ -977,6 +1196,22 @@ class Mailchimp {
 		} finally {
 			Campaign_Linkage::clear_pending_send( $post_id );
 		}
+	}
+
+	/**
+	 * Outside production, a queued send runs only when a person queued it from
+	 * this environment. Auto-queued sends and actions copied from the production
+	 * database fail closed.
+	 *
+	 * @param int $post_id Campaign post ID.
+	 * @return true|WP_Error
+	 */
+	private function assert_delayed_send_allowed( int $post_id ): true|WP_Error {
+		if ( Send_Guard::is_production() || Campaign_Linkage::is_manual_send_from_env( $post_id, Send_Guard::environment_name() ) ) {
+			return true;
+		}
+
+		return Send_Guard::blocked_error( 'This queued send was not started by hand on this environment.' );
 	}
 
 	/**
@@ -1088,11 +1323,6 @@ class Mailchimp {
 	 * @return true|WP_Error
 	 */
 	public function send_campaign( string $campaign_id ): true|WP_Error {
-		$allowed = $this->assert_campaign_send_allowed( $campaign_id );
-		if ( is_wp_error( $allowed ) ) {
-			return $allowed;
-		}
-
 		return $this->dispatch_campaign_send( $campaign_id );
 	}
 
@@ -1115,117 +1345,6 @@ class Mailchimp {
 		}
 
 		return true;
-	}
-
-	/**
-	 * Refuse a campaign send on non-production unless Mailchimp itself reports
-	 * that the campaign targets the "Staging (TEST)" saved segment.
-	 *
-	 * Reads the campaign and segment live so stale post meta or a draft linked
-	 * before a targeting change cannot widen the audience. Any lookup failure
-	 * blocks the send.
-	 *
-	 * @param string $campaign_id Mailchimp campaign ID.
-	 * @return true|WP_Error
-	 */
-	public function assert_campaign_send_allowed( string $campaign_id ): true|WP_Error {
-		if ( Send_Guard::is_production() ) {
-			return true;
-		}
-
-		$campaign = $this->get_campaign( $campaign_id );
-		if ( is_wp_error( $campaign ) ) {
-			return Send_Guard::blocked_error( 'Could not verify the campaign recipients: ' . $campaign->get_error_message() );
-		}
-
-		$recipients = self::campaign_recipients( $campaign );
-		if ( '' === $recipients['list_id'] || $recipients['segment_id'] <= 0 ) {
-			return Send_Guard::blocked_error( 'This campaign targets an entire audience.' );
-		}
-
-		return $this->assert_segment_is_staging_test( $recipients['list_id'], $recipients['segment_id'] );
-	}
-
-	/**
-	 * Non-production pre-check on the post's stored targeting, run before a
-	 * Mailchimp draft is created.
-	 *
-	 * @param int $post_id Campaign post ID.
-	 * @return true|WP_Error
-	 */
-	private function assert_targeting_allowed_for_post( int $post_id ): true|WP_Error {
-		if ( Send_Guard::is_production() ) {
-			return true;
-		}
-
-		$targeting   = Newsletter_List::resolve_mailchimp_targeting( $post_id );
-		$audience_id = (string) $targeting['audience_id'];
-		$segment_id  = (int) $targeting['segment_id'];
-		if ( '' === $audience_id || $segment_id <= 0 ) {
-			return Send_Guard::blocked_error( 'This campaign targets an entire audience.' );
-		}
-
-		return $this->assert_segment_is_staging_test( $audience_id, $segment_id );
-	}
-
-	/**
-	 * Block unless the live Mailchimp segment is named "Staging (TEST)".
-	 *
-	 * @param string $audience_id Mailchimp list ID.
-	 * @param int    $segment_id  Saved segment ID.
-	 * @return true|WP_Error
-	 */
-	private function assert_segment_is_staging_test( string $audience_id, int $segment_id ): true|WP_Error {
-		$name = $this->fetch_segment_name( $audience_id, $segment_id );
-		if ( is_wp_error( $name ) ) {
-			return Send_Guard::blocked_error( 'Could not verify the campaign segment: ' . $name->get_error_message() );
-		}
-
-		if ( ! Send_Guard::is_staging_test_segment_name( $name ) ) {
-			return Send_Guard::blocked_error( sprintf( 'This campaign targets the "%s" segment.', $name ) );
-		}
-
-		return true;
-	}
-
-	/**
-	 * Fetch a saved segment's name from Mailchimp, bypassing the segment cache.
-	 *
-	 * @param string $audience_id Mailchimp list ID.
-	 * @param int    $segment_id  Saved segment ID.
-	 * @return string|WP_Error
-	 */
-	protected function fetch_segment_name( string $audience_id, int $segment_id ): string|WP_Error {
-		$client = $this->get_client();
-		if ( is_wp_error( $client ) ) {
-			return $client;
-		}
-
-		try {
-			$response = $client->lists->getSegment( $audience_id, (string) $segment_id, 'name' );
-		} catch ( \Exception $e ) {
-			return $this->to_wp_error( $e, 'mailchimp_segment_get_error' );
-		}
-
-		return (string) ( $response->name ?? '' );
-	}
-
-	/**
-	 * Extract list ID and saved segment ID from a campaigns/get response.
-	 *
-	 * @param array $campaign Campaign response (array or nested stdClass).
-	 * @return array{list_id: string, segment_id: int}
-	 */
-	private static function campaign_recipients( array $campaign ): array {
-		$recipients = json_decode( (string) wp_json_encode( $campaign['recipients'] ?? array() ), true );
-		if ( ! is_array( $recipients ) ) {
-			$recipients = array();
-		}
-
-		return array(
-			'list_id'    => (string) ( $recipients['list_id'] ?? '' ),
-			'segment_id' => (int) ( $recipients['segment_opts']['saved_segment_id'] ?? 0 ),
-		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -1296,9 +1415,10 @@ class Mailchimp {
 
 	/**
 	 * Whether publishing a campaign should create and send the Mailchimp campaign.
+	 * Always false outside production, where sends are manual only.
 	 */
 	public static function is_auto_send_on_publish_enabled(): bool {
-		return (bool) self::get_settings()['auto_send_on_publish'];
+		return Send_Guard::is_production() && (bool) self::get_settings()['auto_send_on_publish'];
 	}
 
 	/**
@@ -1369,7 +1489,7 @@ class Mailchimp {
 
 		// Could not obtain the registry lock (live holder kept winning the
 		// wait window). Bump the fence so in-flight commits re-check and roll
-		// back, then try one final clear. Do not Option_Lock::clear() a fresh
+		// back, then try one final clear. Do not Lease::clear() a fresh
 		// lock — that breaks mutual exclusion with the holder.
 		update_option( self::CACHE_GENERATION_OPTION, self::cache_generation() + 1, false );
 		self::with_registry_lock(
@@ -1581,7 +1701,7 @@ class Mailchimp {
 	}
 
 	/**
-	 * Serialize durable registry + cache-write mutations via Option_Lock.
+	 * Serialize durable registry + cache-write mutations via Lease.
 	 *
 	 * Spins until the lock is acquired or the wait exceeds the lock TTL so a
 	 * crashed holder can be reclaimed. Never runs $callback unlocked — that
@@ -1592,7 +1712,7 @@ class Mailchimp {
 	 * @return T|null Callback result, or null when the lock could not be acquired.
 	 */
 	private static function with_registry_lock( callable $callback ) {
-		$lock  = new Option_Lock( self::REGISTRY_LOCK_OPTION_PREFIX, self::REGISTRY_LOCK_TTL, 'mc_reg_' );
+		$lock  = new Lease( self::REGISTRY_LOCK_OPTION_PREFIX, self::REGISTRY_LOCK_TTL, 'mc_reg_' );
 		$token = '';
 		// Wait longer than REGISTRY_LOCK_TTL so an abandoned lock can expire
 		// and be reclaimed (50ms * 700 ≈ 35s > 30s TTL).
@@ -1809,13 +1929,16 @@ class Mailchimp {
 			return new WP_Error( 'mailchimp_bad_key', 'Mailchimp API key is malformed (missing data-center suffix).' );
 		}
 
-		$client = new ApiClient();
-		$client->setConfig(
-			array(
-				'apiKey' => $api_key,
-				'server' => substr( $api_key, strrpos( $api_key, '-' ) + 1 ),
-			) 
+		$config = array(
+			'apiKey' => $api_key,
+			'server' => substr( $api_key, strrpos( $api_key, '-' ) + 1 ),
 		);
+		if ( $this->http_timeout > 0 ) {
+			$config['timeout'] = $this->http_timeout;
+		}
+
+		$client = new ApiClient();
+		$client->setConfig( $config );
 
 		return $client;
 	}

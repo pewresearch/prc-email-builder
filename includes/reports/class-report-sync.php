@@ -9,9 +9,12 @@ declare(strict_types=1);
 
 namespace PRC\Platform\Email_Builder\Reports;
 
+use PRC\Platform\Email_Builder\Campaign_Linkage;
+use PRC\Platform\Email_Builder\Campaign_Status;
 use PRC\Platform\Email_Builder\Migration;
-use PRC\Platform\Email_Builder\Option_Lock;
 use PRC\Platform\Email_Builder\Post_Type;
+use PRC\Primitives\Concurrency\Lease;
+use PRC\Primitives\Concurrency\Meta_State;
 use WP_Error;
 
 /**
@@ -34,8 +37,9 @@ class Report_Sync {
 		add_action( self::SYNC_HOOK, array( __CLASS__, 'sync' ) );
 		add_action( self::FETCH_HOOK, array( __CLASS__, 'fetch_one' ), 10, 1 );
 		add_action( 'init', array( __CLASS__, 'maybe_schedule' ) );
-		add_action( 'updated_post_meta', array( __CLASS__, 'maybe_enqueue_on_sent' ), 10, 4 );
-		add_action( 'added_post_meta', array( __CLASS__, 'maybe_enqueue_on_sent' ), 10, 4 );
+		add_action( Meta_State::TRANSITIONED_ACTION, array( __CLASS__, 'maybe_enqueue_on_sent' ), 10, 4 );
+		add_action( 'updated_post_meta', array( __CLASS__, 'maybe_enqueue_on_mandrill_status' ), 10, 4 );
+		add_action( 'added_post_meta', array( __CLASS__, 'maybe_enqueue_on_mandrill_status' ), 10, 4 );
 	}
 
 	/**
@@ -238,34 +242,73 @@ class Report_Sync {
 	}
 
 	/**
-	 * When status transitions to sent, enqueue an immediate fetch.
+	 * When the Mailchimp status reaches sent, enqueue an immediate fetch.
+	 *
+	 * Runs inside Meta_State::transition(), so it must not throw and must not
+	 * start another transition. Meta_State fires it once, for the winning move.
+	 *
+	 * @param int              $post_id  Post ID.
+	 * @param string           $meta_key Meta key of the state.
+	 * @param \BackedEnum|null $from     Status before the move, or null for the first write.
+	 * @param \BackedEnum      $to       Status after the move.
+	 */
+	public static function maybe_enqueue_on_sent( $post_id, $meta_key, $from, $to ): void {
+		unset( $from );
+		if ( Campaign_Linkage::META_CAMPAIGN_STATUS !== $meta_key || Campaign_Status::Sent !== $to ) {
+			return;
+		}
+
+		self::enqueue_when_stats_available( (int) $post_id );
+	}
+
+	/**
+	 * When the Mandrill send status changes, enqueue an immediate fetch.
+	 *
+	 * The Mandrill status is plain post meta, so core meta actions still carry it.
 	 *
 	 * @param int    $meta_id    Meta ID.
 	 * @param int    $post_id    Post ID.
 	 * @param string $meta_key   Meta key.
 	 * @param mixed  $meta_value New value.
 	 */
-	public static function maybe_enqueue_on_sent( $meta_id, $post_id, $meta_key, $meta_value ): void {
+	public static function maybe_enqueue_on_mandrill_status( $meta_id, $post_id, $meta_key, $meta_value ): void {
 		unset( $meta_id, $meta_value );
-		$is_mailchimp = 'prc_email_mailchimp_campaign_status' === $meta_key;
-		$is_mandrill  = 'prc_email_mandrill_send_status' === $meta_key;
-		if ( ! $is_mailchimp && ! $is_mandrill ) {
+		if ( 'prc_email_mandrill_send_status' !== $meta_key ) {
 			return;
 		}
 
-		$post_id = (int) $post_id;
-		$post    = get_post( $post_id );
-		if ( ! $post instanceof \WP_Post ) {
-			return;
-		}
-		if ( Migration::is_migrated( $post_id ) ) {
-			return;
-		}
-		if ( ! Channel::stats_available( $post ) ) {
-			return;
-		}
+		self::enqueue_when_stats_available( (int) $post_id );
+	}
 
-		self::enqueue_fetch( $post_id );
+	/**
+	 * Enqueue a fetch for a post whose channel has stats. Never throws.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	private static function enqueue_when_stats_available( int $post_id ): void {
+		try {
+			$post = get_post( $post_id );
+			if ( ! $post instanceof \WP_Post ) {
+				return;
+			}
+			if ( Migration::is_migrated( $post_id ) ) {
+				return;
+			}
+			if ( ! Channel::stats_available( $post ) ) {
+				return;
+			}
+
+			self::enqueue_fetch( $post_id );
+		} catch ( \Throwable $e ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log(
+				sprintf(
+					'[prc-email-builder] Could not enqueue the report fetch for post %d: %s',
+					$post_id,
+					$e->getMessage()
+				)
+			);
+		}
 	}
 
 	/**
@@ -430,7 +473,7 @@ class Report_Sync {
 	/**
 	 * Per-campaign report sync lock (separate prefix/TTL from Mandrill sends).
 	 */
-	private static function lock(): Option_Lock {
-		return new Option_Lock( self::LOCK_OPTION_PREFIX, self::LOCK_TTL, 'report_' );
+	private static function lock(): Lease {
+		return new Lease( self::LOCK_OPTION_PREFIX, self::LOCK_TTL, 'report_' );
 	}
 }
